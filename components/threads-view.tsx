@@ -21,12 +21,7 @@ import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import type { Thread, Bot } from "@/lib/database"
 import Link from "next/link"
-import {
-  formatTimeInTimezone,
-  formatDateOnlyInTimezone,
-  getTimezoneAbbreviation,
-  testTimezoneConversion,
-} from "@/lib/timezone-utils"
+import { formatTimeInTimezone, formatDateOnlyInTimezone, getTimezoneAbbreviation } from "@/lib/timezone-utils"
 
 interface ThreadsViewProps {
   initialThreads: Thread[]
@@ -52,55 +47,32 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
   useEffect(() => {
     setThreads(initialThreads)
 
-    // Run timezone test when component loads
-    if (initialThreads.length > 0) {
-      console.log("=== THREADS VIEW DEBUG ===")
-      console.log(
-        "Available bots:",
-        bots.map((b) => ({ name: b.bot_share_name, timezone: b.timezone })),
-      )
-      console.log("Selected bot:", selectedBot)
-      console.log("First thread:", initialThreads[0])
-
-      // Test timezone conversion
-      testTimezoneConversion()
-    }
+    // Debug info
+    console.log("ThreadsView received:", {
+      threadCount: initialThreads.length,
+      botCount: bots.length,
+      selectedBot,
+      botsWithTimezones: bots.map((b) => ({ name: b.bot_share_name, timezone: b.timezone })),
+    })
   }, [initialThreads, bots, selectedBot])
 
-  // Get timezone for a specific bot
-  const getBotTimezone = (botShareName?: string): string | undefined => {
-    if (!botShareName || !bots.length) {
-      console.log(`getBotTimezone: No bot name (${botShareName}) or no bots (${bots.length})`)
-      return undefined
-    }
-    const bot = bots.find((b) => b.bot_share_name === botShareName)
-    console.log(`getBotTimezone for ${botShareName}:`, bot?.timezone)
-    return bot?.timezone
+  // Get timezone for the selected bot
+  const getSelectedBotTimezone = (): string | undefined => {
+    if (!selectedBot || !bots.length) return undefined
+
+    const bot = bots.find((b) => b.bot_share_name === selectedBot)
+    const timezone = bot?.timezone
+
+    console.log(`Selected bot timezone (${selectedBot}):`, timezone)
+    return timezone
   }
 
-  // Get timezone for display - either selected bot or first bot's timezone
-  const getDisplayTimezone = (): string | undefined => {
-    if (selectedBot) {
-      const tz = getBotTimezone(selectedBot)
-      console.log(`getDisplayTimezone (selected bot ${selectedBot}):`, tz)
-      return tz
-    }
-    // If showing all bots, use the first bot's timezone or undefined
-    const tz = bots.length > 0 ? bots[0]?.timezone : undefined
-    console.log(`getDisplayTimezone (first bot):`, tz)
-    return tz
-  }
-
-  const displayTimezone = getDisplayTimezone()
+  const displayTimezone = getSelectedBotTimezone()
   const timezoneAbbr = getTimezoneAbbreviation(displayTimezone)
-
-  console.log("Current display timezone:", displayTimezone)
-  console.log("Timezone abbreviation:", timezoneAbbr)
 
   // Group threads by date (using timezone-adjusted dates)
   const groupedThreads = threads.reduce((groups: { [key: string]: ThreadWithMessageCount[] }, thread) => {
-    const timezone = getBotTimezone(thread.bot_share_name) || displayTimezone
-    const date = formatDateOnlyInTimezone(thread.updated_at, timezone)
+    const date = formatDateOnlyInTimezone(thread.updated_at, displayTimezone)
 
     if (!groups[date]) {
       groups[date] = []
@@ -173,6 +145,15 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
     }
   }
 
+  // Get the selected bot's client name for display
+  const getSelectedBotName = () => {
+    if (!selectedBot || !bots.length) return null
+    const bot = bots.find((b) => b.bot_share_name === selectedBot)
+    return bot?.client_name || bot?.bot_share_name || selectedBot
+  }
+
+  const selectedBotName = getSelectedBotName()
+
   return (
     <div className="p-4 md:p-8 pt-0 relative">
       {/* Tooltip */}
@@ -192,7 +173,7 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
       <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 space-y-4 md:space-y-0">
         <div className="mb-6">
           <p className="text-[#616161]">
-            {selectedBot ? `Showing threads for ${selectedBot}` : "Showing all threads"}({threads.length} total)
+            {selectedBot ? `Showing threads for ${selectedBotName}` : "Showing all threads"} ({threads.length} total)
             {displayTimezone && (
               <span className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded">Times in {timezoneAbbr}</span>
             )}
@@ -315,82 +296,60 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
                       {date}
                     </td>
                   </tr>
-                  {dateThreads.map((thread, index) => {
-                    const threadTimezone = getBotTimezone(thread.bot_share_name) || displayTimezone
-
-                    // Enhanced debugging for first few threads
-                    if (index < 2) {
-                      console.log(`=== THREAD ${index} DEBUG ===`)
-                      console.log("Thread ID:", thread.id)
-                      console.log("Bot share name:", thread.bot_share_name)
-                      console.log("Thread timezone:", threadTimezone)
-                      console.log("Updated at (raw):", thread.updated_at)
-                      console.log("Display timezone:", displayTimezone)
-                    }
-
-                    return (
-                      <tr key={thread.id} className="bg-white hover:bg-[#f5f5f5] border-t border-[#e0e0e0]">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                          {(() => {
-                            const formattedTime = formatTimeInTimezone(thread.updated_at, threadTimezone)
-
-                            if (index < 2) {
-                              console.log(`Thread ${index} formatted time:`, formattedTime)
+                  {dateThreads.map((thread, index) => (
+                    <tr key={thread.id} className="bg-white hover:bg-[#f5f5f5] border-t border-[#e0e0e0]">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
+                        {formatTimeInTimezone(thread.updated_at, displayTimezone)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div
+                          className="flex items-center cursor-pointer"
+                          onMouseEnter={(e) => handleSentimentHover(thread.id, thread.sentiment_justification, e)}
+                          onMouseLeave={handleSentimentLeave}
+                          onMouseMove={(e) => {
+                            if (hoveredSentiment === thread.id) {
+                              setTooltipPosition({ x: e.clientX, y: e.clientY })
                             }
-
-                            return formattedTime
-                          })()}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div
-                            className="flex items-center cursor-pointer"
-                            onMouseEnter={(e) => handleSentimentHover(thread.id, thread.sentiment_justification, e)}
-                            onMouseLeave={handleSentimentLeave}
-                            onMouseMove={(e) => {
-                              if (hoveredSentiment === thread.id) {
-                                setTooltipPosition({ x: e.clientX, y: e.clientY })
-                              }
-                            }}
-                          >
-                            <span className="text-xl">{getSentimentEmoji(thread.sentiment_score)}</span>
-                            <span className={`ml-2 text-sm font-medium ${getSentimentColor(thread.sentiment_score)}`}>
-                              {thread.sentiment_score !== undefined && thread.sentiment_score !== null
-                                ? thread.sentiment_score
-                                : "N/A"}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 max-w-xs truncate text-sm text-[#212121]">
-                          {thread.message_preview || "No preview available"}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                          <div className="flex items-center">
-                            <MessageSquare className="h-4 w-4 text-[#616161] mr-1" />
-                            {thread.count || 0}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                          <div className="flex items-center">
-                            <Clock className="h-4 w-4 text-[#616161] mr-1" />
-                            {formatDuration(thread.duration)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center space-x-2">
-                            {thread.cb_requested && (
-                              <Phone className="h-4 w-4 text-[#038a71]" title="Callback requested" />
-                            )}
-                            <Link href={`/thread/${thread.id}`}>
-                              <MessageSquare className="h-4 w-4 text-[#616161] hover:text-[#212121]" />
-                            </Link>
-                            <button className="text-[#616161] hover:text-[#212121]">
-                              <Star className="h-5 w-5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
+                          }}
+                        >
+                          <span className="text-xl">{getSentimentEmoji(thread.sentiment_score)}</span>
+                          <span className={`ml-2 text-sm font-medium ${getSentimentColor(thread.sentiment_score)}`}>
+                            {thread.sentiment_score !== undefined && thread.sentiment_score !== null
+                              ? thread.sentiment_score
+                              : "N/A"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 max-w-xs truncate text-sm text-[#212121]">
+                        {thread.message_preview || "No preview available"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
+                        <div className="flex items-center">
+                          <MessageSquare className="h-4 w-4 text-[#616161] mr-1" />
+                          {thread.count || 0}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
+                        <div className="flex items-center">
+                          <Clock className="h-4 w-4 text-[#616161] mr-1" />
+                          {formatDuration(thread.duration)}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          {thread.cb_requested && (
+                            <Phone className="h-4 w-4 text-[#038a71]" title="Callback requested" />
+                          )}
+                          <Link href={`/thread/${thread.id}`}>
+                            <MessageSquare className="h-4 w-4 text-[#616161] hover:text-[#212121]" />
+                          </Link>
+                          <button className="text-[#616161] hover:text-[#212121]">
+                            <Star className="h-5 w-5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </>
               ))
             ) : (
@@ -401,7 +360,7 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
                     <p className="text-[#616161] mb-2">No chats found.</p>
                     <p className="text-sm text-[#616161]">
                       {selectedBot
-                        ? `No chat threads found for the selected bot.`
+                        ? `No chat threads found for ${selectedBotName}.`
                         : `No chat threads found for any of your accessible bots.`}
                     </p>
                   </div>
@@ -421,68 +380,63 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
                 {date}
               </div>
               <div className="space-y-2">
-                {dateThreads.map((thread) => {
-                  const threadTimezone = getBotTimezone(thread.bot_share_name) || displayTimezone
-                  return (
-                    <div
-                      key={`mobile-${thread.id}`}
-                      className="bg-white border border-[#e0e0e0] border-t-0 last:rounded-b-md p-4"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-sm font-medium text-[#212121]">
-                            {formatTimeInTimezone(thread.updated_at, threadTimezone)}
+                {dateThreads.map((thread) => (
+                  <div
+                    key={`mobile-${thread.id}`}
+                    className="bg-white border border-[#e0e0e0] border-t-0 last:rounded-b-md p-4"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm font-medium text-[#212121]">
+                          {formatTimeInTimezone(thread.updated_at, displayTimezone)}
+                        </span>
+                        <div
+                          className="flex items-center cursor-pointer"
+                          onMouseEnter={(e) => handleSentimentHover(thread.id, thread.sentiment_justification, e)}
+                          onMouseLeave={handleSentimentLeave}
+                          onMouseMove={(e) => {
+                            if (hoveredSentiment === thread.id) {
+                              setTooltipPosition({ x: e.clientX, y: e.clientY })
+                            }
+                          }}
+                        >
+                          <span className="text-xl">{getSentimentEmoji(thread.sentiment_score)}</span>
+                          <span className={`ml-1 text-sm font-medium ${getSentimentColor(thread.sentiment_score)}`}>
+                            {thread.sentiment_score !== undefined && thread.sentiment_score !== null
+                              ? thread.sentiment_score
+                              : "N/A"}
                           </span>
-                          <div
-                            className="flex items-center cursor-pointer"
-                            onMouseEnter={(e) => handleSentimentHover(thread.id, thread.sentiment_justification, e)}
-                            onMouseLeave={handleSentimentLeave}
-                            onMouseMove={(e) => {
-                              if (hoveredSentiment === thread.id) {
-                                setTooltipPosition({ x: e.clientX, y: e.clientY })
-                              }
-                            }}
-                          >
-                            <span className="text-xl">{getSentimentEmoji(thread.sentiment_score)}</span>
-                            <span className={`ml-1 text-sm font-medium ${getSentimentColor(thread.sentiment_score)}`}>
-                              {thread.sentiment_score !== undefined && thread.sentiment_score !== null
-                                ? thread.sentiment_score
-                                : "N/A"}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {thread.cb_requested && (
-                            <Phone className="h-4 w-4 text-[#038a71]" title="Callback requested" />
-                          )}
-                          <button className="text-[#616161] hover:text-[#212121]">
-                            <Star className="h-4 w-4" />
-                          </button>
-                          <button className="text-[#616161] hover:text-[#212121]">
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
                         </div>
                       </div>
-
-                      <div className="text-sm text-[#212121] mb-2">
-                        {thread.message_preview || "No preview available"}
-                      </div>
-
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="flex items-center space-x-4">
-                          <span className="text-[#616161] flex items-center">
-                            <MessageSquare className="h-4 w-4 mr-1" />
-                            {thread.count || 0} messages
-                          </span>
-                          <span className="text-[#616161] flex items-center">
-                            <Clock className="h-4 w-4 mr-1" />
-                            {formatDuration(thread.duration)}
-                          </span>
-                        </div>
+                      <div className="flex items-center space-x-2">
+                        {thread.cb_requested && <Phone className="h-4 w-4 text-[#038a71]" title="Callback requested" />}
+                        <button className="text-[#616161] hover:text-[#212121]">
+                          <Star className="h-4 w-4" />
+                        </button>
+                        <button className="text-[#616161] hover:text-[#212121]">
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
                       </div>
                     </div>
-                  )
-                })}
+
+                    <div className="text-sm text-[#212121] mb-2">
+                      {thread.message_preview || "No preview available"}
+                    </div>
+
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center space-x-4">
+                        <span className="text-[#616161] flex items-center">
+                          <MessageSquare className="h-4 w-4 mr-1" />
+                          {thread.count || 0} messages
+                        </span>
+                        <span className="text-[#616161] flex items-center">
+                          <Clock className="h-4 w-4 mr-1" />
+                          {formatDuration(thread.duration)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ))

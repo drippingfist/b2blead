@@ -3,13 +3,13 @@
 import { useState, useRef, useEffect } from "react"
 import { ChevronDown, Check } from "lucide-react"
 
-interface Bot {
+interface BotData {
   bot_share_name: string
   client_name?: string
 }
 
 interface BotSelectorProps {
-  bots: Bot[]
+  bots: BotData[]
   selectedBot: string | null
   onSelectBot: (botShareName: string | null) => void
 }

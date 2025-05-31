@@ -35,19 +35,7 @@ export function formatDateInTimezone(
       ...options,
     })
 
-    const result = formatter.format(date)
-
-    // Debug logging
-    console.log(`Timezone conversion debug:`, {
-      input: dateString,
-      parsedDate: date.toISOString(),
-      targetTimezone: tz,
-      result: result,
-      utcTime: date.toUTCString(),
-      localTime: date.toLocaleString(),
-    })
-
-    return result
+    return formatter.format(date)
   } catch (error) {
     console.warn(`Invalid timezone: ${tz}, falling back to UTC. Error:`, error)
     return new Intl.DateTimeFormat("en-US", {
@@ -64,17 +52,12 @@ export function formatDateInTimezone(
  * @returns Time string in HH:MM:SS format in the target timezone
  */
 export function formatTimeInTimezone(dateString: string, timezone?: string): string {
-  console.log(`formatTimeInTimezone called with:`, { dateString, timezone })
-
-  const result = formatDateInTimezone(dateString, timezone, {
+  return formatDateInTimezone(dateString, timezone, {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
   })
-
-  console.log(`formatTimeInTimezone result:`, result)
-  return result
 }
 
 /**
@@ -132,28 +115,4 @@ export function getTimezoneAbbreviation(timezone?: string): string {
     console.warn(`Invalid timezone: ${timezone}`)
     return "UTC"
   }
-}
-
-/**
- * Test function to verify timezone conversion is working
- */
-export function testTimezoneConversion() {
-  const testDate = "2024-01-15T07:59:00.000Z" // UTC time
-  const timezone = "Asia/Bangkok"
-
-  console.log("=== TIMEZONE CONVERSION TEST ===")
-  console.log("Input UTC time:", testDate)
-  console.log("Target timezone:", timezone)
-
-  const converted = formatTimeInTimezone(testDate, timezone)
-  console.log("Converted time:", converted)
-  console.log("Expected: 14:59:00 (UTC+7)")
-
-  // Also test with current time
-  const now = new Date().toISOString()
-  console.log("\nCurrent time test:")
-  console.log("UTC now:", now)
-  console.log("Bangkok now:", formatTimeInTimezone(now, timezone))
-
-  return converted
 }
