@@ -12,7 +12,7 @@ import {
   Settings,
   LogOut,
   X,
-  Bot,
+  Users,
 } from "lucide-react"
 import { signOut } from "@/lib/actions"
 import { supabase } from "@/lib/supabase/client"
@@ -66,10 +66,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Chats", href: "/", icon: MessageSquare },
-    { name: "Bots", href: "/bots", icon: Bot },
-    { name: "Callbacks", href: "/callbacks", icon: PhoneCall },
     { name: "Messages", href: "/messages", icon: Mail },
+    { name: "Callbacks", href: "/callbacks", icon: PhoneCall },
     { name: "Chat Improvements", href: "/improvements", icon: MessageSquarePlus },
+    { name: "Users", href: "/users", icon: Users },
     { name: "Settings", href: "/settings", icon: Settings },
   ]
 
