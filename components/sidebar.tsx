@@ -137,7 +137,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
             {/* Bot selector */}
             <div className="mt-4">
-              <label className="block text-sm font-medium text-[#616161] mb-2">Select Bot</label>
               <SimpleBotSelector selectedBot={selectedBot} onSelectBot={handleBotSelection} />
             </div>
           </div>

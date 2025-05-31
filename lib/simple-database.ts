@@ -18,7 +18,7 @@ export interface Thread {
 export async function getThreadsSimple(limit = 50, botShareName?: string | null): Promise<Thread[]> {
   console.log("🧵 Fetching threads for bot_share_name:", botShareName || "ALL")
 
-  let query = supabase.from("threads").select("*").order("updated_at", { ascending: false }).limit(limit)
+  let query = supabase.from("threads").select("*").order("created_at", { ascending: false }).limit(limit)
 
   // If a specific bot is selected, filter by bot_share_name
   if (botShareName) {

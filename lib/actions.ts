@@ -82,3 +82,45 @@ export async function signOut() {
   await supabase.auth.signOut()
   redirect("/auth/login")
 }
+
+// New server action to refresh sentiment analysis
+export async function refreshSentimentAnalysis(threadId: string) {
+  try {
+    const cookieStore = cookies()
+    const supabase = createServerActionClient({ cookies: () => cookieStore })
+
+    // First, set sentiment_score to null
+    const { error: updateError } = await supabase
+      .from("threads")
+      .update({
+        sentiment_score: null,
+        sentiment_justification: null,
+        // Note: We're not updating updated_at, it will remain unchanged
+      })
+      .eq("id", threadId)
+
+    if (updateError) {
+      return { error: `Error updating thread: ${updateError.message}` }
+    }
+
+    // Wait 0.5 seconds
+    await new Promise((resolve) => setTimeout(resolve, 500))
+
+    // Call the new edge function that processes all NULL sentiment threads
+    const response = await fetch("https://bhekqolukbxkxjloffdi.supabase.co/functions/v1/sentimentanalysis_button", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.SUPABASE_ANON_KEY}`,
+      },
+    })
+
+    if (!response.ok) {
+      return { error: `Sentiment analysis failed: ${response.statusText}` }
+    }
+
+    return { success: "Sentiment analysis started! The score will update shortly." }
+  } catch (error: any) {
+    return { error: `Unexpected error: ${error.message}` }
+  }
+}

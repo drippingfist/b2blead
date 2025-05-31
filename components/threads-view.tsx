@@ -22,7 +22,7 @@ import { Switch } from "@/components/ui/switch"
 import type { Thread, Bot } from "@/lib/database"
 import Link from "next/link"
 import { formatTimeInTimezone, formatDateOnlyInTimezone, getTimezoneAbbreviation } from "@/lib/timezone-utils"
-import { supabase } from "@/lib/supabase/client"
+import { refreshSentimentAnalysis } from "@/lib/actions"
 
 interface ThreadsViewProps {
   initialThreads: Thread[]
@@ -47,26 +47,18 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
 
   // Process threads when initialThreads changes
   useEffect(() => {
-    setThreads(initialThreads)
-
-    // Debug info
-    console.log("ThreadsView received:", {
-      threadCount: initialThreads.length,
-      botCount: bots.length,
-      selectedBot,
-      botsWithTimezones: bots.map((b) => ({ name: b.bot_share_name, timezone: b.timezone })),
-    })
+    // Sort threads by created_at in descending order (newest first)
+    const sortedThreads = [...initialThreads].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )
+    setThreads(sortedThreads)
   }, [initialThreads, bots, selectedBot])
 
   // Get timezone for the selected bot
   const getSelectedBotTimezone = (): string | undefined => {
     if (!selectedBot || !bots.length) return undefined
-
     const bot = bots.find((b) => b.bot_share_name === selectedBot)
-    const timezone = bot?.timezone
-
-    console.log(`Selected bot timezone (${selectedBot}):`, timezone)
-    return timezone
+    return bot?.timezone
   }
 
   const displayTimezone = getSelectedBotTimezone()
@@ -74,7 +66,7 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
 
   // Group threads by date (using timezone-adjusted dates)
   const groupedThreads = threads.reduce((groups: { [key: string]: ThreadWithMessageCount[] }, thread) => {
-    const date = formatDateOnlyInTimezone(thread.updated_at, displayTimezone)
+    const date = formatDateOnlyInTimezone(thread.created_at, displayTimezone)
 
     if (!groups[date]) {
       groups[date] = []
@@ -144,20 +136,7 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
 
   const handleSentimentRefresh = async (threadId: string) => {
     try {
-      console.log("🔄 Refreshing sentiment for thread:", threadId)
       setRefreshingSentiment(threadId)
-
-      // First, set sentiment_score to null
-      const { error: updateError } = await supabase
-        .from("threads")
-        .update({ sentiment_score: null, sentiment_justification: null })
-        .eq("id", threadId)
-
-      if (updateError) {
-        console.error("Error updating thread:", updateError)
-        alert(`Error updating thread: ${updateError.message}`)
-        return
-      }
 
       // Update local state to show null immediately
       setThreads((prevThreads) =>
@@ -166,85 +145,17 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
         ),
       )
 
-      console.log("🔄 Calling edge function with threadId:", threadId)
+      // Call the server action
+      const result = await refreshSentimentAnalysis(threadId)
 
-      // Try calling the edge function with multiple approaches
-      try {
-        // Method 1: Standard Supabase function invoke
-        const { data, error } = await supabase.functions.invoke("sentiment_analysis", {
-          body: JSON.stringify({ threadId }),
-        })
-
-        if (error) {
-          console.error("Method 1 failed:", error)
-          throw error
+      // Refresh the thread data after a delay
+      setTimeout(() => {
+        if (onRefresh) {
+          onRefresh()
         }
-
-        console.log("✅ Method 1 succeeded:", data)
-        alert("Sentiment analysis started! The score will update shortly.")
-
-        // Refresh the thread data after a delay
-        setTimeout(() => {
-          if (onRefresh) {
-            console.log("🔄 Auto-refreshing data to get new sentiment...")
-            onRefresh()
-          }
-        }, 3000)
-      } catch (supabaseError: any) {
-        console.log("🔄 Method 1 failed, trying direct fetch...")
-
-        // Method 2: Direct fetch to the function URL
-        try {
-          const functionUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/sentiment_analysis`
-
-          const response = await fetch(functionUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-            },
-            body: JSON.stringify({ threadId }),
-          })
-
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-          }
-
-          const data = await response.json()
-          console.log("✅ Method 2 succeeded:", data)
-          alert("Sentiment analysis started! The score will update shortly.")
-
-          // Refresh the thread data after a delay
-          setTimeout(() => {
-            if (onRefresh) {
-              console.log("🔄 Auto-refreshing data to get new sentiment...")
-              onRefresh()
-            }
-          }, 3000)
-        } catch (fetchError: any) {
-          console.error("Method 2 also failed:", fetchError)
-
-          // Show detailed error information
-          const errorMessage = `
-            Both methods failed:
-            1. Supabase invoke: ${supabaseError.message}
-            2. Direct fetch: ${fetchError.message}
-            
-            Function URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/sentiment_analysis
-            Thread ID: ${threadId}
-          `
-
-          console.error("Complete error details:", errorMessage)
-          alert(`Sentiment analysis failed. Please check the console for details.\n\nError: ${fetchError.message}`)
-        }
-      }
+      }, 3000)
     } catch (error: any) {
-      console.error("Exception in sentiment refresh:", {
-        message: error.message,
-        stack: error.stack,
-        name: error.name,
-      })
-      alert(`Unexpected error: ${error.message}`)
+      // Silent error handling
     } finally {
       setRefreshingSentiment(null)
     }
@@ -363,7 +274,7 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
             <tr className="bg-white border-b border-[#e0e0e0]">
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                 <div className="flex items-center">
-                  Last Updated
+                  START TIME
                   <ChevronDown className="h-4 w-4 ml-1" />
                 </div>
               </th>
@@ -404,7 +315,7 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
                   {dateThreads.map((thread, index) => (
                     <tr key={thread.id} className="bg-white hover:bg-[#f5f5f5] border-t border-[#e0e0e0]">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                        {formatTimeInTimezone(thread.updated_at, displayTimezone)}
+                        {formatTimeInTimezone(thread.created_at, displayTimezone)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div
@@ -506,7 +417,7 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center space-x-2">
                         <span className="text-sm font-medium text-[#212121]">
-                          {formatTimeInTimezone(thread.updated_at, displayTimezone)}
+                          {formatTimeInTimezone(thread.created_at, displayTimezone)}
                         </span>
                         <div
                           className="flex items-center cursor-pointer"
