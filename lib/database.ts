@@ -10,7 +10,7 @@ export interface Bot {
   client_email?: string
   groq_model?: string
   groq_suggested_questions?: string
-  timezone?: string // Make sure timezone is included
+  timezone?: string
   sentiment_analysis_prompt?: string
   gpt_assistant_id?: string
   gpt_assistant_system_prompt?: string
@@ -23,17 +23,6 @@ export interface Bot {
   client_email_name?: string
   typebot_id?: string
   LIVE?: boolean
-}
-
-export interface BotUser {
-  id: string
-  created_at: string
-  user_email: string
-  bot_share_name: string
-  role: "admin" | "editor" | "viewer"
-  is_active: boolean
-  created_by?: string
-  notes?: string
 }
 
 export interface Message {
@@ -72,7 +61,7 @@ export interface Thread {
   sentiment_score?: number
   sentiment_justification?: string
   cb_requested?: boolean
-  count?: number // Add count column for message count
+  count?: number
 }
 
 export interface Callback {
@@ -95,77 +84,49 @@ export interface Callback {
   user_cb_message?: string
 }
 
-// Client-side function to get current user's email
-export async function getCurrentUserEmailClient(): Promise<string | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  return user?.email || null
-}
+// Get ALL bots from database
+export async function getBotsClient(): Promise<Bot[]> {
+  console.log("🔍 getBotsClient: Fetching ALL bots...")
 
-// Simplified function - all users can access all bots
-export async function getUserAccessibleBotsClient(): Promise<string[]> {
-  const userEmail = await getCurrentUserEmailClient()
-  console.log("getUserAccessibleBotsClient: User email:", userEmail)
-
-  if (!userEmail) {
-    console.log("getUserAccessibleBotsClient: No user email found")
-    return []
-  }
-
-  console.log("getUserAccessibleBotsClient: Getting all bots for authenticated user")
-  const { data: bots, error } = await supabase.from("bots").select("bot_share_name").not("bot_share_name", "is", null)
+  const { data, error } = await supabase.from("bots").select("*").order("bot_share_name", { ascending: true })
 
   if (error) {
-    console.error("getUserAccessibleBotsClient: Error fetching all bots:", error)
+    console.error("❌ getBotsClient: Error fetching bots:", error)
     return []
   }
 
-  const botNames = bots?.map((bot) => bot.bot_share_name).filter(Boolean) || []
-  console.log("getUserAccessibleBotsClient: User has access to", botNames.length, "bots:", botNames)
-  return botNames
+  console.log("✅ getBotsClient: Successfully fetched", data?.length || 0, "bots")
+  return data || []
 }
 
-// Client-side function to get threads with access control
+// Get threads - filter by bot_share_name if provided
 export async function getThreadsClient(limit = 50, botShareName?: string | null): Promise<Thread[]> {
-  const accessibleBots = await getUserAccessibleBotsClient()
-  if (accessibleBots.length === 0) return []
+  console.log("🧵 getThreadsClient: Fetching threads for bot:", botShareName || "ALL")
 
-  let query = supabase
-    .from("threads")
-    .select("*")
-    .in("bot_share_name", accessibleBots)
-    .order("updated_at", { ascending: false })
-    .limit(limit)
+  let query = supabase.from("threads").select("*").order("updated_at", { ascending: false }).limit(limit)
 
-  // If a specific bot is selected, filter by that bot
+  // If a specific bot is selected, filter by that bot_share_name
   if (botShareName) {
+    console.log("🔍 Filtering threads by bot_share_name:", botShareName)
     query = query.eq("bot_share_name", botShareName)
   }
 
   const { data, error } = await query
 
   if (error) {
-    console.error("Error fetching threads:", error)
+    console.error("❌ getThreadsClient: Error fetching threads:", error)
     return []
   }
 
+  console.log("✅ getThreadsClient: Successfully fetched", data?.length || 0, "threads")
   return data || []
 }
 
-// Client-side function to get callbacks with access control
+// Get callbacks - filter by bot_share_name if provided
 export async function getCallbacksClient(limit = 50, botShareName?: string | null): Promise<Callback[]> {
-  const accessibleBots = await getUserAccessibleBotsClient()
-  if (accessibleBots.length === 0) return []
+  let query = supabase.from("callbacks").select("*").order("created_at", { ascending: false }).limit(limit)
 
-  let query = supabase
-    .from("callbacks")
-    .select("*")
-    .in("bot_share_name", accessibleBots)
-    .order("created_at", { ascending: false })
-    .limit(limit)
-
-  // If a specific bot is selected, filter by that bot
+  // If a specific bot is selected, filter by that bot_share_name
   if (botShareName) {
     query = query.eq("bot_share_name", botShareName)
   }
@@ -180,69 +141,41 @@ export async function getCallbacksClient(limit = 50, botShareName?: string | nul
   return data || []
 }
 
-// Client-side function to get bots - simplified to show all bots to all users
-export async function getBotsClient(): Promise<Bot[]> {
-  console.log("getBotsClient: Starting...")
-  const accessibleBots = await getUserAccessibleBotsClient()
-  console.log("getBotsClient: Accessible bots:", accessibleBots)
-
-  if (accessibleBots.length === 0) {
-    console.log("getBotsClient: No accessible bots found")
-    return []
-  }
-
-  const { data, error } = await supabase
-    .from("bots")
-    .select("*")
-    .in("bot_share_name", accessibleBots)
-    .order("created_at", { ascending: false })
-
-  if (error) {
-    console.error("getBotsClient: Error fetching bots:", error)
-    return []
-  }
-
-  console.log("getBotsClient: Fetched bots from database:", data)
-  return data || []
+// Get current user's email
+export async function getCurrentUserEmailClient(): Promise<string | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  return user?.email || null
 }
 
-// Client-side function to get thread stats
+// Get thread stats - filter by bot_share_name if provided
 export async function getThreadStatsClient(botShareName?: string | null) {
-  const accessibleBots = await getUserAccessibleBotsClient()
-  if (accessibleBots.length === 0) return { totalThreads: 0, recentThreads: 0, callbackRequests: 0, avgSentiment: 0 }
+  let totalQuery = supabase.from("threads").select("*", { count: "exact", head: true })
+  let recentQuery = supabase.from("threads").select("*", { count: "exact", head: true })
+  let callbackQuery = supabase.from("threads").select("*", { count: "exact", head: true })
+  let sentimentQuery = supabase.from("threads").select("sentiment_score")
 
-  // Use the selected bot or all accessible bots
-  const botsToQuery = botShareName ? [botShareName] : accessibleBots
-
-  // Get total thread count for accessible bots
-  const { count: totalThreads } = await supabase
-    .from("threads")
-    .select("*", { count: "exact", head: true })
-    .in("bot_share_name", botsToQuery)
+  if (botShareName) {
+    totalQuery = totalQuery.eq("bot_share_name", botShareName)
+    recentQuery = recentQuery.eq("bot_share_name", botShareName)
+    callbackQuery = callbackQuery.eq("bot_share_name", botShareName)
+    sentimentQuery = sentimentQuery.eq("bot_share_name", botShareName)
+  }
 
   // Get threads from last 7 days
   const sevenDaysAgo = new Date()
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+  recentQuery = recentQuery.gte("created_at", sevenDaysAgo.toISOString())
 
-  const { count: recentThreads } = await supabase
-    .from("threads")
-    .select("*", { count: "exact", head: true })
-    .in("bot_share_name", botsToQuery)
-    .gte("created_at", sevenDaysAgo.toISOString())
+  // Get callback requests
+  callbackQuery = callbackQuery.eq("cb_requested", true)
 
-  // Get callback requests count
-  const { count: callbackRequests } = await supabase
-    .from("threads")
-    .select("*", { count: "exact", head: true })
-    .in("bot_share_name", botsToQuery)
-    .eq("cb_requested", true)
+  // Get sentiment data
+  sentimentQuery = sentimentQuery.not("sentiment_score", "is", null)
 
-  // Get average sentiment
-  const { data: sentimentData } = await supabase
-    .from("threads")
-    .select("sentiment_score")
-    .in("bot_share_name", botsToQuery)
-    .not("sentiment_score", "is", null)
+  const [{ count: totalThreads }, { count: recentThreads }, { count: callbackRequests }, { data: sentimentData }] =
+    await Promise.all([totalQuery, recentQuery, callbackQuery, sentimentQuery])
 
   const avgSentiment = sentimentData?.length
     ? sentimentData.reduce((sum, thread) => sum + (thread.sentiment_score || 0), 0) / sentimentData.length
@@ -256,46 +189,31 @@ export async function getThreadStatsClient(botShareName?: string | null) {
   }
 }
 
-// Client-side function to get callback stats
+// Get callback stats - filter by bot_share_name if provided
 export async function getCallbackStatsClient(botShareName?: string | null) {
-  const accessibleBots = await getUserAccessibleBotsClient()
-  if (accessibleBots.length === 0) return { totalCallbacks: 0, recentCallbacks: 0, topCountries: [] }
+  let totalQuery = supabase.from("callbacks").select("*", { count: "exact", head: true })
+  let recentQuery = supabase.from("callbacks").select("*", { count: "exact", head: true })
+  let countryQuery = supabase.from("callbacks").select("user_country")
 
-  // Use the selected bot or all accessible bots
-  const botsToQuery = botShareName ? [botShareName] : accessibleBots
-
-  // Get total callback count
-  let query = supabase.from("callbacks").select("*", { count: "exact", head: true })
-
-  if (botsToQuery.length > 0) {
-    query = query.in("bot_share_name", botsToQuery)
+  if (botShareName) {
+    totalQuery = totalQuery.eq("bot_share_name", botShareName)
+    recentQuery = recentQuery.eq("bot_share_name", botShareName)
+    countryQuery = countryQuery.eq("bot_share_name", botShareName)
   }
-
-  const { count: totalCallbacks } = await query
 
   // Get callbacks from last 7 days
   const sevenDaysAgo = new Date()
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+  recentQuery = recentQuery.gte("created_at", sevenDaysAgo.toISOString())
 
-  let recentQuery = supabase
-    .from("callbacks")
-    .select("*", { count: "exact", head: true })
-    .gte("created_at", sevenDaysAgo.toISOString())
+  // Get country data
+  countryQuery = countryQuery.not("user_country", "is", null)
 
-  if (botsToQuery.length > 0) {
-    recentQuery = recentQuery.in("bot_share_name", botsToQuery)
-  }
-
-  const { count: recentCallbacks } = await recentQuery
-
-  // Get callbacks by country (top 5)
-  let countryQuery = supabase.from("callbacks").select("user_country").not("user_country", "is", null)
-
-  if (botsToQuery.length > 0) {
-    countryQuery = countryQuery.in("bot_share_name", botsToQuery)
-  }
-
-  const { data: countryData } = await countryQuery
+  const [{ count: totalCallbacks }, { count: recentCallbacks }, { data: countryData }] = await Promise.all([
+    totalQuery,
+    recentQuery,
+    countryQuery,
+  ])
 
   const countryStats = countryData?.reduce((acc: { [key: string]: number }, callback) => {
     const country = callback.user_country || "Unknown"

@@ -18,7 +18,6 @@ import { signOut } from "@/lib/actions"
 import { supabase } from "@/lib/supabase/client"
 import BotSelector from "@/components/bot-selector"
 import { useBotContext } from "@/contexts/bot-context"
-import { getCurrentUserEmailClient, getBotsClient, getUserAccessibleBotsClient } from "@/lib/database"
 
 interface SidebarProps {
   isOpen: boolean
@@ -29,12 +28,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
-  const { userBots, selectedBot, setSelectedBot, isLoading } = useBotContext()
-
-  // Debug output
-  useEffect(() => {
-    console.log("Sidebar rendered with userBots:", userBots.length)
-  }, [userBots])
+  const { selectedBot, setSelectedBot } = useBotContext()
 
   useEffect(() => {
     // Get current user info
@@ -93,28 +87,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         .slice(0, 2)
     : userEmail?.charAt(0).toUpperCase() || "U"
 
-  // Debug function to manually check bot access
-  const checkBotAccess = async () => {
-    try {
-      console.log("Manual check: Getting user email...")
-      const email = await getCurrentUserEmailClient()
-      console.log("Manual check: User email:", email)
-
-      console.log("Manual check: Getting accessible bots...")
-      const accessibleBots = await getUserAccessibleBotsClient()
-      console.log("Manual check: Accessible bots:", accessibleBots)
-
-      console.log("Manual check: Getting bots from database...")
-      const bots = await getBotsClient()
-      console.log("Manual check: Bots from database:", bots)
-
-      alert(`Found ${bots.length} bots. Check console for details.`)
-    } catch (error) {
-      console.error("Manual check error:", error)
-      alert("Error checking bot access. See console for details.")
-    }
-  }
-
   return (
     <>
       {/* Mobile overlay */}
@@ -145,31 +117,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               </button>
             </div>
 
-            {/* Bot selector underneath the logo - Always show with debugging */}
+            {/* Bot selector underneath the logo */}
             <div className="mt-4">
-              <label className="block text-sm font-medium text-[#616161] mb-2">
-                Select Bot ({userBots.length} available)
-              </label>
-              {userBots.length > 0 ? (
-                <BotSelector bots={userBots} selectedBot={selectedBot} onSelectBot={setSelectedBot} />
-              ) : (
-                <div className="w-full px-3 py-2 text-sm border border-[#e0e0e0] rounded-md bg-gray-50 text-[#616161]">
-                  {isLoading ? "Loading bots..." : "No bots available"}
-                </div>
-              )}
-
-              {/* Debug info and button */}
-              <div className="mt-2 text-xs text-gray-500">
-                <div>
-                  Debug: {userBots.length} bots loaded, selected: {selectedBot || "none"}
-                </div>
-                <button
-                  onClick={checkBotAccess}
-                  className="mt-1 px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs hover:bg-gray-200"
-                >
-                  Debug: Check Bot Access
-                </button>
-              </div>
+              <label className="block text-sm font-medium text-[#616161] mb-2">Select Bot</label>
+              <BotSelector selectedBot={selectedBot} onSelectBot={setSelectedBot} />
             </div>
           </div>
         </div>
