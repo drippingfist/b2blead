@@ -103,7 +103,7 @@ export async function getCurrentUserEmailClient(): Promise<string | null> {
   return user?.email || null
 }
 
-// Add more detailed debugging to getUserAccessibleBotsClient function
+// Simplified function - all users can access all bots
 export async function getUserAccessibleBotsClient(): Promise<string[]> {
   const userEmail = await getCurrentUserEmailClient()
   console.log("getUserAccessibleBotsClient: User email:", userEmail)
@@ -113,35 +113,15 @@ export async function getUserAccessibleBotsClient(): Promise<string[]> {
     return []
   }
 
-  // james@vrg.asia has access to all bots
-  if (userEmail === "james@vrg.asia") {
-    console.log("getUserAccessibleBotsClient: Admin user detected, getting all bots")
-    const { data: bots, error } = await supabase.from("bots").select("bot_share_name").not("bot_share_name", "is", null)
-
-    if (error) {
-      console.error("getUserAccessibleBotsClient: Error fetching all bots:", error)
-      return []
-    }
-
-    const botNames = bots?.map((bot) => bot.bot_share_name).filter(Boolean) || []
-    console.log("getUserAccessibleBotsClient: Admin has access to", botNames.length, "bots:", botNames)
-    return botNames
-  }
-
-  // For other users, check bot_users table
-  console.log("getUserAccessibleBotsClient: Regular user, checking bot_users table")
-  const { data: botUsers, error } = await supabase
-    .from("bot_users")
-    .select("bot_share_name")
-    .eq("user_email", userEmail)
-    .eq("is_active", true)
+  console.log("getUserAccessibleBotsClient: Getting all bots for authenticated user")
+  const { data: bots, error } = await supabase.from("bots").select("bot_share_name").not("bot_share_name", "is", null)
 
   if (error) {
-    console.error("getUserAccessibleBotsClient: Error fetching bot users:", error)
+    console.error("getUserAccessibleBotsClient: Error fetching all bots:", error)
     return []
   }
 
-  const botNames = botUsers?.map((bu) => bu.bot_share_name).filter(Boolean) || []
+  const botNames = bots?.map((bot) => bot.bot_share_name).filter(Boolean) || []
   console.log("getUserAccessibleBotsClient: User has access to", botNames.length, "bots:", botNames)
   return botNames
 }
@@ -200,7 +180,7 @@ export async function getCallbacksClient(limit = 50, botShareName?: string | nul
   return data || []
 }
 
-// Client-side function to get bots with access control
+// Client-side function to get bots - simplified to show all bots to all users
 export async function getBotsClient(): Promise<Bot[]> {
   console.log("getBotsClient: Starting...")
   const accessibleBots = await getUserAccessibleBotsClient()

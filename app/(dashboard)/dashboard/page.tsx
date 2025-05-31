@@ -59,10 +59,7 @@ export default function Dashboard() {
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-[#212121]">Dashboard</h1>
         <p className="text-[#616161]">
-          Welcome back, {userEmail}.{" "}
-          {userEmail === "james@vrg.asia"
-            ? "You have admin access to all bots."
-            : `You have access to ${bots.length} bot(s).`}
+          Welcome back, {userEmail}. You have access to {bots.length} bot(s).
         </p>
         {selectedBot && (
           <p className="text-sm text-[#038a71] mt-1">
@@ -75,7 +72,7 @@ export default function Dashboard() {
         <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
           <h2 className="text-lg font-medium text-[#212121]">Total Conversations</h2>
           <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{threadStats.totalThreads}</p>
-          <p className="text-sm text-[#616161] mt-1">{selectedBot ? "Selected bot" : "Your accessible bots"}</p>
+          <p className="text-sm text-[#616161] mt-1">{selectedBot ? "Selected bot" : "All bots"}</p>
         </div>
 
         <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
@@ -85,7 +82,7 @@ export default function Dashboard() {
         </div>
 
         <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121]">Your Bots</h2>
+          <h2 className="text-lg font-medium text-[#212121]">Available Bots</h2>
           <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{bots.length}</p>
           <p className="text-sm text-[#616161] mt-1">{liveBots.length} live</p>
         </div>
@@ -99,7 +96,7 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h3 className="text-lg font-medium text-[#212121] mb-4">Your Bots</h3>
+          <h3 className="text-lg font-medium text-[#212121] mb-4">Available Bots</h3>
           <div className="space-y-3">
             {bots.slice(0, 5).map((bot) => (
               <div key={bot.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
@@ -118,7 +115,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {bots.length === 0 && <p className="text-[#616161] text-center py-4">No bots accessible to your account</p>}
+            {bots.length === 0 && <p className="text-[#616161] text-center py-4">No bots found in the database</p>}
           </div>
         </div>
 
