@@ -16,8 +16,7 @@ import {
 } from "lucide-react"
 import { signOut } from "@/lib/actions"
 import { supabase } from "@/lib/supabase/client"
-import BotSelector from "@/components/bot-selector"
-import { useBotContext } from "@/contexts/bot-context"
+import SimpleBotSelector from "@/components/simple-bot-selector"
 
 interface SidebarProps {
   isOpen: boolean
@@ -28,7 +27,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
-  const { selectedBot, setSelectedBot } = useBotContext()
+  const [selectedBot, setSelectedBot] = useState<string | null>(null)
 
   useEffect(() => {
     // Get current user info
@@ -43,7 +42,26 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       }
     }
     getCurrentUser()
+
+    // Load selected bot from localStorage
+    const storedBot = localStorage.getItem("selectedBot")
+    if (storedBot && storedBot !== "null") {
+      setSelectedBot(storedBot)
+    }
   }, [])
+
+  // Save selected bot to localStorage and trigger page refresh
+  const handleBotSelection = (botShareName: string | null) => {
+    setSelectedBot(botShareName)
+    if (botShareName) {
+      localStorage.setItem("selectedBot", botShareName)
+    } else {
+      localStorage.removeItem("selectedBot")
+    }
+
+    // Trigger a custom event to notify other components
+    window.dispatchEvent(new CustomEvent("botSelectionChanged", { detail: botShareName }))
+  }
 
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -117,10 +135,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               </button>
             </div>
 
-            {/* Bot selector underneath the logo */}
+            {/* Bot selector */}
             <div className="mt-4">
               <label className="block text-sm font-medium text-[#616161] mb-2">Select Bot</label>
-              <BotSelector selectedBot={selectedBot} onSelectBot={setSelectedBot} />
+              <SimpleBotSelector selectedBot={selectedBot} onSelectBot={handleBotSelection} />
             </div>
           </div>
         </div>

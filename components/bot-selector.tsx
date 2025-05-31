@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase/client"
 
 interface Bot {
   id: string
-  bot_share_name: string
+  client_name: string
 }
 
 interface BotSelectorProps {

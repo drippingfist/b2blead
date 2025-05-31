@@ -1,11 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useBotContext } from "@/contexts/bot-context"
 import { getThreadStatsClient, getBotsClient, getCallbackStatsClient, getCurrentUserEmailClient } from "@/lib/database"
 
 export default function Dashboard() {
-  const { selectedBot, isLoading: botContextLoading } = useBotContext()
+  const [selectedBot, setSelectedBot] = useState<string | null>(null)
   const [threadStats, setThreadStats] = useState<any>({
     totalThreads: 0,
     recentThreads: 0,
@@ -17,10 +16,26 @@ export default function Dashboard() {
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // Load selected bot from localStorage
+  useEffect(() => {
+    const storedBot = localStorage.getItem("selectedBot")
+    if (storedBot && storedBot !== "null") {
+      setSelectedBot(storedBot)
+    }
+  }, [])
+
+  // Listen for bot selection changes
+  useEffect(() => {
+    const handleBotSelectionChanged = (event: CustomEvent) => {
+      setSelectedBot(event.detail)
+    }
+
+    window.addEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
+    return () => window.removeEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
+  }, [])
+
   useEffect(() => {
     const fetchData = async () => {
-      if (botContextLoading) return // Wait for bot context to load
-
       setLoading(true)
       try {
         const [fetchedThreadStats, fetchedCallbackStats, fetchedBots, fetchedUserEmail] = await Promise.all([
@@ -42,11 +57,11 @@ export default function Dashboard() {
     }
 
     fetchData()
-  }, [selectedBot, botContextLoading])
+  }, [selectedBot])
 
   const liveBots = bots.filter((bot) => bot.LIVE === true)
 
-  if (botContextLoading || loading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#038a71]"></div>

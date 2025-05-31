@@ -2,28 +2,44 @@
 
 import { useEffect, useState } from "react"
 import ThreadsView from "@/components/threads-view"
-import { useBotContext } from "@/contexts/bot-context"
-import { getThreadsClient } from "@/lib/database"
-import type { Thread } from "@/lib/database"
+import { getThreadsSimple } from "@/lib/simple-database"
+import type { Thread } from "@/lib/simple-database"
 
 export default function ChatsPage() {
-  const { selectedBot } = useBotContext()
+  const [selectedBot, setSelectedBot] = useState<string | null>(null)
   const [threads, setThreads] = useState<Thread[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Load selected bot from localStorage
+  useEffect(() => {
+    const storedBot = localStorage.getItem("selectedBot")
+    if (storedBot && storedBot !== "null") {
+      setSelectedBot(storedBot)
+    }
+  }, [])
+
+  // Listen for bot selection changes
+  useEffect(() => {
+    const handleBotSelectionChanged = (event: CustomEvent) => {
+      setSelectedBot(event.detail)
+    }
+
+    window.addEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
+    return () => window.removeEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
+  }, [])
+
   const fetchThreads = async () => {
     setLoading(true)
     setError(null)
-
     try {
-      console.log("🧵 Fetching threads for bot:", selectedBot)
-      const threadsData = await getThreadsClient(100, selectedBot)
-      console.log(`🧵 Fetched ${threadsData.length} threads:`, threadsData)
+      console.log("🧵 PAGE: Fetching threads for bot_share_name:", selectedBot)
+      const threadsData = await getThreadsSimple(100, selectedBot)
+      console.log(`🧵 PAGE: Fetched ${threadsData.length} threads`)
       setThreads(threadsData)
     } catch (error: any) {
-      console.error("❌ Error fetching threads:", error)
-      setError(error.message || "An error occurred while fetching threads")
+      console.error("❌ PAGE: Error fetching threads:", error)
+      setError(error.message)
     } finally {
       setLoading(false)
     }
@@ -32,10 +48,6 @@ export default function ChatsPage() {
   useEffect(() => {
     fetchThreads()
   }, [selectedBot])
-
-  const handleRefresh = async () => {
-    await fetchThreads()
-  }
 
   if (loading) {
     return (
@@ -66,12 +78,12 @@ export default function ChatsPage() {
           </p>
           {/* Debug info */}
           <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded">
-            Selected bot: {selectedBot || "All bots"} | Threads found: {threads.length}
+            Selected bot_share_name: {selectedBot || "All bots"} | Threads found: {threads.length}
           </div>
         </div>
       </div>
 
-      <ThreadsView initialThreads={threads} selectedBot={selectedBot} onRefresh={handleRefresh} bots={[]} />
+      <ThreadsView initialThreads={threads} selectedBot={selectedBot} onRefresh={fetchThreads} bots={[]} />
     </div>
   )
 }

@@ -22,6 +22,7 @@ import { Switch } from "@/components/ui/switch"
 import type { Thread, Bot } from "@/lib/database"
 import Link from "next/link"
 import { formatTimeInTimezone, formatDateOnlyInTimezone, getTimezoneAbbreviation } from "@/lib/timezone-utils"
+import { supabase } from "@/lib/supabase/client"
 
 interface ThreadsViewProps {
   initialThreads: Thread[]
@@ -42,6 +43,7 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
   const [refreshing, setRefreshing] = useState(false)
   const [hoveredSentiment, setHoveredSentiment] = useState<string | null>(null)
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
+  const [refreshingSentiment, setRefreshingSentiment] = useState<string | null>(null)
 
   // Process threads when initialThreads changes
   useEffect(() => {
@@ -93,21 +95,16 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
 
   const getSentimentEmoji = (sentiment?: number) => {
     if (sentiment === undefined || sentiment === null) return "😐"
-    if (sentiment >= 7) return "😊"
-    if (sentiment >= 4) return "😐"
-    return "😞"
+    if (sentiment >= 4) return "😊" // 4 or 5 = smiley
+    if (sentiment === 3) return "😐" // 3 = straight face
+    return "😞" // 1 or 2 = sad face
   }
 
   const getSentimentColor = (sentiment?: number) => {
     if (sentiment === undefined || sentiment === null) return "text-gray-500"
-
-    // Convert 0-10 scale to 0-100 for color coding
-    const percentage = (sentiment / 10) * 100
-
-    if (percentage >= 80) return "text-green-600" // Green for 80-100
-    if (percentage >= 50) return "text-yellow-600" // Yellow for 50-80
-    if (percentage >= 30) return "text-orange-600" // Dark orange for 30-50
-    return "text-red-600" // Red for 0-30
+    if (sentiment >= 4) return "text-green-600" // 4 or 5 = green
+    if (sentiment === 3) return "text-yellow-600" // 3 = yellow
+    return "text-red-600" // 1 or 2 = red
   }
 
   const formatDuration = (duration?: string) => {
@@ -142,6 +139,114 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
       } finally {
         setRefreshing(false)
       }
+    }
+  }
+
+  const handleSentimentRefresh = async (threadId: string) => {
+    try {
+      console.log("🔄 Refreshing sentiment for thread:", threadId)
+      setRefreshingSentiment(threadId)
+
+      // First, set sentiment_score to null
+      const { error: updateError } = await supabase
+        .from("threads")
+        .update({ sentiment_score: null, sentiment_justification: null })
+        .eq("id", threadId)
+
+      if (updateError) {
+        console.error("Error updating thread:", updateError)
+        alert(`Error updating thread: ${updateError.message}`)
+        return
+      }
+
+      // Update local state to show null immediately
+      setThreads((prevThreads) =>
+        prevThreads.map((thread) =>
+          thread.id === threadId ? { ...thread, sentiment_score: null, sentiment_justification: null } : thread,
+        ),
+      )
+
+      console.log("🔄 Calling edge function with threadId:", threadId)
+
+      // Try calling the edge function with multiple approaches
+      try {
+        // Method 1: Standard Supabase function invoke
+        const { data, error } = await supabase.functions.invoke("sentiment_analysis", {
+          body: JSON.stringify({ threadId }),
+        })
+
+        if (error) {
+          console.error("Method 1 failed:", error)
+          throw error
+        }
+
+        console.log("✅ Method 1 succeeded:", data)
+        alert("Sentiment analysis started! The score will update shortly.")
+
+        // Refresh the thread data after a delay
+        setTimeout(() => {
+          if (onRefresh) {
+            console.log("🔄 Auto-refreshing data to get new sentiment...")
+            onRefresh()
+          }
+        }, 3000)
+      } catch (supabaseError: any) {
+        console.log("🔄 Method 1 failed, trying direct fetch...")
+
+        // Method 2: Direct fetch to the function URL
+        try {
+          const functionUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/sentiment_analysis`
+
+          const response = await fetch(functionUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({ threadId }),
+          })
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+          }
+
+          const data = await response.json()
+          console.log("✅ Method 2 succeeded:", data)
+          alert("Sentiment analysis started! The score will update shortly.")
+
+          // Refresh the thread data after a delay
+          setTimeout(() => {
+            if (onRefresh) {
+              console.log("🔄 Auto-refreshing data to get new sentiment...")
+              onRefresh()
+            }
+          }, 3000)
+        } catch (fetchError: any) {
+          console.error("Method 2 also failed:", fetchError)
+
+          // Show detailed error information
+          const errorMessage = `
+            Both methods failed:
+            1. Supabase invoke: ${supabaseError.message}
+            2. Direct fetch: ${fetchError.message}
+            
+            Function URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/sentiment_analysis
+            Thread ID: ${threadId}
+          `
+
+          console.error("Complete error details:", errorMessage)
+          alert(`Sentiment analysis failed. Please check the console for details.\n\nError: ${fetchError.message}`)
+        }
+      }
+    } catch (error: any) {
+      console.error("Exception in sentiment refresh:", {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      })
+      alert(`Unexpected error: ${error.message}`)
+    } finally {
+      setRefreshingSentiment(null)
     }
   }
 
@@ -318,6 +423,19 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
                               ? thread.sentiment_score
                               : "N/A"}
                           </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleSentimentRefresh(thread.id)
+                            }}
+                            disabled={refreshingSentiment === thread.id}
+                            className="ml-2 p-1 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                            title="Refresh sentiment analysis"
+                          >
+                            <RefreshCw
+                              className={`h-3 w-3 ${refreshingSentiment === thread.id ? "animate-spin" : ""}`}
+                            />
+                          </button>
                         </div>
                       </td>
                       <td className="px-6 py-4 max-w-xs truncate text-sm text-[#212121]">
@@ -406,6 +524,19 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
                               ? thread.sentiment_score
                               : "N/A"}
                           </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleSentimentRefresh(thread.id)
+                            }}
+                            disabled={refreshingSentiment === thread.id}
+                            className="ml-1 p-1 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                            title="Refresh sentiment analysis"
+                          >
+                            <RefreshCw
+                              className={`h-3 w-3 ${refreshingSentiment === thread.id ? "animate-spin" : ""}`}
+                            />
+                          </button>
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
