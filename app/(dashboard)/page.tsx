@@ -3,11 +3,15 @@
 import { useEffect, useState } from "react"
 import ThreadsView from "@/components/threads-view"
 import { getThreadsSimple } from "@/lib/simple-database"
+import { getBotsClient } from "@/lib/database"
 import type { Thread } from "@/lib/simple-database"
+import type { Bot } from "@/lib/database"
+import { Button } from "@/components/ui/button"
 
 export default function ChatsPage() {
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
   const [threads, setThreads] = useState<Thread[]>([])
+  const [bots, setBots] = useState<Bot[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -29,6 +33,18 @@ export default function ChatsPage() {
     return () => window.removeEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
   }, [])
 
+  // Fetch bots data
+  const fetchBots = async () => {
+    try {
+      console.log("🤖 PAGE: Fetching bots...")
+      const botsData = await getBotsClient()
+      console.log(`🤖 PAGE: Fetched ${botsData.length} bots`)
+      setBots(botsData)
+    } catch (error: any) {
+      console.error("❌ PAGE: Error fetching bots:", error)
+    }
+  }
+
   const fetchThreads = async () => {
     setLoading(true)
     setError(null)
@@ -45,9 +61,23 @@ export default function ChatsPage() {
     }
   }
 
+  // Fetch bots on component mount
+  useEffect(() => {
+    fetchBots()
+  }, [])
+
   useEffect(() => {
     fetchThreads()
   }, [selectedBot])
+
+  // Get timezone for the selected bot
+  const getSelectedBotTimezone = (): string => {
+    if (!selectedBot || !bots.length) return "UTC"
+    const bot = bots.find((b) => b.bot_share_name === selectedBot)
+    return bot?.timezone || "UTC"
+  }
+
+  const selectedBotTimezone = getSelectedBotTimezone()
 
   if (loading) {
     return (
@@ -72,12 +102,17 @@ export default function ChatsPage() {
     <div>
       <div className="p-4 md:p-8 pb-0">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-[#212121] mb-2">Chats</h1>
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-2xl font-semibold text-[#212121]">Chats</h1>
+            <Button variant="outline" className="bg-blue-50 border-blue-200 text-blue-700">
+              Timezone: {selectedBotTimezone}
+            </Button>
+          </div>
           <p className="text-[#616161] mb-4">View all your chat threads with customers.</p>
         </div>
       </div>
 
-      <ThreadsView initialThreads={threads} selectedBot={selectedBot} onRefresh={fetchThreads} bots={[]} />
+      <ThreadsView initialThreads={threads} selectedBot={selectedBot} onRefresh={fetchThreads} bots={bots} />
     </div>
   )
 }
