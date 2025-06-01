@@ -163,7 +163,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         <nav className="flex-1 px-3 py-4 space-y-1">
           {navigation.map((item) => {
-            const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
+            const isActive =
+              pathname === item.href ||
+              (item.href !== "/" && pathname.startsWith(item.href)) ||
+              (item.href === "/" && (pathname === "/" || pathname.startsWith("/thread/")))
 
             return (
               <Link

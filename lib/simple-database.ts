@@ -12,7 +12,8 @@ export interface Thread {
   sentiment_justification?: string
   cb_requested?: boolean
   count?: number
-  mean_response_time?: number // Add mean_response_time field
+  mean_response_time?: number
+  starred?: boolean // Add starred field
 }
 
 export interface Callback {
@@ -68,4 +69,40 @@ export async function getThreadsSimple(limit = 50, botShareName?: string | null)
 
   console.log("✅ Successfully fetched", data?.length || 0, "threads")
   return data || []
+}
+
+// Toggle starred status for a thread
+export async function toggleThreadStarred(threadId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    // First get the current starred status
+    const { data: currentThread, error: fetchError } = await supabase
+      .from("threads")
+      .select("starred")
+      .eq("id", threadId)
+      .single()
+
+    if (fetchError) {
+      console.error("❌ Error fetching thread starred status:", fetchError)
+      return { success: false, error: fetchError.message }
+    }
+
+    // Toggle the starred status
+    const newStarredStatus = !currentThread.starred
+
+    const { error: updateError } = await supabase
+      .from("threads")
+      .update({ starred: newStarredStatus })
+      .eq("id", threadId)
+
+    if (updateError) {
+      console.error("❌ Error updating thread starred status:", updateError)
+      return { success: false, error: updateError.message }
+    }
+
+    console.log("✅ Successfully toggled starred status for thread:", threadId, "to:", newStarredStatus)
+    return { success: true }
+  } catch (error: any) {
+    console.error("❌ Exception toggling starred status:", error)
+    return { success: false, error: error.message }
+  }
 }

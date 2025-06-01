@@ -1,19 +1,81 @@
-import { getThreadById, getMessagesByThreadId } from "@/lib/database"
+"use client"
+
+import { getMessagesByThreadId } from "@/lib/database"
+import { supabase } from "@/lib/supabase/client"
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Clock, User, MessageSquare, Phone, Info } from "lucide-react"
+import { ArrowLeft, Clock, MessageSquare, Phone, Timer, Star } from "lucide-react"
+import { useState, useEffect } from "react"
 
-export default async function ThreadDetailPage({ params }: { params: { id: string } }) {
+export default function ThreadDetailPage({ params }: { params: { id: string } }) {
   const threadId = params.id
+  const [messages, setMessages] = useState<any[]>([])
+  const [thread, setThread] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
 
-  // Add this function to database.ts
-  const thread = await getThreadById(threadId)
+  useEffect(() => {
+    async function loadData() {
+      console.log("🔍 ThreadDetailPage: Received threadId:", threadId)
 
-  if (!thread) {
-    notFound()
+      // Validate threadId
+      if (!threadId || threadId.trim() === "") {
+        console.error("❌ ThreadDetailPage: Invalid threadId")
+        notFound()
+      }
+
+      // Get thread by ID with callback information
+      const { data: threadData, error: threadError } = await supabase
+        .from("threads")
+        .select(`
+          *,
+          callbacks!callbacks_id_fkey(*)
+        `)
+        .eq("id", threadId)
+        .single()
+
+      if (threadError || !threadData) {
+        console.error("❌ ThreadDetailPage: Thread not found for id:", threadId)
+        notFound()
+      }
+
+      setThread(threadData)
+
+      // Get messages using the thread ID
+      const messagesData = await getMessagesByThreadId(threadData.id)
+      setMessages(messagesData)
+      setLoading(false)
+    }
+
+    loadData()
+  }, [threadId])
+
+  const handleStarMessage = async (messageId: string) => {
+    try {
+      // Find the current message
+      const currentMessage = messages.find((m) => m.id === messageId)
+      if (!currentMessage) return
+
+      const newStarredStatus = !currentMessage.starred
+
+      // Optimistically update the UI
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) => (msg.id === messageId ? { ...msg, starred: newStarredStatus } : msg)),
+      )
+
+      // Update in database
+      const { error } = await supabase.from("messages").update({ starred: newStarredStatus }).eq("id", messageId)
+
+      if (error) {
+        console.error("Error starring message:", error)
+        // Revert the optimistic update on error
+        setMessages((prevMessages) =>
+          prevMessages.map((msg) => (msg.id === messageId ? { ...msg, starred: !newStarredStatus } : msg)),
+        )
+      }
+    } catch (error) {
+      console.error("Error starring message:", error)
+    }
   }
-
-  const messages = await getMessagesByThreadId(thread.thread_id || "")
 
   const getSentimentEmoji = (sentiment?: number) => {
     if (sentiment === undefined || sentiment === null) return "😐"
@@ -35,126 +97,215 @@ export default async function ThreadDetailPage({ params }: { params: { id: strin
     return duration
   }
 
+  const formatMeanResponseTime = (meanResponseTime?: number) => {
+    if (meanResponseTime === undefined || meanResponseTime === null) return "N/A"
+    const seconds = meanResponseTime / 1000
+    return `${seconds.toFixed(2)}s`
+  }
+
+  const formatPhoneNumber = (phone?: string) => {
+    if (!phone) return "Not provided"
+    return phone.replace(/(\d{3})(\d{3})(\d{4})/, "($1) $2-$3")
+  }
+
+  if (loading) {
+    return <div>Loading...</div>
+  }
+
   return (
-    <div className="p-4 md:p-8">
-      <div className="mb-6">
-        <Link href="/" className="flex items-center text-[#616161] hover:text-[#212121] mb-4">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to chats
-        </Link>
+    <div className="flex h-screen bg-[#fdfdfd]">
+      {/* Left Panel - Thread Information */}
+      <div className="w-1/3 border-r border-[#e0e0e0] bg-white overflow-y-auto">
+        <div className="p-6">
+          <Link href="/" className="flex items-center text-[#616161] hover:text-[#212121] mb-6">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to chats
+          </Link>
 
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-          <h1 className="text-2xl font-semibold text-[#212121]">Thread Details</h1>
-          <div className="flex items-center mt-2 md:mt-0">
-            <Clock className="h-4 w-4 text-[#616161] mr-1" />
-            <span className="text-sm text-[#616161]">Duration: {formatDuration(thread.duration)}</span>
-          </div>
-        </div>
-      </div>
+          <h1 className="text-xl font-semibold text-[#212121] mb-6">Thread Details</h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm mb-6">
-            <h2 className="text-lg font-medium text-[#212121] mb-4">Conversation</h2>
-
-            {messages.length > 0 ? (
-              <div className="space-y-4">
-                {messages.map((message) => (
-                  <div key={message.id} className="flex flex-col space-y-2">
-                    {message.user_message && (
-                      <div className="flex items-start">
-                        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center mr-3">
-                          <User className="h-4 w-4 text-[#616161]" />
-                        </div>
-                        <div className="bg-gray-100 rounded-lg p-3 max-w-[80%]">
-                          <p className="text-sm text-[#212121]">{message.user_message}</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {message.bot_message && (
-                      <div className="flex items-start justify-end">
-                        <div className="bg-[#038a71]/10 rounded-lg p-3 max-w-[80%]">
-                          <p className="text-sm text-[#212121]">{message.bot_message}</p>
-                        </div>
-                        <div className="w-8 h-8 rounded-full bg-[#038a71]/20 flex items-center justify-center ml-3">
-                          <MessageSquare className="h-4 w-4 text-[#038a71]" />
-                        </div>
-                      </div>
-                    )}
+          {/* Thread Information */}
+          <div className="space-y-6">
+            {/* Callback Basic Info - Always show if callbacks exists */}
+            {thread?.callbacks && (
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h3 className="text-sm font-medium text-[#616161] uppercase tracking-wider mb-3 flex items-center">
+                  <Phone className="h-4 w-4 mr-1" />
+                  Callback
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Created At */}
+                  <div>
+                    <p className="text-xs text-[#616161] font-medium">Created At</p>
+                    <p className="text-sm text-[#212121]">
+                      {new Date(thread.callbacks.created_at).toLocaleString("en-US", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                      })}
+                    </p>
                   </div>
-                ))}
+
+                  {/* Name */}
+                  {(thread.callbacks.user_name ||
+                    thread.callbacks.user_first_name ||
+                    thread.callbacks.user_surname) && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Name</p>
+                      <p className="text-sm text-[#212121]">
+                        {thread.callbacks.user_name ||
+                          `${thread.callbacks.user_first_name || ""} ${thread.callbacks.user_surname || ""}`.trim()}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Email */}
+                  {thread.callbacks.user_email && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Email</p>
+                      <p className="text-sm text-[#212121]">{thread.callbacks.user_email}</p>
+                    </div>
+                  )}
+
+                  {/* Phone */}
+                  {thread.callbacks.user_phone && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Phone</p>
+                      <p className="text-sm text-[#212121]">{formatPhoneNumber(thread.callbacks.user_phone)}</p>
+                    </div>
+                  )}
+
+                  {/* Company */}
+                  {thread.callbacks.user_company && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Company</p>
+                      <p className="text-sm text-[#212121]">{thread.callbacks.user_company}</p>
+                    </div>
+                  )}
+
+                  {/* Country */}
+                  {thread.callbacks.user_country && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Country</p>
+                      <p className="text-sm text-[#212121]">{thread.callbacks.user_country}</p>
+                    </div>
+                  )}
+
+                  {/* Website */}
+                  {thread.callbacks.user_url && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Website</p>
+                      <a
+                        href={thread.callbacks.user_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-[#038a71] hover:underline break-all"
+                      >
+                        {thread.callbacks.user_url}
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Revenue */}
+                  {thread.callbacks.user_revenue && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Revenue</p>
+                      <p className="text-sm text-[#212121]">{thread.callbacks.user_revenue}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Message - full width if present */}
+                {thread.callbacks.user_cb_message && (
+                  <div className="mt-4 pt-3 border-t border-blue-200">
+                    <p className="text-xs text-[#616161] font-medium mb-1">Message</p>
+                    <p className="text-sm text-[#212121] bg-white p-3 rounded border leading-relaxed">
+                      {thread.callbacks.user_cb_message}
+                    </p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <p className="text-[#616161]">No messages found for this thread.</p>
             )}
-          </div>
-        </div>
 
-        <div>
-          <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm mb-6">
-            <h2 className="text-lg font-medium text-[#212121] mb-4">Thread Information</h2>
-
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm text-[#616161]">Thread ID</p>
-                <p className="text-sm font-mono text-[#212121]">{thread.thread_id || "N/A"}</p>
-              </div>
-
-              <div>
-                <p className="text-sm text-[#616161]">Bot ID</p>
-                <p className="text-sm font-mono text-[#212121]">{thread.bot_id || "N/A"}</p>
-              </div>
-
-              <div>
-                <p className="text-sm text-[#616161]">Created At</p>
-                <p className="text-sm text-[#212121]">
-                  {new Date(thread.created_at).toLocaleString("en-US", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                  })}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm text-[#616161]">Last Updated</p>
-                <p className="text-sm text-[#212121]">
-                  {new Date(thread.updated_at).toLocaleString("en-US", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                  })}
-                </p>
-              </div>
-
-              <div className="flex items-center">
-                <p className="text-sm text-[#616161] mr-2">Sentiment Score</p>
-                <span className="text-xl">{getSentimentEmoji(thread.sentiment_score)}</span>
-                <span className="text-sm ml-2 font-medium">
-                  {thread.sentiment_score !== undefined && thread.sentiment_score !== null
-                    ? thread.sentiment_score
-                    : "N/A"}
-                </span>
-              </div>
-
-              {thread.sentiment_justification && (
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-sm font-medium text-[#616161] uppercase tracking-wider mb-3">Thread Info</h3>
+              <div className="space-y-3">
                 <div>
-                  <p className="text-sm text-[#616161] flex items-center">
-                    <Info className="h-4 w-4 mr-1" />
-                    Sentiment Analysis
+                  <p className="text-xs text-[#616161]">Thread ID</p>
+                  <p className="text-sm font-mono text-[#212121]">{thread?.id}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-[#616161]">Created At</p>
+                  <p className="text-sm text-[#212121]">
+                    {new Date(thread?.created_at).toLocaleString("en-US", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })}
                   </p>
-                  <p className="text-sm text-[#212121] mt-1">{thread.sentiment_justification}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Performance Metrics */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-sm font-medium text-[#616161] uppercase tracking-wider mb-3">Performance</h3>
+              <div className="space-y-3">
+                <div className="flex items-center">
+                  <Clock className="h-4 w-4 text-[#616161] mr-2" />
+                  <div>
+                    <p className="text-xs text-[#616161]">Duration</p>
+                    <p className="text-sm text-[#212121]">{formatDuration(thread?.duration)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center">
+                  <Timer className="h-4 w-4 text-[#616161] mr-2" />
+                  <div>
+                    <p className="text-xs text-[#616161]">Avg Response Time</p>
+                    <p className="text-sm text-[#212121]">{formatMeanResponseTime(thread?.mean_response_time)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center">
+                  <MessageSquare className="h-4 w-4 text-[#616161] mr-2" />
+                  <div>
+                    <p className="text-xs text-[#616161]">Messages</p>
+                    <p className="text-sm text-[#212121]">{thread?.count || 0}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Sentiment Analysis */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-sm font-medium text-[#616161] uppercase tracking-wider mb-3">Sentiment</h3>
+              <div className="flex items-center mb-2">
+                <span className="text-2xl mr-2">{getSentimentEmoji(thread?.sentiment_score)}</span>
+                <div>
+                  <p className="text-xs text-[#616161]">Score</p>
+                  <p className="text-sm font-medium text-[#212121]">
+                    {thread?.sentiment_score !== undefined && thread?.sentiment_score !== null
+                      ? thread?.sentiment_score
+                      : "N/A"}
+                  </p>
+                </div>
+              </div>
+              {thread?.sentiment_justification && (
+                <div className="mt-3">
+                  <p className="text-xs text-[#616161] mb-1">Analysis</p>
+                  <p className="text-sm text-[#212121]">{thread?.sentiment_justification}</p>
                 </div>
               )}
+            </div>
 
-              {thread.cb_requested && (
+            {/* Status Indicators */}
+            <div className="space-y-2">
+              {thread?.cb_requested && (
                 <div className="bg-orange-50 border border-orange-200 rounded-md p-3">
                   <p className="text-sm font-medium text-orange-800 flex items-center">
                     <Phone className="h-4 w-4 mr-2" />
@@ -162,24 +313,200 @@ export default async function ThreadDetailPage({ params }: { params: { id: strin
                   </p>
                 </div>
               )}
+              {thread?.starred && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                  <p className="text-sm font-medium text-yellow-800 flex items-center">⭐ Starred Thread</p>
+                </div>
+              )}
             </div>
-          </div>
 
-          <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-            <h2 className="text-lg font-medium text-[#212121] mb-4">Actions</h2>
+            {/* Callback Details - Show additional details when cb_requested is true */}
+            {thread?.cb_requested && thread?.callbacks && (
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h3 className="text-sm font-medium text-[#616161] uppercase tracking-wider mb-3 flex items-center">
+                  <Phone className="h-4 w-4 mr-1" />
+                  Callback Details
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Phone */}
+                  {thread.callbacks.user_phone && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Phone</p>
+                      <p className="text-sm text-[#212121]">{formatPhoneNumber(thread.callbacks.user_phone)}</p>
+                    </div>
+                  )}
 
-            <div className="space-y-3">
-              <button className="w-full bg-[#038a71] hover:bg-[#038a71]/90 text-white px-4 py-2 rounded-md text-sm">
-                Schedule Callback
-              </button>
-              <button className="w-full border border-[#e0e0e0] hover:bg-gray-50 text-[#616161] px-4 py-2 rounded-md text-sm">
-                Export Conversation
-              </button>
-              <button className="w-full border border-[#e0e0e0] hover:bg-gray-50 text-[#616161] px-4 py-2 rounded-md text-sm">
-                Archive Thread
-              </button>
-            </div>
+                  {/* Company */}
+                  {thread.callbacks.user_company && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Company</p>
+                      <p className="text-sm text-[#212121]">{thread.callbacks.user_company}</p>
+                    </div>
+                  )}
+
+                  {/* Country */}
+                  {thread.callbacks.user_country && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Country</p>
+                      <p className="text-sm text-[#212121]">{thread.callbacks.user_country}</p>
+                    </div>
+                  )}
+
+                  {/* Website */}
+                  {thread.callbacks.user_url && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Website</p>
+                      <a
+                        href={thread.callbacks.user_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-[#038a71] hover:underline break-all"
+                      >
+                        {thread.callbacks.user_url}
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Revenue */}
+                  {thread.callbacks.user_revenue && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Revenue</p>
+                      <p className="text-sm text-[#212121]">{thread.callbacks.user_revenue}</p>
+                    </div>
+                  )}
+
+                  {/* IP Address */}
+                  {thread.callbacks.user_ip && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">IP Address</p>
+                      <p className="text-sm text-[#212121] font-mono">{thread.callbacks.user_ip}</p>
+                    </div>
+                  )}
+
+                  {/* Document Referrer */}
+                  {thread.callbacks.document_referrer && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Referrer</p>
+                      <p className="text-sm text-[#212121] break-all">{thread.callbacks.document_referrer}</p>
+                    </div>
+                  )}
+
+                  {/* IBData */}
+                  {thread.callbacks.ibdata && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">IB Data</p>
+                      <p className="text-sm text-[#212121]">{thread.callbacks.ibdata}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Message - full width if present */}
+                {thread.callbacks.user_cb_message && (
+                  <div className="mt-4 pt-3 border-t border-blue-200">
+                    <p className="text-xs text-[#616161] font-medium mb-1">Message</p>
+                    <p className="text-sm text-[#212121] bg-white p-3 rounded border leading-relaxed">
+                      {thread.callbacks.user_cb_message}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+        </div>
+      </div>
+
+      {/* Right Panel - Chat Messages */}
+      <div className="flex-1 flex flex-col bg-gray-50">
+        <div className="bg-white border-b border-[#e0e0e0] p-4">
+          <h2 className="text-lg font-medium text-[#212121]">Conversation</h2>
+          <p className="text-sm text-[#616161]">{messages.length} messages</p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-[10%] py-4 space-y-4">
+          {messages.map((message, index) => {
+            const isUserMessage = message.role === "user" || message.role === "suggested_button"
+            const messageContent =
+              message.content ||
+              message.user_message ||
+              message.suggested_message ||
+              message.bot_message ||
+              "No content"
+
+            return (
+              <div key={message.id} className={`flex ${isUserMessage ? "justify-start" : "justify-end"} mb-8 group`}>
+                {/* Star button for user messages - positioned on the left */}
+                {isUserMessage && (
+                  <button
+                    onClick={() => handleStarMessage(message.id)}
+                    className="flex-shrink-0 p-1 rounded transition-colors text-[#616161] hover:text-[#212121] mr-2 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                  >
+                    <Star
+                      className={`h-4 w-4 ${
+                        message.starred ? "fill-yellow-400 text-yellow-400 opacity-100" : "text-[#616161]"
+                      }`}
+                    />
+                  </button>
+                )}
+
+                <div
+                  className={`flex flex-col ${isUserMessage ? "items-start" : "items-end"} max-w-[60%] min-w-[120px]`}
+                >
+                  {/* Preset message label above bubble */}
+                  {message.role === "suggested_button" && (
+                    <div className="mb-1 px-2">
+                      <span className="text-xs text-green-600 font-medium">Preset message</span>
+                    </div>
+                  )}
+
+                  <div
+                    className={`relative w-full ${
+                      isUserMessage
+                        ? message.role === "suggested_button"
+                          ? "bg-green-50 border border-green-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm"
+                          : "bg-white border border-[#e0e0e0] rounded-2xl rounded-bl-md px-4 py-3 shadow-sm"
+                        : "bg-[#038a71] text-white rounded-2xl rounded-br-md px-4 py-3 shadow-sm"
+                    }`}
+                  >
+                    <p
+                      className={`text-sm leading-relaxed break-words ${
+                        isUserMessage
+                          ? message.role === "suggested_button"
+                            ? "text-green-800"
+                            : "text-[#212121]"
+                          : "text-white"
+                      }`}
+                    >
+                      {messageContent}
+                    </p>
+                  </div>
+
+                  {/* Time outside the bubble */}
+                  <p className={`text-xs mt-1 px-2 ${isUserMessage ? "text-[#616161]" : "text-[#616161]"}`}>
+                    {new Date(message.created_at).toLocaleTimeString("en-US", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                      hour12: false,
+                    })}
+                  </p>
+                </div>
+
+                {/* Star button for bot messages - positioned on the right */}
+                {!isUserMessage && (
+                  <button
+                    onClick={() => handleStarMessage(message.id)}
+                    className="flex-shrink-0 p-1 rounded transition-colors text-[#616161] hover:text-[#212121] ml-2 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                  >
+                    <Star
+                      className={`h-4 w-4 ${
+                        message.starred ? "fill-yellow-400 text-yellow-400 opacity-100" : "text-[#616161]"
+                      }`}
+                    />
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

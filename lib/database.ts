@@ -48,6 +48,8 @@ export interface Message {
   company_revenue?: string
   user_url?: string
   user_surname?: string
+  role?: string
+  starred?: boolean
 }
 
 export interface Thread {
@@ -62,6 +64,8 @@ export interface Thread {
   sentiment_justification?: string
   cb_requested?: boolean
   count?: number
+  mean_response_time?: number
+  starred?: boolean
 }
 
 export interface Callback {
@@ -233,27 +237,45 @@ export async function getCallbackStatsClient(botShareName?: string | null) {
 }
 
 export async function getMessagesByThreadId(threadId: string): Promise<Message[]> {
-  const { data, error } = await supabase
-    .from("messages")
-    .select("*")
-    .eq("thread_id", threadId)
-    .order("created_at", { ascending: true })
-
-  if (error) {
-    console.error("Error fetching messages by thread:", error)
+  // Validate threadId before making the query
+  if (!threadId || threadId.trim() === "") {
+    console.error("❌ getMessagesByThreadId: Invalid threadId provided:", threadId)
     return []
   }
 
+  console.log("🔍 getMessagesByThreadId: Fetching messages for thread_id:", threadId)
+
+  const { data, error } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("thread_id", threadId) // This is correct - messages.thread_id = threads.id
+    .order("created_at", { ascending: true })
+
+  if (error) {
+    console.error("❌ getMessagesByThreadId: Error fetching messages:", error)
+    return []
+  }
+
+  console.log("✅ getMessagesByThreadId: Successfully fetched", data?.length || 0, "messages")
   return data || []
 }
 
 export async function getThreadById(id: string): Promise<Thread | null> {
-  const { data, error } = await supabase.from("threads").select("*").eq("id", id).single()
-
-  if (error) {
-    console.error("Error fetching thread:", error)
+  // Validate id before making the query
+  if (!id || id.trim() === "") {
+    console.error("❌ getThreadById: Invalid id provided:", id)
     return null
   }
 
+  console.log("🔍 getThreadById: Fetching thread with id:", id)
+
+  const { data, error } = await supabase.from("threads").select("*").eq("id", id).single()
+
+  if (error) {
+    console.error("❌ getThreadById: Error fetching thread:", error)
+    return null
+  }
+
+  console.log("✅ getThreadById: Successfully fetched thread")
   return data
 }

@@ -25,6 +25,8 @@ import type { Thread, Bot } from "@/lib/database"
 import Link from "next/link"
 import { formatTimeInTimezone, formatDateOnlyInTimezone, getTimezoneAbbreviation } from "@/lib/timezone-utils"
 import { refreshSentimentAnalysis } from "@/lib/actions"
+import { toggleThreadStarred } from "@/lib/simple-database"
+import { supabase } from "@/lib/supabase/client"
 
 interface ThreadsViewProps {
   initialThreads: Thread[]
@@ -52,6 +54,7 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
   const [hoveredSentiment, setHoveredSentiment] = useState<string | null>(null)
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
   const [refreshingSentiment, setRefreshingSentiment] = useState<string | null>(null)
+  const [starringSentiment, setStarringSentiment] = useState<string | null>(null)
 
   // Process threads when initialThreads changes
   useEffect(() => {
@@ -192,16 +195,71 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
       // Call the server action
       const result = await refreshSentimentAnalysis(threadId)
 
-      // Refresh the thread data after a delay
-      setTimeout(() => {
-        if (onRefresh) {
-          onRefresh()
+      // Wait 2 seconds, then fetch just the updated sentiment data
+      setTimeout(async () => {
+        try {
+          // Fetch only the updated thread's sentiment data
+          const { data: updatedThread, error } = await supabase
+            .from("threads")
+            .select("sentiment_score, sentiment_justification")
+            .eq("id", threadId)
+            .single()
+
+          if (!error && updatedThread) {
+            // Update only this thread's sentiment in local state
+            setThreads((prevThreads) =>
+              prevThreads.map((thread) =>
+                thread.id === threadId
+                  ? {
+                      ...thread,
+                      sentiment_score: updatedThread.sentiment_score,
+                      sentiment_justification: updatedThread.sentiment_justification,
+                    }
+                  : thread,
+              ),
+            )
+          }
+        } catch (error) {
+          console.error("Error fetching updated sentiment:", error)
         }
-      }, 3000)
+      }, 2000)
     } catch (error: any) {
       // Silent error handling
     } finally {
-      setRefreshingSentiment(null)
+      // Clear the refreshing state after 2 seconds
+      setTimeout(() => {
+        setRefreshingSentiment(null)
+      }, 2000)
+    }
+  }
+
+  const handleStarToggle = async (threadId: string) => {
+    try {
+      setStarringSentiment(threadId)
+
+      // Optimistically update the UI
+      setThreads((prevThreads) =>
+        prevThreads.map((thread) => (thread.id === threadId ? { ...thread, starred: !thread.starred } : thread)),
+      )
+
+      // Call the API to toggle starred status
+      const result = await toggleThreadStarred(threadId)
+
+      if (!result.success) {
+        // Revert the optimistic update on error
+        setThreads((prevThreads) =>
+          prevThreads.map((thread) => (thread.id === threadId ? { ...thread, starred: !thread.starred } : thread)),
+        )
+        console.error("Failed to toggle star:", result.error)
+      }
+    } catch (error: any) {
+      // Revert the optimistic update on error
+      setThreads((prevThreads) =>
+        prevThreads.map((thread) => (thread.id === threadId ? { ...thread, starred: !thread.starred } : thread)),
+      )
+      console.error("Error toggling star:", error)
+    } finally {
+      setStarringSentiment(null)
     }
   }
 
@@ -420,25 +478,36 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
                           </div>
                         </td>
                         <td className="px-6 py-4 max-w-xs truncate text-sm text-[#212121]">
-                          {thread.message_preview || "No preview available"}
+                          <Link href={`/thread/${thread.id}`} className="hover:text-[#038a71] cursor-pointer">
+                            {thread.message_preview || "No preview available"}
+                          </Link>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                          <div className="flex items-center">
+                          <Link
+                            href={`/thread/${thread.id}`}
+                            className="flex items-center hover:text-[#038a71] cursor-pointer"
+                          >
                             <MessageSquare className="h-4 w-4 text-[#616161] mr-1" />
                             {thread.count || 0}
-                          </div>
+                          </Link>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                          <div className="flex items-center">
+                          <Link
+                            href={`/thread/${thread.id}`}
+                            className="flex items-center hover:text-[#038a71] cursor-pointer"
+                          >
                             <Clock className="h-4 w-4 text-[#616161] mr-1" />
                             {formatDuration(thread.duration)}
-                          </div>
+                          </Link>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                          <div className="flex items-center">
+                          <Link
+                            href={`/thread/${thread.id}`}
+                            className="flex items-center hover:text-[#038a71] cursor-pointer"
+                          >
                             <Timer className="h-4 w-4 text-[#616161] mr-1" />
                             {formatMeanResponseTime(thread.mean_response_time)}
-                          </div>
+                          </Link>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center space-x-2">
@@ -448,8 +517,21 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
                             <Link href={`/thread/${thread.id}`}>
                               <MessageSquare className="h-4 w-4 text-[#616161] hover:text-[#212121]" />
                             </Link>
-                            <button className="text-[#616161] hover:text-[#212121]">
-                              <Star className="h-5 w-5" />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleStarToggle(thread.id)
+                              }}
+                              disabled={starringSentiment === thread.id}
+                              className="text-[#616161] hover:text-[#212121] disabled:opacity-50"
+                            >
+                              <Star
+                                className={`h-5 w-5 ${
+                                  thread.starred
+                                    ? "fill-yellow-400 text-yellow-400"
+                                    : "text-[#616161] hover:text-[#212121]"
+                                }`}
+                              />
                             </button>
                           </div>
                         </td>
@@ -533,8 +615,21 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
                           {thread.cb_requested && (
                             <Phone className="h-4 w-4 text-[#038a71]" title="Callback requested" />
                           )}
-                          <button className="text-[#616161] hover:text-[#212121]">
-                            <Star className="h-4 w-4" />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleStarToggle(thread.id)
+                            }}
+                            disabled={starringSentiment === thread.id}
+                            className="text-[#616161] hover:text-[#212121] disabled:opacity-50"
+                          >
+                            <Star
+                              className={`h-4 w-4 ${
+                                thread.starred
+                                  ? "fill-yellow-400 text-yellow-400"
+                                  : "text-[#616161] hover:text-[#212121]"
+                              }`}
+                            />
                           </button>
                           <button className="text-[#616161] hover:text-[#212121]">
                             <MoreVertical className="h-4 w-4" />
@@ -555,9 +650,11 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
                         )}
                       </div>
 
-                      <div className="text-sm text-[#212121] mb-2">
-                        {thread.message_preview || "No preview available"}
-                      </div>
+                      <Link href={`/thread/${thread.id}`} className="block">
+                        <div className="text-sm text-[#212121] mb-2 hover:text-[#038a71] cursor-pointer">
+                          {thread.message_preview || "No preview available"}
+                        </div>
+                      </Link>
 
                       <div className="flex items-center justify-between text-sm">
                         <div className="flex items-center space-x-4">
