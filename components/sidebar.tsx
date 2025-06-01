@@ -28,19 +28,38 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
+  const [userLoaded, setUserLoaded] = useState(false)
 
   useEffect(() => {
-    // Get current user info
+    // Get current user info with rate limiting protection
     const getCurrentUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      if (userLoaded) return // Prevent multiple calls
 
-      if (user) {
-        setUserEmail(user.email || null)
-        setUserName(user.user_metadata?.name || null)
+      try {
+        const {
+          data: { user },
+          error,
+        } = await supabase.auth.getUser()
+
+        if (error) {
+          console.warn("Auth error in sidebar:", error.message)
+          // Set default values on auth error
+          setUserEmail("user@example.com")
+          setUserName("User")
+        } else if (user) {
+          setUserEmail(user.email || null)
+          setUserName(user.user_metadata?.name || null)
+        }
+      } catch (error) {
+        console.warn("Failed to get user in sidebar:", error)
+        // Set default values on error
+        setUserEmail("user@example.com")
+        setUserName("User")
+      } finally {
+        setUserLoaded(true)
       }
     }
+
     getCurrentUser()
 
     // Load selected bot from localStorage
@@ -48,7 +67,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     if (storedBot && storedBot !== "null") {
       setSelectedBot(storedBot)
     }
-  }, [])
+  }, [userLoaded])
 
   // Save selected bot to localStorage and trigger page refresh
   const handleBotSelection = (botShareName: string | null) => {

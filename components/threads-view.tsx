@@ -16,6 +16,8 @@ import {
   Clock,
   MessageSquare,
   RefreshCw,
+  Timer,
+  User,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -33,6 +35,12 @@ interface ThreadsViewProps {
 
 interface ThreadWithMessageCount extends Thread {
   // count column already exists in Thread interface
+  callbacks?: {
+    user_name?: string
+    user_first_name?: string
+    user_surname?: string
+    user_email?: string
+  } | null
 }
 
 export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bots = [] }: ThreadsViewProps) {
@@ -110,6 +118,42 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
     }
 
     return duration
+  }
+
+  // Format mean response time from ms to seconds with 2 decimal places
+  const formatMeanResponseTime = (meanResponseTime?: number) => {
+    if (meanResponseTime === undefined || meanResponseTime === null) return "N/A"
+    const seconds = meanResponseTime / 1000
+    return `${seconds.toFixed(2)}s`
+  }
+
+  // Format callback information - now expects a single callback object or null
+  const formatCallback = (
+    callback?: {
+      user_name?: string
+      user_first_name?: string
+      user_surname?: string
+      user_email?: string
+    } | null,
+  ) => {
+    if (!callback) {
+      return { name: "-", email: "" }
+    }
+
+    let name = "-"
+
+    if (callback.user_name) {
+      name = callback.user_name
+    } else if (callback.user_first_name || callback.user_surname) {
+      const firstName = callback.user_first_name || ""
+      const lastName = callback.user_surname || ""
+      name = `${firstName} ${lastName}`.trim()
+    }
+
+    return {
+      name: name || "-",
+      email: callback.user_email || "",
+    }
   }
 
   const handleSentimentHover = (threadId: string, justification: string | null, event: React.MouseEvent) => {
@@ -280,6 +324,12 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                 <div className="flex items-center">
+                  Callback
+                  <User className="h-4 w-4 ml-1 text-[#616161]" />
+                </div>
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
+                <div className="flex items-center">
                   Sentiment
                   <Info className="h-4 w-4 ml-1 text-[#616161]" />
                 </div>
@@ -292,6 +342,12 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                 Duration
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
+                <div className="flex items-center">
+                  Avg. Response Time
+                  <Info className="h-4 w-4 ml-1 text-[#616161]" />
+                </div>
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                 <div className="flex items-center justify-between">
@@ -308,82 +364,103 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
               Object.entries(groupedThreads).map(([date, dateThreads]) => (
                 <>
                   <tr key={`date-${date}`} className="bg-gray-50">
-                    <td colSpan={6} className="px-6 py-2 text-sm font-medium text-[#616161]">
+                    <td colSpan={8} className="px-6 py-2 text-sm font-medium text-[#616161]">
                       {date}
                     </td>
                   </tr>
-                  {dateThreads.map((thread, index) => (
-                    <tr key={thread.id} className="bg-white hover:bg-[#f5f5f5] border-t border-[#e0e0e0]">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                        {formatTimeInTimezone(thread.created_at, displayTimezone)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div
-                          className="flex items-center cursor-pointer"
-                          onMouseEnter={(e) => handleSentimentHover(thread.id, thread.sentiment_justification, e)}
-                          onMouseLeave={handleSentimentLeave}
-                          onMouseMove={(e) => {
-                            if (hoveredSentiment === thread.id) {
-                              setTooltipPosition({ x: e.clientX, y: e.clientY })
-                            }
-                          }}
-                        >
-                          <span className="text-xl">{getSentimentEmoji(thread.sentiment_score)}</span>
-                          <span className={`ml-2 text-sm font-medium ${getSentimentColor(thread.sentiment_score)}`}>
-                            {thread.sentiment_score !== undefined && thread.sentiment_score !== null
-                              ? thread.sentiment_score
-                              : "N/A"}
-                          </span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleSentimentRefresh(thread.id)
-                            }}
-                            disabled={refreshingSentiment === thread.id}
-                            className="ml-2 p-1 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 disabled:opacity-50"
-                            title="Refresh sentiment analysis"
-                          >
-                            <RefreshCw
-                              className={`h-3 w-3 ${refreshingSentiment === thread.id ? "animate-spin" : ""}`}
-                            />
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 max-w-xs truncate text-sm text-[#212121]">
-                        {thread.message_preview || "No preview available"}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                        <div className="flex items-center">
-                          <MessageSquare className="h-4 w-4 text-[#616161] mr-1" />
-                          {thread.count || 0}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                        <div className="flex items-center">
-                          <Clock className="h-4 w-4 text-[#616161] mr-1" />
-                          {formatDuration(thread.duration)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center space-x-2">
-                          {thread.cb_requested && (
-                            <Phone className="h-4 w-4 text-[#038a71]" title="Callback requested" />
+                  {dateThreads.map((thread, index) => {
+                    const callbackInfo = formatCallback(thread.callbacks)
+                    return (
+                      <tr key={thread.id} className="bg-white hover:bg-[#f5f5f5] border-t border-[#e0e0e0]">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
+                          {formatTimeInTimezone(thread.created_at, displayTimezone)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {callbackInfo.name === "-" ? (
+                            <span className="text-[#616161]">-</span>
+                          ) : (
+                            <div className="flex flex-col">
+                              <span className="text-[#212121] font-medium">{callbackInfo.name}</span>
+                              {callbackInfo.email && (
+                                <span className="text-[#616161] text-xs">{callbackInfo.email}</span>
+                              )}
+                            </div>
                           )}
-                          <Link href={`/thread/${thread.id}`}>
-                            <MessageSquare className="h-4 w-4 text-[#616161] hover:text-[#212121]" />
-                          </Link>
-                          <button className="text-[#616161] hover:text-[#212121]">
-                            <Star className="h-5 w-5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div
+                            className="flex items-center cursor-pointer"
+                            onMouseEnter={(e) => handleSentimentHover(thread.id, thread.sentiment_justification, e)}
+                            onMouseLeave={handleSentimentLeave}
+                            onMouseMove={(e) => {
+                              if (hoveredSentiment === thread.id) {
+                                setTooltipPosition({ x: e.clientX, y: e.clientY })
+                              }
+                            }}
+                          >
+                            <span className="text-xl">{getSentimentEmoji(thread.sentiment_score)}</span>
+                            <span className={`ml-2 text-sm font-medium ${getSentimentColor(thread.sentiment_score)}`}>
+                              {thread.sentiment_score !== undefined && thread.sentiment_score !== null
+                                ? thread.sentiment_score
+                                : "N/A"}
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleSentimentRefresh(thread.id)
+                              }}
+                              disabled={refreshingSentiment === thread.id}
+                              className="ml-2 p-1 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                              title="Refresh sentiment analysis"
+                            >
+                              <RefreshCw
+                                className={`h-3 w-3 ${refreshingSentiment === thread.id ? "animate-spin" : ""}`}
+                              />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 max-w-xs truncate text-sm text-[#212121]">
+                          {thread.message_preview || "No preview available"}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
+                          <div className="flex items-center">
+                            <MessageSquare className="h-4 w-4 text-[#616161] mr-1" />
+                            {thread.count || 0}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
+                          <div className="flex items-center">
+                            <Clock className="h-4 w-4 text-[#616161] mr-1" />
+                            {formatDuration(thread.duration)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
+                          <div className="flex items-center">
+                            <Timer className="h-4 w-4 text-[#616161] mr-1" />
+                            {formatMeanResponseTime(thread.mean_response_time)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center space-x-2">
+                            {thread.cb_requested && (
+                              <Phone className="h-4 w-4 text-[#038a71]" title="Callback requested" />
+                            )}
+                            <Link href={`/thread/${thread.id}`}>
+                              <MessageSquare className="h-4 w-4 text-[#616161] hover:text-[#212121]" />
+                            </Link>
+                            <button className="text-[#616161] hover:text-[#212121]">
+                              <Star className="h-5 w-5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </>
               ))
             ) : (
               <tr>
-                <td colSpan={6} className="px-6 py-8 text-center">
+                <td colSpan={8} className="px-6 py-8 text-center">
                   <div className="flex flex-col items-center">
                     <MessageSquare className="h-12 w-12 text-[#616161] mb-4" />
                     <p className="text-[#616161] mb-2">No chats found.</p>
@@ -409,76 +486,98 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
                 {date}
               </div>
               <div className="space-y-2">
-                {dateThreads.map((thread) => (
-                  <div
-                    key={`mobile-${thread.id}`}
-                    className="bg-white border border-[#e0e0e0] border-t-0 last:rounded-b-md p-4"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-sm font-medium text-[#212121]">
-                          {formatTimeInTimezone(thread.created_at, displayTimezone)}
-                        </span>
-                        <div
-                          className="flex items-center cursor-pointer"
-                          onMouseEnter={(e) => handleSentimentHover(thread.id, thread.sentiment_justification, e)}
-                          onMouseLeave={handleSentimentLeave}
-                          onMouseMove={(e) => {
-                            if (hoveredSentiment === thread.id) {
-                              setTooltipPosition({ x: e.clientX, y: e.clientY })
-                            }
-                          }}
-                        >
-                          <span className="text-xl">{getSentimentEmoji(thread.sentiment_score)}</span>
-                          <span className={`ml-1 text-sm font-medium ${getSentimentColor(thread.sentiment_score)}`}>
-                            {thread.sentiment_score !== undefined && thread.sentiment_score !== null
-                              ? thread.sentiment_score
-                              : "N/A"}
+                {dateThreads.map((thread) => {
+                  const callbackInfo = formatCallback(thread.callbacks)
+                  return (
+                    <div
+                      key={`mobile-${thread.id}`}
+                      className="bg-white border border-[#e0e0e0] border-t-0 last:rounded-b-md p-4"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm font-medium text-[#212121]">
+                            {formatTimeInTimezone(thread.created_at, displayTimezone)}
                           </span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleSentimentRefresh(thread.id)
+                          <div
+                            className="flex items-center cursor-pointer"
+                            onMouseEnter={(e) => handleSentimentHover(thread.id, thread.sentiment_justification, e)}
+                            onMouseLeave={handleSentimentLeave}
+                            onMouseMove={(e) => {
+                              if (hoveredSentiment === thread.id) {
+                                setTooltipPosition({ x: e.clientX, y: e.clientY })
+                              }
                             }}
-                            disabled={refreshingSentiment === thread.id}
-                            className="ml-1 p-1 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 disabled:opacity-50"
-                            title="Refresh sentiment analysis"
                           >
-                            <RefreshCw
-                              className={`h-3 w-3 ${refreshingSentiment === thread.id ? "animate-spin" : ""}`}
-                            />
+                            <span className="text-xl">{getSentimentEmoji(thread.sentiment_score)}</span>
+                            <span className={`ml-1 text-sm font-medium ${getSentimentColor(thread.sentiment_score)}`}>
+                              {thread.sentiment_score !== undefined && thread.sentiment_score !== null
+                                ? thread.sentiment_score
+                                : "N/A"}
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleSentimentRefresh(thread.id)
+                              }}
+                              disabled={refreshingSentiment === thread.id}
+                              className="ml-1 p-1 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                              title="Refresh sentiment analysis"
+                            >
+                              <RefreshCw
+                                className={`h-3 w-3 ${refreshingSentiment === thread.id ? "animate-spin" : ""}`}
+                              />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {thread.cb_requested && (
+                            <Phone className="h-4 w-4 text-[#038a71]" title="Callback requested" />
+                          )}
+                          <button className="text-[#616161] hover:text-[#212121]">
+                            <Star className="h-4 w-4" />
+                          </button>
+                          <button className="text-[#616161] hover:text-[#212121]">
+                            <MoreVertical className="h-4 w-4" />
                           </button>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        {thread.cb_requested && <Phone className="h-4 w-4 text-[#038a71]" title="Callback requested" />}
-                        <button className="text-[#616161] hover:text-[#212121]">
-                          <Star className="h-4 w-4" />
-                        </button>
-                        <button className="text-[#616161] hover:text-[#212121]">
-                          <MoreVertical className="h-4 w-4" />
-                        </button>
+
+                      {/* Callback info in mobile */}
+                      <div className="mb-2">
+                        <span className="text-xs text-[#616161] uppercase tracking-wider">Callback:</span>
+                        {callbackInfo.name === "-" ? (
+                          <span className="ml-2 text-sm text-[#616161]">-</span>
+                        ) : (
+                          <div className="mt-1">
+                            <div className="text-sm font-medium text-[#212121]">{callbackInfo.name}</div>
+                            {callbackInfo.email && <div className="text-xs text-[#616161]">{callbackInfo.email}</div>}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="text-sm text-[#212121] mb-2">
+                        {thread.message_preview || "No preview available"}
+                      </div>
+
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center space-x-4">
+                          <span className="text-[#616161] flex items-center">
+                            <MessageSquare className="h-4 w-4 mr-1" />
+                            {thread.count || 0} messages
+                          </span>
+                          <span className="text-[#616161] flex items-center">
+                            <Clock className="h-4 w-4 mr-1" />
+                            {formatDuration(thread.duration)}
+                          </span>
+                          <span className="text-[#616161] flex items-center">
+                            <Timer className="h-4 w-4 mr-1" />
+                            {formatMeanResponseTime(thread.mean_response_time)}
+                          </span>
+                        </div>
                       </div>
                     </div>
-
-                    <div className="text-sm text-[#212121] mb-2">
-                      {thread.message_preview || "No preview available"}
-                    </div>
-
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center space-x-4">
-                        <span className="text-[#616161] flex items-center">
-                          <MessageSquare className="h-4 w-4 mr-1" />
-                          {thread.count || 0} messages
-                        </span>
-                        <span className="text-[#616161] flex items-center">
-                          <Clock className="h-4 w-4 mr-1" />
-                          {formatDuration(thread.duration)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           ))

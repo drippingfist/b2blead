@@ -14,6 +14,7 @@ export default function ChatsPage() {
   const [bots, setBots] = useState<Bot[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [botsLoaded, setBotsLoaded] = useState(false)
 
   // Load selected bot from localStorage
   useEffect(() => {
@@ -33,8 +34,10 @@ export default function ChatsPage() {
     return () => window.removeEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
   }, [])
 
-  // Fetch bots data
+  // Fetch bots data with rate limiting protection
   const fetchBots = async () => {
+    if (botsLoaded) return // Prevent multiple calls
+
     try {
       console.log("🤖 PAGE: Fetching bots...")
       const botsData = await getBotsClient()
@@ -42,6 +45,10 @@ export default function ChatsPage() {
       setBots(botsData)
     } catch (error: any) {
       console.error("❌ PAGE: Error fetching bots:", error)
+      // Set empty array on error to prevent infinite loading
+      setBots([])
+    } finally {
+      setBotsLoaded(true)
     }
   }
 
@@ -64,7 +71,7 @@ export default function ChatsPage() {
   // Fetch bots on component mount
   useEffect(() => {
     fetchBots()
-  }, [])
+  }, [botsLoaded])
 
   useEffect(() => {
     fetchThreads()
@@ -93,6 +100,12 @@ export default function ChatsPage() {
         <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-md">
           <h2 className="text-lg font-semibold mb-2">Error loading chats</h2>
           <p>{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            Retry
+          </button>
         </div>
       </div>
     )
