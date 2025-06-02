@@ -174,11 +174,11 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
     setThreads(sortedThreads)
   }, [initialThreads, bots, selectedBot])
 
-  // Get timezone for the selected bot
+  // Get timezone for the selected bot or default to Asia/Bangkok for superadmin
   const getSelectedBotTimezone = (): string | undefined => {
-    if (!selectedBot || !bots.length) return undefined
+    if (!selectedBot || !bots.length) return "Asia/Bangkok" // Default for superadmin
     const bot = bots.find((b) => b.bot_share_name === selectedBot)
-    return bot?.timezone
+    return bot?.timezone || "Asia/Bangkok"
   }
 
   const displayTimezone = getSelectedBotTimezone()
@@ -419,9 +419,7 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
           <p className="text-[#616161]">
             {selectedBot ? `Showing threads for ${selectedBotName}` : "Showing all threads"} (
             {dateFilteredThreads.length} total)
-            {displayTimezone && (
-              <span className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded">Times in {timezoneAbbr}</span>
-            )}
+            <span className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded">Times in {timezoneAbbr}</span>
           </p>
         </div>
         <div className="flex space-x-2">

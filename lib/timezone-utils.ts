@@ -25,8 +25,8 @@ export function formatDateInTimezone(
     return dateString
   }
 
-  // Default timezone to UTC if not provided
-  const tz = timezone || "UTC"
+  // Default timezone to Asia/Bangkok if not provided
+  const tz = timezone || "Asia/Bangkok"
 
   try {
     // Use Intl.DateTimeFormat to convert UTC time to target timezone
@@ -37,9 +37,9 @@ export function formatDateInTimezone(
 
     return formatter.format(date)
   } catch (error) {
-    console.warn(`Invalid timezone: ${tz}, falling back to UTC. Error:`, error)
+    console.warn(`Invalid timezone: ${tz}, falling back to Asia/Bangkok. Error:`, error)
     return new Intl.DateTimeFormat("en-US", {
-      timeZone: "UTC",
+      timeZone: "Asia/Bangkok",
       ...options,
     }).format(date)
   }
@@ -98,7 +98,7 @@ export function formatFullDateTimeInTimezone(dateString: string, timezone?: stri
  * @returns Timezone abbreviation (e.g., 'ICT', 'UTC')
  */
 export function getTimezoneAbbreviation(timezone?: string): string {
-  if (!timezone) return "UTC"
+  if (!timezone) return "ICT" // Default to ICT for Asia/Bangkok
 
   try {
     const date = new Date()
@@ -110,9 +110,9 @@ export function getTimezoneAbbreviation(timezone?: string): string {
     const parts = formatter.formatToParts(date)
     const timeZonePart = parts.find((part) => part.type === "timeZoneName")
 
-    return timeZonePart?.value || timezone.split("/").pop() || "UTC"
+    return timeZonePart?.value || timezone.split("/").pop() || "ICT"
   } catch (error) {
     console.warn(`Invalid timezone: ${timezone}`)
-    return "UTC"
+    return "ICT"
   }
 }

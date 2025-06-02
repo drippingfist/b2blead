@@ -6,7 +6,6 @@ import { getThreadsSimple } from "@/lib/simple-database"
 import { getAccessibleBotsClient, getUserBotAccess } from "@/lib/database"
 import type { Thread } from "@/lib/simple-database"
 import type { Bot } from "@/lib/database"
-import { Button } from "@/components/ui/button"
 
 export default function ChatsPage() {
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
@@ -99,8 +98,13 @@ export default function ChatsPage() {
     }
   }, [selectedBot, userAccess.role])
 
-  // Get timezone for the selected bot
+  // Get timezone for the selected bot or default for superadmin
   const getSelectedBotTimezone = (): string => {
+    // Default timezone for superadmin
+    if (userAccess.isSuperAdmin && !selectedBot) {
+      return "Asia/Bangkok"
+    }
+
     if (!selectedBot || !bots.length) return "UTC"
     const bot = bots.find((b) => b.bot_share_name === selectedBot)
     return bot?.timezone || "UTC"
@@ -150,24 +154,7 @@ export default function ChatsPage() {
     <div>
       <div className="p-4 md:p-8 pb-0">
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-semibold text-[#212121]">Chats</h1>
-            <div className="flex items-center space-x-2">
-              <Button variant="outline" className="bg-blue-50 border-blue-200 text-blue-700">
-                Timezone: {selectedBotTimezone}
-              </Button>
-              {userAccess.isSuperAdmin && (
-                <Button variant="outline" className="bg-green-50 border-green-200 text-green-700">
-                  SuperAdmin
-                </Button>
-              )}
-              {userAccess.role && (
-                <Button variant="outline" className="bg-gray-50 border-gray-200 text-gray-700 capitalize">
-                  {userAccess.role}
-                </Button>
-              )}
-            </div>
-          </div>
+          <h1 className="text-2xl font-semibold text-[#212121] mb-2">Chats</h1>
           <p className="text-[#616161] mb-4">
             View all your chat threads with customers.
             {userAccess.isSuperAdmin
