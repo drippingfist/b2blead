@@ -2,11 +2,12 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   Search,
   SlidersHorizontal,
   ChevronDown,
+  ChevronUp,
   ChevronLeft,
   ChevronRight,
   Info,
@@ -18,6 +19,7 @@ import {
   RefreshCw,
   Timer,
   User,
+  Check,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -45,6 +47,8 @@ interface ThreadWithMessageCount extends Thread {
   } | null
 }
 
+type DateFilter = "today" | "last7days" | "last30days" | "alltime"
+
 export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bots = [] }: ThreadsViewProps) {
   const [threads, setThreads] = useState<ThreadWithMessageCount[]>([])
   const [threadIdEnabled, setThreadIdEnabled] = useState(false) // Hidden by default
@@ -55,6 +59,111 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
   const [refreshingSentiment, setRefreshingSentiment] = useState<string | null>(null)
   const [starringSentiment, setStarringSentiment] = useState<string | null>(null)
+  const [sortColumn, setSortColumn] = useState<string | null>(null)
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
+  const [dateFilter, setDateFilter] = useState<DateFilter>("last30days")
+  const [dateDropdownOpen, setDateDropdownOpen] = useState(false)
+  const dateDropdownRef = useRef<HTMLDivElement>(null)
+
+  const dateFilterOptions = [
+    { value: "today" as DateFilter, label: "Today" },
+    { value: "last7days" as DateFilter, label: "Last 7 days" },
+    { value: "last30days" as DateFilter, label: "Last 30 days" },
+    { value: "alltime" as DateFilter, label: "All Time" },
+  ]
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dateDropdownRef.current && !dateDropdownRef.current.contains(event.target as Node)) {
+        setDateDropdownOpen(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const filterThreadsByDate = (threads: ThreadWithMessageCount[], filter: DateFilter): ThreadWithMessageCount[] => {
+    if (filter === "alltime") return threads
+
+    const now = new Date()
+    let cutoffDate: Date
+
+    switch (filter) {
+      case "today":
+        cutoffDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        break
+      case "last7days":
+        cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        break
+      case "last30days":
+        cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+        break
+      default:
+        return threads
+    }
+
+    return threads.filter((thread) => new Date(thread.created_at) >= cutoffDate)
+  }
+
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      // Toggle direction if same column
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
+    } else {
+      // New column, default to descending
+      setSortColumn(column)
+      setSortDirection("desc")
+    }
+  }
+
+  const sortThreads = (threads: ThreadWithMessageCount[]) => {
+    if (!sortColumn) return threads
+
+    return [...threads].sort((a, b) => {
+      let aValue: any
+      let bValue: any
+
+      switch (sortColumn) {
+        case "time":
+          aValue = new Date(a.created_at).getTime()
+          bValue = new Date(b.created_at).getTime()
+          break
+        case "messages":
+          aValue = a.count || 0
+          bValue = b.count || 0
+          break
+        case "duration":
+          // Parse duration string to seconds for comparison
+          aValue = parseDurationToSeconds(a.duration)
+          bValue = parseDurationToSeconds(b.duration)
+          break
+        case "response_time":
+          aValue = a.mean_response_time || 0
+          bValue = b.mean_response_time || 0
+          break
+        default:
+          return 0
+      }
+
+      if (sortDirection === "asc") {
+        return aValue > bValue ? 1 : -1
+      } else {
+        return aValue < bValue ? 1 : -1
+      }
+    })
+  }
+
+  const parseDurationToSeconds = (duration?: string): number => {
+    if (!duration) return 0
+    const match = duration.match(/(\d+):(\d+):(\d+)/)
+    if (match) {
+      const [, hours, minutes, seconds] = match
+      return Number.parseInt(hours) * 3600 + Number.parseInt(minutes) * 60 + Number.parseInt(seconds)
+    }
+    return 0
+  }
 
   // Process threads when initialThreads changes
   useEffect(() => {
@@ -75,8 +184,10 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
   const displayTimezone = getSelectedBotTimezone()
   const timezoneAbbr = getTimezoneAbbreviation(displayTimezone)
 
-  // Group threads by date (using timezone-adjusted dates)
-  const groupedThreads = threads.reduce((groups: { [key: string]: ThreadWithMessageCount[] }, thread) => {
+  // Apply date filter, then sorting, then grouping
+  const dateFilteredThreads = filterThreadsByDate(threads, dateFilter)
+  const sortedThreads = sortThreads(dateFilteredThreads)
+  const groupedThreads = sortedThreads.reduce((groups: { [key: string]: ThreadWithMessageCount[] }, thread) => {
     const date = formatDateOnlyInTimezone(thread.created_at, displayTimezone)
 
     if (!groups[date]) {
@@ -86,15 +197,15 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
     return groups
   }, {})
 
-  // Filter threads based on search query
+  // Filter threads based on search query (apply to date-filtered threads)
   const filteredThreads = searchQuery
-    ? threads.filter(
+    ? dateFilteredThreads.filter(
         (thread) =>
           thread.message_preview?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           thread.thread_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           thread.sentiment_justification?.toLowerCase().includes(searchQuery.toLowerCase()),
       )
-    : threads
+    : dateFilteredThreads
 
   const getSentimentEmoji = (sentiment?: number) => {
     if (sentiment === undefined || sentiment === null) return "😐"
@@ -272,6 +383,21 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
 
   const selectedBotName = getSelectedBotName()
 
+  const renderSortIcon = (column: string) => {
+    if (sortColumn !== column) {
+      return <ChevronDown className="h-4 w-4 ml-1 text-gray-300" />
+    }
+    return sortDirection === "asc" ? (
+      <ChevronUp className="h-4 w-4 ml-1 text-[#038a71]" />
+    ) : (
+      <ChevronDown className="h-4 w-4 ml-1 text-[#038a71]" />
+    )
+  }
+
+  const getCurrentDateFilterLabel = () => {
+    return dateFilterOptions.find((option) => option.value === dateFilter)?.label || "Last 30 days"
+  }
+
   return (
     <div className="p-4 md:p-8 pt-0 relative">
       {/* Tooltip */}
@@ -291,7 +417,8 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
       <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 space-y-4 md:space-y-0">
         <div className="mb-6">
           <p className="text-[#616161]">
-            {selectedBot ? `Showing threads for ${selectedBotName}` : "Showing all threads"} ({threads.length} total)
+            {selectedBot ? `Showing threads for ${selectedBotName}` : "Showing all threads"} (
+            {dateFilteredThreads.length} total)
             {displayTimezone && (
               <span className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded">Times in {timezoneAbbr}</span>
             )}
@@ -326,9 +453,35 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
             <ChevronDown className="h-4 w-4 text-[#616161] ml-2" />
           </div>
 
-          <div className="flex items-center border border-[#e0e0e0] rounded-md px-3 py-2">
-            <span className="text-sm text-[#616161]">Last 30 days</span>
-            <ChevronDown className="h-4 w-4 text-[#616161] ml-2" />
+          {/* Date Filter Dropdown */}
+          <div className="relative" ref={dateDropdownRef}>
+            <button
+              onClick={() => setDateDropdownOpen(!dateDropdownOpen)}
+              className="flex items-center border border-[#e0e0e0] rounded-md px-3 py-2 hover:bg-gray-50 transition-colors"
+            >
+              <span className="text-sm text-[#616161]">{getCurrentDateFilterLabel()}</span>
+              <ChevronDown className="h-4 w-4 text-[#616161] ml-2" />
+            </button>
+
+            {dateDropdownOpen && (
+              <div className="absolute z-50 mt-1 w-full bg-white border border-[#e0e0e0] rounded-md shadow-lg min-w-[150px]">
+                {dateFilterOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => {
+                      setDateFilter(option.value)
+                      setDateDropdownOpen(false)
+                    }}
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-between ${
+                      dateFilter === option.value ? "bg-[#038a71]/10 text-[#038a71]" : "text-[#212121]"
+                    }`}
+                  >
+                    <span>{option.label}</span>
+                    {dateFilter === option.value && <Check className="h-4 w-4 text-[#038a71]" />}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="hidden sm:flex items-center space-x-4">
@@ -375,10 +528,13 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
           <thead>
             <tr className="bg-white border-b border-[#e0e0e0]">
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                <div className="flex items-center">
+                <button
+                  onClick={() => handleSort("time")}
+                  className="flex items-center hover:text-[#038a71] transition-colors"
+                >
                   START TIME
-                  <ChevronDown className="h-4 w-4 ml-1" />
-                </div>
+                  {renderSortIcon("time")}
+                </button>
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                 <div className="flex items-center">
@@ -396,16 +552,32 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
                 Message Preview
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                Messages
+                <button
+                  onClick={() => handleSort("messages")}
+                  className="flex items-center hover:text-[#038a71] transition-colors"
+                >
+                  Messages
+                  {renderSortIcon("messages")}
+                </button>
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                Duration
+                <button
+                  onClick={() => handleSort("duration")}
+                  className="flex items-center hover:text-[#038a71] transition-colors"
+                >
+                  Duration
+                  {renderSortIcon("duration")}
+                </button>
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                <div className="flex items-center">
+                <button
+                  onClick={() => handleSort("response_time")}
+                  className="flex items-center hover:text-[#038a71] transition-colors"
+                >
                   Avg. Response Time
                   <Info className="h-4 w-4 ml-1 text-[#616161]" />
-                </div>
+                  {renderSortIcon("response_time")}
+                </button>
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                 <div className="flex items-center justify-between">
@@ -548,8 +720,8 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
                     <p className="text-[#616161] mb-2">No chats found.</p>
                     <p className="text-sm text-[#616161]">
                       {selectedBot
-                        ? `No chat threads found for ${selectedBotName}.`
-                        : `No chat threads found for any of your accessible bots.`}
+                        ? `No chat threads found for ${selectedBotName} in the selected time period.`
+                        : `No chat threads found for any of your accessible bots in the selected time period.`}
                     </p>
                   </div>
                 </td>
@@ -681,14 +853,14 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
         ) : (
           <div className="bg-white border border-[#e0e0e0] rounded-md p-8 text-center">
             <MessageSquare className="h-12 w-12 text-[#616161] mx-auto mb-4" />
-            <p className="text-[#616161]">No threads found. Create your first conversation to get started.</p>
+            <p className="text-[#616161]">No threads found for the selected time period.</p>
           </div>
         )}
       </div>
 
       {filteredThreads.length === 0 && searchQuery && (
         <div className="text-center py-12">
-          <p className="text-[#616161]">No conversations found matching your search.</p>
+          <p className="text-[#616161]">No conversations found matching your search in the selected time period.</p>
         </div>
       )}
     </div>

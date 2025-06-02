@@ -36,9 +36,61 @@ export interface Callback {
   user_cb_message?: string
 }
 
-// Get threads filtered by bot_share_name with callback information
+// Update the interface to include member role
 export async function getThreadsSimple(limit = 50, botShareName?: string | null): Promise<Thread[]> {
   console.log("🧵 Fetching threads for bot_share_name:", botShareName || "ALL")
+
+  // Get user's accessible bots
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user?.id) {
+    console.log("❌ No authenticated user")
+    return []
+  }
+
+  console.log("🔐 Getting bot access for user ID:", user.id)
+
+  // Get user's bot access using FK relationship
+  const { data: botUsers, error: accessError } = await supabase
+    .from("bot_users")
+    .select("role, bot_share_name")
+    .eq("id", user.id) // Use the FK relationship
+    .eq("is_active", true)
+
+  if (accessError || !botUsers || botUsers.length === 0) {
+    console.log("❌ No bot access for user:", accessError?.message || "No records found")
+    return []
+  }
+
+  console.log("🔐 Bot users found:", botUsers)
+
+  // Check if user is superadmin
+  const isSuperAdmin = botUsers.some((bu) => bu.role === "superadmin")
+
+  let accessibleBots: string[] = []
+
+  if (isSuperAdmin) {
+    console.log("🔐 User is superadmin - getting all bots")
+    // Superadmin can see all bots
+    const { data: allBots } = await supabase.from("bots").select("bot_share_name").not("bot_share_name", "is", null)
+
+    accessibleBots = allBots?.map((b) => b.bot_share_name).filter(Boolean) || []
+  } else {
+    // Regular admin/member - get their specific bot assignments
+    accessibleBots = botUsers
+      .filter((bu) => bu.bot_share_name)
+      .map((bu) => bu.bot_share_name)
+      .filter(Boolean)
+  }
+
+  console.log("🔐 Accessible bots:", accessibleBots)
+
+  if (accessibleBots.length === 0) {
+    console.log("❌ No accessible bots found")
+    return []
+  }
 
   let query = supabase
     .from("threads")
@@ -54,10 +106,19 @@ export async function getThreadsSimple(limit = 50, botShareName?: string | null)
     .order("created_at", { ascending: false })
     .limit(limit)
 
-  // If a specific bot is selected, filter by bot_share_name
+  // If a specific bot is selected, filter by that bot (if user has access)
   if (botShareName) {
-    console.log("🔍 Filtering threads by bot_share_name:", botShareName)
-    query = query.eq("bot_share_name", botShareName)
+    if (accessibleBots.includes(botShareName)) {
+      console.log("🔍 Filtering threads by bot_share_name:", botShareName)
+      query = query.eq("bot_share_name", botShareName)
+    } else {
+      console.log("❌ User doesn't have access to bot:", botShareName)
+      return []
+    }
+  } else {
+    // No specific bot selected, filter by all accessible bots
+    console.log("🔍 Filtering threads by accessible bots:", accessibleBots)
+    query = query.in("bot_share_name", accessibleBots)
   }
 
   const { data, error } = await query

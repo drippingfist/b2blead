@@ -23,15 +23,21 @@ interface SidebarProps {
   onClose: () => void
 }
 
+// Update navigation to hide certain items for members
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
   const [userLoaded, setUserLoaded] = useState(false)
+  const [userAccess, setUserAccess] = useState<{
+    role: "superadmin" | "admin" | "member" | null
+    accessibleBots: string[]
+    isSuperAdmin: boolean
+  }>({ role: null, accessibleBots: [], isSuperAdmin: false })
 
   useEffect(() => {
-    // Get current user info with rate limiting protection
+    // Get current user info and access level
     const getCurrentUser = async () => {
       if (userLoaded) return // Prevent multiple calls
 
@@ -50,6 +56,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           setUserEmail(user.email || null)
           setUserName(user.user_metadata?.name || null)
         }
+
+        // Get user access level
+        const { getUserBotAccess } = await import("@/lib/database")
+        const access = await getUserBotAccess()
+        setUserAccess(access)
       } catch (error) {
         console.warn("Failed to get user in sidebar:", error)
         // Set default values on error
@@ -82,15 +93,25 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     window.dispatchEvent(new CustomEvent("botSelectionChanged", { detail: botShareName }))
   }
 
-  const navigation = [
+  // Filter navigation based on user role
+  const allNavigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Chats", href: "/", icon: MessageSquare },
     { name: "Messages", href: "/messages", icon: Mail },
     { name: "Callbacks", href: "/callbacks", icon: PhoneCall },
-    { name: "Chat Improvements", href: "/improvements", icon: MessageSquarePlus },
-    { name: "Users", href: "/users", icon: Users },
-    { name: "Settings", href: "/settings", icon: Settings },
+    { name: "Chat Improvements", href: "/improvements", icon: MessageSquarePlus, adminOnly: true },
+    { name: "Users", href: "/users", icon: Users, adminOnly: true },
+    { name: "Settings", href: "/settings", icon: Settings, adminOnly: true },
   ]
+
+  // Filter navigation items based on user role
+  const navigation = allNavigation.filter((item) => {
+    // If item is admin-only and user is member, hide it
+    if (item.adminOnly && userAccess.role === "member") {
+      return false
+    }
+    return true
+  })
 
   // Close sidebar when clicking on a link on mobile
   const handleLinkClick = () => {
@@ -193,6 +214,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-[#212121] truncate">{displayName}</p>
               <p className="text-xs text-[#616161] truncate">{userEmail || "user@example.com"}</p>
+              {userAccess.role && <p className="text-xs text-[#038a71] capitalize">{userAccess.role}</p>}
             </div>
             <form action={signOut}>
               <button type="submit" className="text-[#616161] hover:text-[#212121] transition-colors">

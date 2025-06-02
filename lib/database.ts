@@ -279,3 +279,100 @@ export async function getThreadById(id: string): Promise<Thread | null> {
   console.log("✅ getThreadById: Successfully fetched thread")
   return data
 }
+
+// Update the getUserBotAccess function to also return member role
+export async function getUserBotAccess(): Promise<{
+  role: "superadmin" | "admin" | "member" | null
+  accessibleBots: string[]
+  isSuperAdmin: boolean
+}> {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user?.id) {
+      return { role: null, accessibleBots: [], isSuperAdmin: false }
+    }
+
+    console.log("🔐 Getting bot access for user ID:", user.id)
+
+    // Get user's bot assignments using the FK relationship (id column)
+    const { data: botUsers, error } = await supabase
+      .from("bot_users")
+      .select("role, bot_share_name")
+      .eq("id", user.id) // Use the FK relationship
+      .eq("is_active", true)
+
+    if (error) {
+      console.error("Error fetching user bot access:", error)
+      return { role: null, accessibleBots: [], isSuperAdmin: false }
+    }
+
+    console.log("🔐 Bot users found:", botUsers)
+
+    if (!botUsers || botUsers.length === 0) {
+      console.log("🔐 No bot access found for user")
+      return { role: null, accessibleBots: [], isSuperAdmin: false }
+    }
+
+    // Check if user is superadmin
+    const isSuperAdmin = botUsers.some((bu) => bu.role === "superadmin")
+
+    if (isSuperAdmin) {
+      console.log("🔐 User is superadmin - getting all bots")
+      // Superadmin can see all bots
+      const { data: allBots } = await supabase.from("bots").select("bot_share_name").not("bot_share_name", "is", null)
+
+      const accessibleBots = allBots?.map((b) => b.bot_share_name).filter(Boolean) || []
+      return { role: "superadmin", accessibleBots, isSuperAdmin: true }
+    }
+
+    // Get the user's role (admin or member)
+    const userRole = botUsers[0]?.role as "admin" | "member"
+
+    // Regular admin/member - get their specific bot assignments
+    const accessibleBots = botUsers
+      .filter((bu) => bu.bot_share_name)
+      .map((bu) => bu.bot_share_name)
+      .filter(Boolean)
+
+    console.log(`🔐 User is ${userRole} with access to bots:`, accessibleBots)
+
+    return {
+      role: userRole,
+      accessibleBots,
+      isSuperAdmin: false,
+    }
+  } catch (error) {
+    console.error("Exception in getUserBotAccess:", error)
+    return { role: null, accessibleBots: [], isSuperAdmin: false }
+  }
+}
+
+// Get bots that the current user has access to
+export async function getAccessibleBotsClient(): Promise<Bot[]> {
+  try {
+    const { accessibleBots, isSuperAdmin } = await getUserBotAccess()
+
+    if (accessibleBots.length === 0) {
+      return []
+    }
+
+    const { data, error } = await supabase
+      .from("bots")
+      .select("*")
+      .in("bot_share_name", accessibleBots)
+      .order("client_name", { ascending: true })
+
+    if (error) {
+      console.error("Error fetching accessible bots:", error)
+      return []
+    }
+
+    return data || []
+  } catch (error) {
+    console.error("Exception in getAccessibleBotsClient:", error)
+    return []
+  }
+}
