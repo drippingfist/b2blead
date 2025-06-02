@@ -40,7 +40,7 @@ export async function signIn(prevState: any, formData: FormData) {
   }
 }
 
-// Update the signUp function to handle potential null formData
+// Simplified signUp function - Supabase handles invitations automatically
 export async function signUp(prevState: any, formData: FormData) {
   // Check if formData is valid
   if (!formData) {
@@ -59,7 +59,7 @@ export async function signUp(prevState: any, formData: FormData) {
   const supabase = createServerActionClient({ cookies: () => cookieStore })
 
   try {
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: email.toString(),
       password: password.toString(),
     })

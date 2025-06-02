@@ -7,31 +7,23 @@ import { Input } from "@/components/ui/input"
 import { Loader2 } from "lucide-react"
 import Link from "next/link"
 import { signUp } from "@/lib/actions"
+import { useState } from "react"
 
-function SubmitButton() {
-  const { pending } = useFormStatus()
-
-  return (
-    <Button
-      type="submit"
-      disabled={pending}
-      className="w-full bg-[#038a71] hover:bg-[#038a71]/90 text-white py-3 md:py-6 text-base md:text-lg font-medium rounded-md h-[50px] md:h-[50px]"
-    >
-      {pending ? (
-        <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Signing up...
-        </>
-      ) : (
-        "Sign Up"
-      )}
-    </Button>
-  )
-}
-
-export default function SignUpForm() {
+// Update the SignUpForm component to accept initialEmail
+export default function SignUpForm({ initialEmail = "" }) {
   // Initialize with null as the initial state
   const [state, formAction] = useActionState(signUp, null)
+  const [email, setEmail] = useState(initialEmail)
+
+  const SubmitButton = () => {
+    const { pending } = useFormStatus()
+    return (
+      <Button type="submit" disabled={pending}>
+        {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+        Sign Up
+      </Button>
+    )
+  }
 
   return (
     <div className="w-full space-y-6">
@@ -61,6 +53,8 @@ export default function SignUpForm() {
                 placeholder="you@example.com"
                 required
                 className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-12"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div className="space-y-2">

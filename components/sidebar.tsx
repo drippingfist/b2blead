@@ -3,17 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
-import {
-  LayoutDashboard,
-  MessageSquare,
-  Mail,
-  PhoneCall,
-  MessageSquarePlus,
-  Settings,
-  LogOut,
-  X,
-  Users,
-} from "lucide-react"
+import { LayoutDashboard, MessageSquare, Mail, PhoneCall, MessageSquarePlus, Settings, LogOut, X } from "lucide-react"
 import { signOut } from "@/lib/actions"
 import { supabase } from "@/lib/supabase/client"
 import SimpleBotSelector from "@/components/simple-bot-selector"
@@ -35,6 +25,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     accessibleBots: string[]
     isSuperAdmin: boolean
   }>({ role: null, accessibleBots: [], isSuperAdmin: false })
+  const [firstName, setFirstName] = useState<string | null>(null)
 
   useEffect(() => {
     // Get current user info and access level
@@ -55,6 +46,17 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         } else if (user) {
           setUserEmail(user.email || null)
           setUserName(user.user_metadata?.name || null)
+
+          // Fetch first_name from user_profiles table
+          const { data: profile, error: profileError } = await supabase
+            .from("user_profiles")
+            .select("first_name")
+            .eq("id", user.id)
+            .single()
+
+          if (!profileError && profile) {
+            setFirstName(profile.first_name)
+          }
         }
 
         // Get user access level
@@ -99,8 +101,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     { name: "Chats", href: "/", icon: MessageSquare },
     { name: "Messages", href: "/messages", icon: Mail },
     { name: "Callbacks", href: "/callbacks", icon: PhoneCall },
-    { name: "Chat Improvements", href: "/improvements", icon: MessageSquarePlus, adminOnly: true },
-    { name: "Users", href: "/users", icon: Users, adminOnly: true },
+    { name: "Improve Answers", href: "/improvements", icon: MessageSquarePlus, adminOnly: true },
     { name: "Settings", href: "/settings", icon: Settings, adminOnly: true },
   ]
 
@@ -135,15 +136,22 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [isOpen, onClose])
 
-  const displayName = userName || userEmail?.split("@")[0] || "User"
-  const initials = userName
-    ? userName
+  const displayName = firstName || userName || userEmail?.split("@")[0] || "User"
+  const initials = firstName
+    ? firstName
         .split(" ")
         .map((n) => n[0])
         .join("")
         .toUpperCase()
         .slice(0, 2)
-    : userEmail?.charAt(0).toUpperCase() || "U"
+    : userName
+      ? userName
+          .split(" ")
+          .map((n) => n[0])
+          .join("")
+          .toUpperCase()
+          .slice(0, 2)
+      : userEmail?.charAt(0).toUpperCase() || "U"
 
   return (
     <>
@@ -212,7 +220,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <span className="font-medium text-sm">{initials}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[#212121] truncate">{displayName}</p>
+              {firstName && <p className="text-sm font-medium text-[#212121] truncate">{firstName}</p>}
               <p className="text-xs text-[#616161] truncate">{userEmail || "user@example.com"}</p>
               {userAccess.role && <p className="text-xs text-[#038a71] capitalize">{userAccess.role}</p>}
             </div>
