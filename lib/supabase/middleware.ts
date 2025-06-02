@@ -21,14 +21,44 @@ export async function updateSession(request: NextRequest) {
   // Create a Supabase client configured to use cookies
   const supabase = createMiddlewareClient({ req: request, res })
 
-  // Check if this is an auth callback
+  // Check if this is an invitation acceptance link
   const requestUrl = new URL(request.url)
+  const urlHash = requestUrl.hash
+  const isInviteAcceptance = urlHash.includes("type=invite") || requestUrl.searchParams.get("type") === "invite"
+
+  console.log("🔗 Middleware processing:", {
+    pathname: requestUrl.pathname,
+    isInviteAcceptance,
+    hash: urlHash,
+    searchParams: Object.fromEntries(requestUrl.searchParams),
+  })
+
+  // If this is an invitation acceptance, redirect to callback with setup=true
+  if (isInviteAcceptance && requestUrl.pathname === "/auth/login") {
+    console.log("📧 Invitation acceptance detected, redirecting to callback")
+    const callbackUrl = new URL("/auth/callback", request.url)
+    callbackUrl.searchParams.set("setup", "true")
+    // Preserve the original hash and search params
+    if (requestUrl.searchParams.get("code")) {
+      callbackUrl.searchParams.set("code", requestUrl.searchParams.get("code")!)
+    }
+    return NextResponse.redirect(callbackUrl)
+  }
+
+  // Check if this is an auth callback
   const code = requestUrl.searchParams.get("code")
 
   if (code) {
     // Exchange the code for a session
     await supabase.auth.exchangeCodeForSession(code)
-    // Redirect to home page after successful auth
+
+    // Check if this should go to setup
+    const setup = requestUrl.searchParams.get("setup")
+    if (setup === "true") {
+      return NextResponse.redirect(new URL("/auth/setup", request.url))
+    }
+
+    // Regular callback, redirect to home page
     return NextResponse.redirect(new URL("/", request.url))
   }
 
@@ -39,7 +69,8 @@ export async function updateSession(request: NextRequest) {
   const isAuthRoute =
     request.nextUrl.pathname.startsWith("/auth/login") ||
     request.nextUrl.pathname.startsWith("/auth/sign-up") ||
-    request.nextUrl.pathname === "/auth/callback"
+    request.nextUrl.pathname === "/auth/callback" ||
+    request.nextUrl.pathname === "/auth/setup"
 
   if (!isAuthRoute) {
     const {

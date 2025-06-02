@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
-import { format } from "date-fns"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { useState, useEffect } from "react"
+import { Star } from "lucide-react"
+import { supabase } from "@/lib/supabase/client"
+import { formatTimeInTimezone } from "@/lib/timezone-utils"
 
 interface Message {
   id: string
@@ -12,8 +13,42 @@ interface Message {
   bot_share_name: string
 }
 
-export default function ChatMessages({ messages }: { messages: Message[] }) {
+interface ChatMessagesProps {
+  messages: Message[]
+  threadId: string
+}
+
+export default function ChatMessages({ messages, threadId }: ChatMessagesProps) {
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set())
+  const [botTimezone, setBotTimezone] = useState<string>("UTC")
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchBotTimezone() {
+      try {
+        // Get the bot_share_name from the first message or thread
+        const botShareName = messages[0]?.bot_share_name
+
+        if (botShareName) {
+          const { data: bot, error } = await supabase
+            .from("bots")
+            .select("timezone")
+            .eq("bot_share_name", botShareName)
+            .single()
+
+          if (!error && bot?.timezone) {
+            setBotTimezone(bot.timezone)
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching bot timezone:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchBotTimezone()
+  }, [messages, threadId])
 
   const toggleMessageExpansion = (id: string) => {
     const newExpanded = new Set(expandedMessages)
@@ -25,8 +60,18 @@ export default function ChatMessages({ messages }: { messages: Message[] }) {
     setExpandedMessages(newExpanded)
   }
 
+  if (loading) {
+    return (
+      <div className="space-y-6 bg-[#f9fafc] px-[10%] py-4">
+        <div className="text-center py-12">
+          <p className="text-gray-500">Loading messages...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 bg-[#f9fafc] px-[10%] py-4">
       {messages.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-500">No messages found for this conversation.</p>
@@ -34,29 +79,46 @@ export default function ChatMessages({ messages }: { messages: Message[] }) {
       ) : (
         messages.map((message) => {
           const isBot = message.role === "assistant"
+          const isUser = message.role === "user"
+          const isPresetMessage = message.role === "suggested_button" || message.role === "menu_button"
+          const isLeftSide = isUser || isPresetMessage
+          const content = message.content || ""
           const isExpanded = expandedMessages.has(message.id)
-          const shouldTruncate = message.content.length > 300 && !isExpanded
+          const shouldTruncate = content.length > 300 && !isExpanded
 
           return (
-            <div key={message.id} className={`flex gap-3 ${isBot ? "justify-start" : "justify-end"}`}>
-              {isBot && (
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-primary text-primary-foreground">
-                    {message.bot_share_name.substring(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
+            <div key={message.id} className={`flex ${isLeftSide ? "justify-start" : "justify-end"} mb-8 group`}>
+              {/* Star button for left side messages */}
+              {isLeftSide && (
+                <button className="flex-shrink-0 p-1 rounded transition-colors text-[#616161] hover:text-[#212121] mr-2 opacity-0 group-hover:opacity-100 focus:opacity-100">
+                  <Star className="h-4 w-4 text-[#616161]" />
+                </button>
               )}
 
-              <div className={`max-w-[75%] ${isBot ? "order-2" : "order-1"}`}>
+              <div className={`flex flex-col ${isLeftSide ? "items-start" : "items-end"} max-w-[60%] min-w-[120px]`}>
+                {/* Labels for left side messages */}
+                {isUser && (
+                  <div className="text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide px-2">USER</div>
+                )}
+                {isPresetMessage && (
+                  <div className="text-xs font-medium text-green-700 mb-1 uppercase tracking-wide px-2">
+                    Preset message
+                  </div>
+                )}
+
                 <div
-                  className={`rounded-lg p-3 ${
-                    isBot ? "bg-gray-100 text-gray-900" : "bg-primary text-primary-foreground"
-                  }`}
+                  className={`relative w-full ${
+                    isBot
+                      ? "bg-[#424242] text-white rounded-2xl rounded-br-md"
+                      : isPresetMessage
+                        ? "bg-[#f0fdf4] border border-green-200 rounded-2xl rounded-bl-md"
+                        : "bg-[#ffffff] border border-[#e0e0e0] rounded-2xl rounded-bl-md"
+                  } px-4 py-3 shadow-sm`}
                 >
-                  <p className="whitespace-pre-wrap">
-                    {shouldTruncate ? `${message.content.substring(0, 300)}...` : message.content}
+                  <p className={`text-sm leading-relaxed break-words ${isBot ? "text-white" : "text-[#212121]"}`}>
+                    {shouldTruncate ? `${content.substring(0, 300)}...` : content}
                   </p>
-                  {message.content.length > 300 && (
+                  {content.length > 300 && (
                     <button
                       onClick={() => toggleMessageExpansion(message.id)}
                       className="text-xs underline mt-1 opacity-70 hover:opacity-100"
@@ -65,15 +127,16 @@ export default function ChatMessages({ messages }: { messages: Message[] }) {
                     </button>
                   )}
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {format(new Date(message.created_at), "MMM d, h:mm a")}
-                </div>
+                <p className="text-xs mt-1 px-2 text-[#616161]">
+                  {formatTimeInTimezone(message.created_at, botTimezone)}
+                </p>
               </div>
 
-              {!isBot && (
-                <Avatar className="h-8 w-8 order-3">
-                  <AvatarFallback className="bg-gray-300">U</AvatarFallback>
-                </Avatar>
+              {/* Star button for bot messages (right side) */}
+              {isBot && (
+                <button className="flex-shrink-0 p-1 rounded transition-colors text-[#616161] hover:text-[#212121] ml-2 opacity-0 group-hover:opacity-100 focus:opacity-100">
+                  <Star className="h-4 w-4 text-[#616161]" />
+                </button>
               )}
             </div>
           )

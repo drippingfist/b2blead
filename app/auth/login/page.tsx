@@ -1,6 +1,7 @@
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import LoginForm from "@/components/login-form"
+import InviteHandler from "@/components/invite-handler"
 
 export default async function LoginPage() {
   // If Supabase is not configured, show setup message directly
@@ -29,6 +30,10 @@ export default async function LoginPage() {
         <div className="text-center">
           <img src="/logo.svg" alt="b2bLEAD.ai" className="h-12 w-auto mx-auto" />
         </div>
+
+        {/* Handle invitation acceptance if present */}
+        <InviteHandler />
+
         <LoginForm />
       </div>
     </div>

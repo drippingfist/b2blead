@@ -7,6 +7,18 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get("code")
   const setup = requestUrl.searchParams.get("setup")
 
+  // Check if this is an invitation acceptance (from URL hash)
+  const urlHash = requestUrl.hash
+  const isInviteAcceptance = urlHash.includes("type=invite")
+
+  console.log("🔗 Auth callback received:", {
+    code,
+    setup,
+    isInviteAcceptance,
+    fullUrl: request.url,
+    hash: urlHash,
+  })
+
   if (code) {
     const cookieStore = cookies()
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
@@ -20,45 +32,19 @@ export async function GET(request: NextRequest) {
     }
 
     if (data.user && setup === "true") {
-      // This is a new user from an invitation, set up their profile
-      try {
-        const userMetadata = data.user.user_metadata
-
-        if (userMetadata.bot_share_name) {
-          // Create user profile from invitation metadata
-          const { error: profileError } = await supabase.from("user_profiles").upsert({
-            id: data.user.id,
-            first_name: userMetadata.first_name || "",
-            surname: userMetadata.surname || "",
-            timezone: userMetadata.timezone || "Asia/Bangkok",
-            bot_share_name: userMetadata.bot_share_name,
-          })
-
-          if (profileError) {
-            console.error("Error creating user profile:", profileError)
-          }
-
-          // Create bot_users entry
-          const { error: botUserError } = await supabase.from("bot_users").upsert({
-            id: data.user.id,
-            role: userMetadata.role || "member",
-            bot_share_name: userMetadata.bot_share_name,
-            is_active: true,
-          })
-
-          if (botUserError) {
-            console.error("Error creating bot user:", botUserError)
-          }
-
-          // Remove the invitation record if it exists
-          await supabase.from("user_invitations").delete().eq("email", data.user.email)
-        }
-      } catch (error) {
-        console.error("Error setting up invited user:", error)
-      }
+      // This is a new user from an invitation, redirect to setup page
+      console.log("🔧 Redirecting new user to setup page")
+      return NextResponse.redirect(new URL("/auth/setup", request.url))
     }
   }
 
-  // Redirect to the dashboard
+  // Handle invitation acceptance from URL hash parameters
+  if (isInviteAcceptance) {
+    console.log("📧 Processing invitation acceptance")
+    return NextResponse.redirect(new URL("/auth/setup", request.url))
+  }
+
+  // Regular callback, redirect to dashboard
+  console.log("🏠 Regular callback, redirecting to dashboard")
   return NextResponse.redirect(new URL("/", request.url))
 }

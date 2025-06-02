@@ -1,14 +1,28 @@
-export default function MessagesPage() {
-  return (
-    <div className="p-4 md:p-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-[#212121]">Messages</h1>
-        <p className="text-[#616161]">View and manage all your messages.</p>
-      </div>
+import { Suspense } from "react"
+import { MessagesPageClient } from "./messages-page-client"
+import { getAccessibleBotsClient } from "@/lib/database"
+import { getRecentThreadsWithMessages } from "@/lib/message-actions"
 
-      <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-        <p className="text-[#616161]">Messages functionality coming soon...</p>
-      </div>
-    </div>
+export default async function MessagesPage({
+  searchParams,
+}: {
+  searchParams: { bot?: string; date?: string }
+}) {
+  const selectedBot = searchParams.bot || null
+  const selectedDate = searchParams.date || null
+  const bots = await getAccessibleBotsClient()
+
+  // Get the first 10 threads with their messages for the selected bot
+  const threadsWithMessages = await getRecentThreadsWithMessages(selectedBot, 10, 0, selectedDate)
+
+  return (
+    <Suspense fallback={<div>Loading messages...</div>}>
+      <MessagesPageClient
+        threadsWithMessages={threadsWithMessages}
+        bots={bots}
+        selectedBot={selectedBot}
+        selectedDate={selectedDate}
+      />
+    </Suspense>
   )
 }

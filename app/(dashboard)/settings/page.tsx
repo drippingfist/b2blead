@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Save, X, CreditCard, Receipt, Users, Info, Edit, Trash2, UserPlus } from "lucide-react"
+import { Loader2, Save, X, CreditCard, Receipt, Users, Info, Edit, Trash2 } from "lucide-react"
 import { supabase } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { timezones } from "@/lib/timezones"
@@ -70,7 +70,9 @@ export default function SettingsPage() {
     timezone: "Asia/Bangkok",
   })
 
-  const [availableBots, setAvailableBots] = useState<{ bot_share_name: string; client_name: string }[]>([])
+  const [availableBots, setAvailableBots] = useState<
+    { bot_share_name: string; client_name: string; timezone: string }[]
+  >([])
 
   useEffect(() => {
     async function loadUserData() {
@@ -89,16 +91,36 @@ export default function SettingsPage() {
 
         const { data: profile, error: profileError } = await supabase
           .from("user_profiles")
-          .select("first_name, surname, timezone")
+          .select("first_name, surname")
           .eq("id", user.id)
           .single()
+
+        // Get user's bot access to determine timezone
+        const { data: botUser, error: botUserError } = await supabase
+          .from("bot_users")
+          .select("bot_share_name")
+          .eq("id", user.id)
+          .single()
+
+        let userTimezone = "Asia/Bangkok"
+        if (botUser?.bot_share_name) {
+          const { data: bot } = await supabase
+            .from("bots")
+            .select("timezone")
+            .eq("bot_share_name", botUser.bot_share_name)
+            .single()
+
+          if (bot?.timezone) {
+            userTimezone = bot.timezone
+          }
+        }
 
         setUserData({
           id: user.id,
           email: user.email || "",
           firstName: profile?.first_name || "",
           surname: profile?.surname || "",
-          timezone: profile?.timezone || "Asia/Bangkok",
+          timezone: userTimezone,
         })
 
         await loadAvailableBots()
@@ -119,7 +141,7 @@ export default function SettingsPage() {
     try {
       const { data: bots, error } = await supabase
         .from("bots")
-        .select("bot_share_name, client_name")
+        .select("bot_share_name, client_name, timezone")
         .not("bot_share_name", "is", null)
         .order("client_name")
 
@@ -188,15 +210,38 @@ export default function SettingsPage() {
       setError(null)
       setSuccess(false)
 
+      // Update user profile (without timezone)
       const { error: updateError } = await supabase.from("user_profiles").upsert({
         id: userData.id,
         first_name: userData.firstName,
         surname: userData.surname,
-        timezone: userData.timezone,
       })
 
       if (updateError) {
         throw new Error(updateError.message)
+      }
+
+      // Update timezone for all bots the user has access to
+      const { data: userBots, error: userBotsError } = await supabase
+        .from("bot_users")
+        .select("bot_share_name")
+        .eq("id", userData.id)
+
+      if (userBotsError) {
+        throw new Error(userBotsError.message)
+      }
+
+      if (userBots && userBots.length > 0) {
+        const botShareNames = userBots.map((bot) => bot.bot_share_name)
+
+        const { error: botsUpdateError } = await supabase
+          .from("bots")
+          .update({ timezone: userData.timezone })
+          .in("bot_share_name", botShareNames)
+
+        if (botsUpdateError) {
+          throw new Error(botsUpdateError.message)
+        }
       }
 
       setSuccess(true)
@@ -262,7 +307,7 @@ export default function SettingsPage() {
 
         // Updated message for the invitation email approach
         alert(
-          `Invitation email sent to ${newUser.email}! They will receive an email with instructions to create their account and get access to the selected bot.`,
+          `Invitation email sent to ${newUser.email}! They will receive an email with a link to set their password and access the ${newUser.bot_share_name} bot.`,
         )
 
         await loadUsers()
@@ -406,17 +451,20 @@ export default function SettingsPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-[#616161]">This will update the timezone for all your bots.</p>
             </div>
           </div>
         </div>
 
         {/* Users Management Section */}
         <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
+          {/* Temporarily hidden - invitation flow needs work */}
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-medium text-[#212121] flex items-center">
               <Users className="h-5 w-5 mr-2" />
               User Management
             </h2>
+            {/* Temporarily hidden - invitation flow needs work
             <Button
               onClick={() => setAddingUser(true)}
               className="bg-[#038a71] hover:bg-[#038a71]/90 flex items-center"
@@ -425,6 +473,7 @@ export default function SettingsPage() {
               <UserPlus className="h-4 w-4 mr-2" />
               Add User
             </Button>
+            */}
           </div>
 
           {usersLoading ? (
@@ -434,124 +483,6 @@ export default function SettingsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Add User Form */}
-              {addingUser && (
-                <div className="p-4 bg-gray-50 rounded-lg border border-[#e0e0e0]">
-                  <h3 className="text-sm font-medium text-[#212121] mb-3">Add New User</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div className="space-y-2">
-                      <Label>Email</Label>
-                      <Input
-                        value={newUser.email}
-                        onChange={(e) => handleNewUserChange("email", e.target.value)}
-                        placeholder="user@example.com"
-                        className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
-                        disabled={addingUserLoading}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Bot Access</Label>
-                      <Select
-                        value={newUser.bot_share_name}
-                        onValueChange={(value) => handleNewUserChange("bot_share_name", value)}
-                        disabled={addingUserLoading}
-                      >
-                        <SelectTrigger className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]">
-                          <SelectValue placeholder="Select bot" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableBots.map((bot) => (
-                            <SelectItem key={bot.bot_share_name} value={bot.bot_share_name}>
-                              {bot.client_name || bot.bot_share_name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>First Name</Label>
-                      <Input
-                        value={newUser.first_name}
-                        onChange={(e) => handleNewUserChange("first_name", e.target.value)}
-                        placeholder="First name"
-                        className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
-                        disabled={addingUserLoading}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Surname</Label>
-                      <Input
-                        value={newUser.surname}
-                        onChange={(e) => handleNewUserChange("surname", e.target.value)}
-                        placeholder="Surname"
-                        className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
-                        disabled={addingUserLoading}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Role</Label>
-                      <Select
-                        value={newUser.role}
-                        onValueChange={(value) => handleNewUserChange("role", value)}
-                        disabled={addingUserLoading}
-                      >
-                        <SelectTrigger className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="member">Member</SelectItem>
-                          <SelectItem value="admin">Admin</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Timezone</Label>
-                      <Select
-                        value={newUser.timezone}
-                        onValueChange={(value) => handleNewUserChange("timezone", value)}
-                        disabled={addingUserLoading}
-                      >
-                        <SelectTrigger className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {timezones.map((timezone) => (
-                            <SelectItem key={timezone.value} value={timezone.value}>
-                              {timezone.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      onClick={handleAddUser}
-                      className="bg-[#038a71] hover:bg-[#038a71]/90"
-                      size="sm"
-                      disabled={addingUserLoading}
-                    >
-                      {addingUserLoading ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Creating...
-                        </>
-                      ) : (
-                        "Add User"
-                      )}
-                    </Button>
-                    <Button
-                      onClick={() => setAddingUser(false)}
-                      variant="outline"
-                      size="sm"
-                      disabled={addingUserLoading}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              )}
-
               {/* Active Users List */}
               <div>
                 <h3 className="text-sm font-medium text-[#212121] mb-3">Active Users</h3>

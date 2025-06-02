@@ -41,12 +41,10 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot }: SimpleBo
         console.log("🤖 Accessible bots:", accessibleBots)
         setBots(accessibleBots)
 
-        // If user has only one bot, auto-select it and don't show selector
-        if (accessibleBots.length === 1 && !access.isSuperAdmin) {
-          const singleBot = accessibleBots[0]
-          if (selectedBot !== singleBot.bot_share_name) {
-            onSelectBot(singleBot.bot_share_name)
-          }
+        // If user has bots but no selection, auto-select the first one
+        if (accessibleBots.length > 0 && !selectedBot) {
+          const firstBot = accessibleBots[0]
+          onSelectBot(firstBot.bot_share_name)
         }
       } catch (err) {
         console.error("❌ Exception fetching user access and bots:", err)
@@ -60,7 +58,7 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot }: SimpleBo
 
   // Find the selected bot to show its client_name
   const selectedBotData = bots.find((bot) => bot.bot_share_name === selectedBot)
-  const displayName = selectedBot === null ? "All Bots" : selectedBotData?.client_name || selectedBot
+  const displayName = selectedBotData?.client_name || (bots.length > 0 ? bots[0].client_name : "No bots available")
 
   if (loading) {
     return <div className="px-3 py-2 text-sm text-gray-500">Loading bots...</div>
@@ -97,22 +95,6 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot }: SimpleBo
 
         {isOpen && (
           <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-            {/* All Bots option - only show for superadmin */}
-            {userAccess.isSuperAdmin && (
-              <button
-                onClick={() => {
-                  onSelectBot(null)
-                  setIsOpen(false)
-                }}
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center justify-between ${
-                  selectedBot === null ? "bg-blue-50 text-blue-700" : ""
-                }`}
-              >
-                <span>All Bots</span>
-                {selectedBot === null && <Check className="h-4 w-4" />}
-              </button>
-            )}
-
             {/* Individual bots - show client_name, select by bot_share_name */}
             {bots.map((bot) => (
               <button
