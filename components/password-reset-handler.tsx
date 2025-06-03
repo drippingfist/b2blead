@@ -34,6 +34,9 @@ export default function PasswordResetHandler({ onRecoveryStateChange }: Password
   useEffect(() => {
     const handleRecoveryFlow = async () => {
       try {
+        // Only check for recovery if we're in the browser
+        if (typeof window === "undefined") return
+
         // Check for recovery type in hash on page load
         const params = new URLSearchParams(window.location.hash.substring(1))
         const accessToken = params.get("access_token")
@@ -44,8 +47,10 @@ export default function PasswordResetHandler({ onRecoveryStateChange }: Password
           hasAccessToken: !!accessToken,
           hasRefreshToken: !!refreshToken,
           type,
+          currentPath: window.location.pathname,
         })
 
+        // Only proceed if this is actually a recovery flow with tokens
         if (type === "recovery" && accessToken && refreshToken) {
           console.log("🔑 Recovery flow detected, setting session...")
           updateRecoveryState(true)
@@ -67,6 +72,9 @@ export default function PasswordResetHandler({ onRecoveryStateChange }: Password
 
           // Clear the hash from the URL to prevent issues on refresh
           window.history.replaceState({}, document.title, window.location.pathname)
+        } else {
+          // Not a recovery flow, make sure we're not showing recovery UI
+          updateRecoveryState(false)
         }
       } catch (error: any) {
         console.error("❌ Error setting up recovery session:", error)
