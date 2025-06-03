@@ -32,39 +32,61 @@ export default function PasswordResetHandler({ onRecoveryStateChange }: Password
   }
 
   useEffect(() => {
-    // Check for recovery type in hash on page load first
-    const checkInitialHash = () => {
-      const params = new URLSearchParams(window.location.hash.substring(1))
-      if (params.get("type") === "recovery") {
-        console.log("🔑 Recovery flow detected on initial load")
-        updateRecoveryState(true)
-        setMessage("Please set your new password.")
-        // Clear the hash from the URL to prevent issues on refresh
-        window.history.replaceState({}, document.title, window.location.pathname)
+    const handleRecoveryFlow = async () => {
+      try {
+        // Check for recovery type in hash on page load
+        const params = new URLSearchParams(window.location.hash.substring(1))
+        const accessToken = params.get("access_token")
+        const refreshToken = params.get("refresh_token")
+        const type = params.get("type")
+
+        console.log("🔑 Checking recovery flow:", {
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken,
+          type,
+        })
+
+        if (type === "recovery" && accessToken && refreshToken) {
+          console.log("🔑 Recovery flow detected, setting session...")
+          updateRecoveryState(true)
+          setMessage("Setting up your session...")
+
+          // Set the session using the tokens from the URL
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          })
+
+          if (error) {
+            throw error
+          }
+
+          console.log("✅ Session established successfully:", data.session?.user?.email)
+          setMessage("Please set your new password.")
+          setIsError(false)
+
+          // Clear the hash from the URL to prevent issues on refresh
+          window.history.replaceState({}, document.title, window.location.pathname)
+        }
+      } catch (error: any) {
+        console.error("❌ Error setting up recovery session:", error)
+        setMessage(`Error setting up session: ${error.message}`)
+        setIsError(true)
+        updateRecoveryState(true) // Still show the form but with error
       }
     }
 
-    // Check immediately
-    checkInitialHash()
+    // Run the recovery flow check
+    handleRecoveryFlow()
 
-    // This listener is crucial for handling auth state changes,
-    // including session updates from recovery links
+    // Also listen for auth state changes
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log("🔐 Auth state change:", event, session ? "Session exists" : "No session")
 
-      if (event === "SIGNED_IN" && session) {
-        // Check if this is a recovery session
-        const user = session.user
-        if (user && user.recovery_sent_at) {
-          console.log("🔑 Recovery session detected via auth state change")
-          updateRecoveryState(true)
-          setMessage("Please set your new password.")
-          setIsError(false)
-        } else {
-          // Normal sign-in flow, redirect to dashboard
-          console.log("👤 Normal sign-in detected, redirecting to dashboard")
-          router.push("/")
-        }
+      if (event === "SIGNED_IN" && session && !isRecovery) {
+        // Normal sign-in flow, redirect to dashboard
+        console.log("👤 Normal sign-in detected, redirecting to dashboard")
+        router.push("/")
       } else if (event === "SIGNED_OUT") {
         updateRecoveryState(false)
         setMessage("")
@@ -74,7 +96,7 @@ export default function PasswordResetHandler({ onRecoveryStateChange }: Password
     return () => {
       authListener.subscription.unsubscribe()
     }
-  }, [router, onRecoveryStateChange])
+  }, [router, onRecoveryStateChange, isRecovery])
 
   const handlePasswordReset = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -113,9 +135,9 @@ export default function PasswordResetHandler({ onRecoveryStateChange }: Password
         throw new Error("No active session found. Please try clicking the reset link again.")
       }
 
-      console.log("✅ Session found, updating password...")
+      console.log("✅ Session found, updating password for:", session.user.email)
 
-      // The `supabase.auth.updateUser` method will use the current session
+      // Update the password
       const { error } = await supabase.auth.updateUser({
         password: newPassword,
       })
