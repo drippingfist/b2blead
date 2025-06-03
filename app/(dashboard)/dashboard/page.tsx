@@ -11,6 +11,7 @@ interface DashboardMetrics {
   totalChats: number
   totalCallbacks: number
   callbackPercentage: number
+  droppedCallbacks: number
   averageSentiment: number
   averageResponseTime: number
   sentimentDistribution: { score: number; count: number }[]
@@ -18,6 +19,7 @@ interface DashboardMetrics {
     totalChats: number
     totalCallbacks: number
     callbackPercentage: number
+    droppedCallbacks: number
     averageSentiment: number
     averageResponseTime: number
   }
@@ -30,6 +32,7 @@ export default function Dashboard() {
     totalChats: 0,
     totalCallbacks: 0,
     callbackPercentage: 0,
+    droppedCallbacks: 0,
     averageSentiment: 0,
     averageResponseTime: 0,
     sentimentDistribution: [],
@@ -37,6 +40,7 @@ export default function Dashboard() {
       totalChats: 0,
       totalCallbacks: 0,
       callbackPercentage: 0,
+      droppedCallbacks: 0,
       averageSentiment: 0,
       averageResponseTime: 0,
     },
@@ -176,7 +180,7 @@ export default function Dashboard() {
       </div>
 
       {/* Panel #1 - Core Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
         <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
           <div className="flex items-center justify-between">
             <div>
@@ -240,6 +244,24 @@ export default function Dashboard() {
             </div>
           </div>
           <p className="text-sm text-[#616161] mt-1">Threads requesting callbacks</p>
+        </div>
+
+        <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-medium text-[#212121]">Dropped Callbacks</h2>
+              <p className="text-2xl md:text-3xl font-bold mt-2 text-red-600">{metrics.droppedCallbacks}</p>
+            </div>
+            <div
+              className={`flex items-center text-sm ${getChangeColor(metrics.droppedCallbacks, metrics.previousPeriodComparison.droppedCallbacks)}`}
+            >
+              {getChangeIcon(metrics.droppedCallbacks, metrics.previousPeriodComparison.droppedCallbacks)}
+              <span className="ml-1">
+                {formatPercentageChange(metrics.droppedCallbacks, metrics.previousPeriodComparison.droppedCallbacks)}
+              </span>
+            </div>
+          </div>
+          <p className="text-sm text-[#616161] mt-1">Requests without callbacks</p>
         </div>
       </div>
 

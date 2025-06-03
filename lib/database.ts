@@ -665,10 +665,65 @@ export async function getDashboardMetrics(
       previousResponseTimeData.length
     : 0
 
+  // Calculate dropped callbacks (threads with callback=true but no actual callback record)
+  let currentDroppedCallbacks = 0
+  let previousDroppedCallbacks = 0
+
+  if (currentThreads && currentThreads.length > 0) {
+    const currentCallbackThreadIds = currentThreads.filter((t) => t.callback === true).map((t) => t.id)
+
+    if (currentCallbackThreadIds.length > 0) {
+      let existingCurrentCallbacksQuery = supabase
+        .from("callbacks")
+        .select("thread_id", { count: "exact", head: true })
+        .in("thread_id", currentCallbackThreadIds)
+
+      if (botShareName) {
+        existingCurrentCallbacksQuery = existingCurrentCallbacksQuery.eq("bot_share_name", botShareName)
+      }
+
+      const { count: existingCurrentCallbacks } = await existingCurrentCallbacksQuery
+      currentDroppedCallbacks = currentCallbackThreadIds.length - (existingCurrentCallbacks || 0)
+    }
+  }
+
+  // Calculate previous period dropped callbacks
+  if (previousStartDate && previousEndDate) {
+    let previousCallbackThreadsFullQuery = supabase
+      .from("threads")
+      .select("id")
+      .eq("callback", true)
+      .gte("created_at", previousStartDate)
+      .lte("created_at", previousEndDate)
+
+    if (botShareName) {
+      previousCallbackThreadsFullQuery = previousCallbackThreadsFullQuery.eq("bot_share_name", botShareName)
+    }
+
+    const { data: previousCallbackThreadsData } = await previousCallbackThreadsFullQuery
+
+    if (previousCallbackThreadsData && previousCallbackThreadsData.length > 0) {
+      const previousCallbackThreadIds = previousCallbackThreadsData.map((t) => t.id)
+
+      let existingPreviousCallbacksQuery = supabase
+        .from("callbacks")
+        .select("thread_id", { count: "exact", head: true })
+        .in("thread_id", previousCallbackThreadIds)
+
+      if (botShareName) {
+        existingPreviousCallbacksQuery = existingPreviousCallbacksQuery.eq("bot_share_name", botShareName)
+      }
+
+      const { count: existingPreviousCallbacks } = await existingPreviousCallbacksQuery
+      previousDroppedCallbacks = previousCallbackThreadIds.length - (existingPreviousCallbacks || 0)
+    }
+  }
+
   return {
     totalChats,
     totalCallbacks,
     callbackPercentage,
+    droppedCallbacks: currentDroppedCallbacks,
     averageSentiment,
     averageResponseTime,
     sentimentDistribution,
@@ -676,6 +731,7 @@ export async function getDashboardMetrics(
       totalChats: previousTotalChats,
       totalCallbacks: previousTotalCallbacks,
       callbackPercentage: previousCallbackPercentage,
+      droppedCallbacks: previousDroppedCallbacks,
       averageSentiment: previousAverageSentiment,
       averageResponseTime: previousAverageResponseTime,
     },
