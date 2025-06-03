@@ -32,6 +32,12 @@ export default function PasswordResetHandler({ onRecoveryStateChange }: Password
   }
 
   useEffect(() => {
+    // If we're on the forgot password page, don't do anything
+    if (typeof window !== "undefined" && window.location.pathname === "/auth/forgot-password") {
+      console.log("🔄 On forgot password page, skipping recovery flow check")
+      return
+    }
+
     const handleRecoveryFlow = async () => {
       try {
         // Only check for recovery if we're in the browser
