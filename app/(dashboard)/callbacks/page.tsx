@@ -1,13 +1,27 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { getCallbacksClient, getCallbackStatsClient } from "@/lib/database"
+import { getCallbacksClient, getCallbackStatsClientWithPeriod, analyzeCallbackColumns } from "@/lib/database"
 import CallbacksView from "@/components/callbacks-view"
 
 export default function CallbacksPage() {
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
+  const [selectedPeriod, setSelectedPeriod] = useState<string>("last30days")
   const [callbacks, setCallbacks] = useState<any[]>([])
-  const [stats, setStats] = useState<any>({ totalCallbacks: 0, recentCallbacks: 0, topCountries: [] })
+  const [stats, setStats] = useState<any>({
+    totalCallbacks: 0,
+    recentCallbacks: 0,
+    callbacksDropped: 0,
+    conversionRate: 0,
+    totalThreads: 0,
+  })
+  const [columnConfig, setColumnConfig] = useState({
+    hasCompany: false,
+    hasCountry: false,
+    hasUrl: false,
+    hasPhone: false,
+    hasRevenue: false,
+  })
   const [loading, setLoading] = useState(true)
 
   // Load selected bot from localStorage
@@ -32,12 +46,14 @@ export default function CallbacksPage() {
     const fetchData = async () => {
       setLoading(true)
       try {
-        const [fetchedCallbacks, fetchedStats] = await Promise.all([
+        const [fetchedCallbacks, fetchedStats, columnAnalysis] = await Promise.all([
           getCallbacksClient(100, selectedBot),
-          getCallbackStatsClient(selectedBot),
+          getCallbackStatsClientWithPeriod(selectedBot, selectedPeriod as any),
+          analyzeCallbackColumns(selectedBot),
         ])
         setCallbacks(fetchedCallbacks)
         setStats(fetchedStats)
+        setColumnConfig(columnAnalysis)
       } catch (error) {
         console.error("Error fetching callback data:", error)
       } finally {
@@ -46,7 +62,11 @@ export default function CallbacksPage() {
     }
 
     fetchData()
-  }, [selectedBot])
+  }, [selectedBot, selectedPeriod])
+
+  const handlePeriodChange = (period: string) => {
+    setSelectedPeriod(period)
+  }
 
   if (loading) {
     return (
@@ -56,5 +76,13 @@ export default function CallbacksPage() {
     )
   }
 
-  return <CallbacksView initialCallbacks={callbacks} stats={stats} />
+  return (
+    <CallbacksView
+      initialCallbacks={callbacks}
+      stats={stats}
+      columnConfig={columnConfig}
+      onPeriodChange={handlePeriodChange}
+      selectedPeriod={selectedPeriod}
+    />
+  )
 }

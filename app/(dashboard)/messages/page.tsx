@@ -12,8 +12,8 @@ export default async function MessagesPage({
   const selectedDate = searchParams.date || null
   const bots = await getAccessibleBotsClient()
 
-  // Get the first 10 threads with their messages for the selected bot
-  const threadsWithMessages = await getRecentThreadsWithMessages(selectedBot, 10, 0, selectedDate)
+  // Changed from 10 to 2 threads for initial load
+  const threadsWithMessages = await getRecentThreadsWithMessages(selectedBot, 2, 0, selectedDate)
 
   return (
     <Suspense fallback={<div>Loading messages...</div>}>

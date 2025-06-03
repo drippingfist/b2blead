@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Search, Star } from "lucide-react"
+import { Search, Star, Calendar } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { useRouter, useSearchParams } from "next/navigation"
 
@@ -24,11 +24,22 @@ export function MessagesView({
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [cursor, setCursor] = useState<string | null>(null)
+  const [oldestVisibleDate, setOldestVisibleDate] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const isMountedRef = useRef(true) // Track if component is mounted
+  const loadTriggerRef = useRef<HTMLDivElement>(null) // Ref for intersection observer
+  const threadRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  // Set isMountedRef to false when component unmounts
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   // Auto-scroll to bottom on initial load
   useEffect(() => {
@@ -57,12 +68,24 @@ export function MessagesView({
       const oldestThread = initialThreads[0] // First thread should be oldest
       setCursor(oldestThread.created_at)
       console.log("🎯 Setting cursor to oldest thread:", oldestThread.created_at)
+
+      // Set initial visible date to the most recent thread
+      const mostRecentThread = initialThreads[initialThreads.length - 1]
+      setOldestVisibleDate(mostRecentThread.created_at)
     } else {
       setCursor(null)
     }
   }, [initialThreads])
 
-  // Load more threads function
+  // Update oldest visible date when new threads are loaded
+  useEffect(() => {
+    if (threadsWithMessages.length > 0) {
+      const oldestThread = threadsWithMessages[0] // First thread should be oldest
+      setOldestVisibleDate(oldestThread.created_at)
+    }
+  }, [threadsWithMessages])
+
+  // Load more threads function - now loads 20 threads at a time
   const loadMoreThreads = useCallback(async () => {
     if (loading || !hasMore || !cursor) {
       console.log("⏸️ Skipping load more:", { loading, hasMore, cursor: !!cursor })
@@ -76,20 +99,26 @@ export function MessagesView({
       // Build the API URL
       const params = new URLSearchParams({
         cursor: cursor,
-        limit: "10",
+        limit: "20",
       })
 
       if (selectedBot) {
         params.append("bot", selectedBot)
       }
 
-      const response = await fetch(`/api/messages?${params.toString()}`)
+      const controller = new AbortController()
+      const signal = controller.signal
+
+      const response = await fetch(`/api/messages?${params.toString()}`, { signal })
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
       const newThreads = await response.json()
+
+      // Check if component is still mounted before updating state
+      if (!isMountedRef.current) return
 
       console.log(`📦 Loaded ${newThreads.length} new threads`)
       if (newThreads.length > 0) {
@@ -117,39 +146,47 @@ export function MessagesView({
         setCursor(newOldestThread.created_at)
         console.log("🎯 Updated cursor to:", newOldestThread.created_at)
 
-        // If we got less than 10, we've reached the end
-        if (newThreads.length < 10) {
+        // If we got less than 20, we've reached the end
+        if (newThreads.length < 20) {
           console.log("🏁 Reached end of data (partial batch)")
           setHasMore(false)
         }
       }
     } catch (error) {
-      console.error("❌ Error loading more threads:", error)
-      setHasMore(false) // Stop trying to load more on error
+      // Only log error if it's not an abort error
+      if (error.name !== "AbortError") {
+        console.error("❌ Error loading more threads:", error)
+        if (isMountedRef.current) {
+          setHasMore(false) // Stop trying to load more on error
+        }
+      }
     } finally {
-      setLoading(false)
+      if (isMountedRef.current) {
+        setLoading(false)
+      }
     }
   }, [loading, hasMore, cursor, selectedBot])
 
-  // Scroll event handler for infinite scroll
+  // Use Intersection Observer for infinite scroll
   useEffect(() => {
-    const scrollContainer = scrollContainerRef.current
-    if (!scrollContainer) return
+    if (!loadTriggerRef.current) return
 
-    const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = scrollContainer
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries
+        if (entry.isIntersecting && hasMore && !loading) {
+          console.log("🔍 Load trigger element is visible!")
+          loadMoreThreads()
+        }
+      },
+      { threshold: 0.1 }, // Trigger when 10% of the element is visible
+    )
 
-      // Check if user has scrolled past halfway up
-      const scrollPercentage = scrollTop / (scrollHeight - clientHeight)
+    observer.observe(loadTriggerRef.current)
 
-      if (scrollPercentage < 0.5 && hasMore && !loading) {
-        console.log("🔄 Triggering infinite scroll at", Math.round(scrollPercentage * 100) + "%")
-        loadMoreThreads()
-      }
+    return () => {
+      observer.disconnect()
     }
-
-    scrollContainer.addEventListener("scroll", handleScroll)
-    return () => scrollContainer.removeEventListener("scroll", handleScroll)
   }, [loadMoreThreads, hasMore, loading])
 
   const handleStarMessage = (messageId: string) => {
@@ -176,10 +213,45 @@ export function MessagesView({
     return messagePreviewMatch || messagesMatch
   })
 
+  // Format the date range indicator
+  const formatDateRange = (oldestDateString: string | null) => {
+    if (!oldestDateString) return ""
+
+    const oldestDate = new Date(oldestDateString)
+    const today = new Date()
+
+    // Format the oldest date
+    const formatDate = (date: Date) => {
+      const day = date.getDate()
+      const month = date.toLocaleDateString("en-US", { month: "long" })
+
+      // Add ordinal suffix to day
+      const getOrdinalSuffix = (day: number) => {
+        if (day > 3 && day < 21) return "th"
+        switch (day % 10) {
+          case 1:
+            return "st"
+          case 2:
+            return "nd"
+          case 3:
+            return "rd"
+          default:
+            return "th"
+        }
+      }
+
+      return `${day}${getOrdinalSuffix(day)} ${month}`
+    }
+
+    const formattedOldestDate = formatDate(oldestDate)
+
+    return `${formattedOldestDate} - Today`
+  }
+
   return (
     <div className="h-full flex flex-col bg-[#f9fafc]">
-      {/* Header */}
-      <div className="p-4 md:p-6 border-b border-[#e0e0e0] bg-white">
+      {/* Fixed Header */}
+      <div className="sticky top-0 z-10 p-4 md:p-6 border-b border-[#e0e0e0] bg-white shadow-sm">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-[#212121]">Messages</h1>
           {selectedDate ? (
@@ -208,37 +280,56 @@ export function MessagesView({
         </div>
 
         {/* Search Bar */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#616161] h-4 w-4" />
-          <Input
-            placeholder="Search messages..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 bg-white border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
-          />
+        <div className="flex justify-center">
+          <div className="relative w-1/2">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#616161] h-4 w-4" />
+            <Input
+              placeholder="Search messages..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 bg-white border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
+            />
+          </div>
         </div>
+
+        {/* Date Range Indicator */}
+        {oldestVisibleDate && (
+          <div className="flex justify-center mt-4">
+            <div className="flex items-center bg-[#f5f5f5] text-[#616161] px-3 py-1 rounded-full text-sm">
+              <Calendar className="h-4 w-4 mr-2" />
+              <span>{formatDateRange(oldestVisibleDate)}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Messages Container with Infinite Scroll */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-[15%] py-4 space-y-4">
+        {/* Intersection Observer Trigger Element */}
+        <div ref={loadTriggerRef} className="h-10 -mt-2 flex items-center justify-center">
+          {hasMore && !loading && <div className="text-xs text-gray-400">Scroll to load more</div>}
+        </div>
+
         {/* Loading indicator at top */}
         {loading && (
           <div className="text-center py-4">
-            <div className="text-[#616161]">Loading more messages...</div>
+            <div className="text-[#616161]">Loading more threads...</div>
           </div>
         )}
 
-        {/* Debug info */}
-        {process.env.NODE_ENV === "development" && (
-          <div className="text-center py-2 text-xs text-gray-500">
-            Showing {filteredThreads.length} threads | Cursor: {cursor ? new Date(cursor).toLocaleDateString() : "None"}{" "}
-            | Has More: {hasMore ? "Yes" : "No"}
-          </div>
-        )}
-
-        {filteredThreads.map((thread) => (
-          <div key={thread.id} className="space-y-4">
-            {/* Thread Header */}
+        {filteredThreads.map((thread, index) => (
+          <div
+            key={thread.id}
+            className="space-y-4"
+            ref={(el) => {
+              if (el) {
+                threadRefs.current.set(thread.id, el)
+                el.setAttribute("data-thread-id", thread.id)
+                el.setAttribute("data-thread-date", thread.created_at)
+              }
+            }}
+          >
+            {/* Thread Header with index for debugging */}
             <div className="text-center py-2">
               <div className="inline-block bg-[#f5f5f5] text-[#616161] px-3 py-1 rounded-full text-xs">
                 {new Date(thread.created_at).toLocaleDateString("en-US", {
@@ -260,11 +351,11 @@ export function MessagesView({
             )}
 
             {/* Callback Information */}
-            {thread.callback && (thread.user_name || thread.user_email) && (
+            {thread.callback === true && (
               <div className="text-center py-2">
                 <div className="inline-block bg-orange-50 text-orange-800 px-4 py-2 rounded-lg text-sm">
-                  <div className="font-medium">{thread.user_name}</div>
-                  <div className="text-xs">{thread.user_email}</div>
+                  <div className="font-medium">{thread.callbackData?.user_name || "Callback Requested"}</div>
+                  {thread.callbackData?.user_email && <div className="text-xs">{thread.callbackData.user_email}</div>}
                 </div>
               </div>
             )}
@@ -272,7 +363,6 @@ export function MessagesView({
             {/* Messages */}
             {thread.messages?.map((message: any) => {
               const isUser = ["user", "suggested_button", "menu_button"].includes(message.role)
-              const isPresetMessage = ["suggested_button", "menu_button"].includes(message.role)
               const isStarred = starredMessages.has(message.id)
 
               return (
@@ -289,18 +379,14 @@ export function MessagesView({
 
                   <div className={`flex flex-col ${isUser ? "items-start" : "items-end"} max-w-[60%] min-w-[120px]`}>
                     {/* Message Label */}
-                    {isUser && (
-                      <div className="text-xs text-[#616161] mb-1 px-2">
-                        {isPresetMessage ? "Preset message" : "USER"}
-                      </div>
-                    )}
+                    {isUser && <div className="text-xs text-[#616161] mb-1 px-2">{message.role}</div>}
 
                     {/* Message Bubble */}
                     <div
                       className={`relative w-full rounded-2xl px-4 py-3 shadow-sm ${
                         isUser
-                          ? isPresetMessage
-                            ? "bg-[#effdf5] border border-[#e0e0e0] rounded-bl-md"
+                          ? message.role === "user"
+                            ? "bg-white border border-[#e0e0e0] rounded-bl-md"
                             : "bg-[#effdf5] border border-[#e0e0e0] rounded-bl-md"
                           : "bg-[#424242] text-white rounded-br-md"
                       }`}

@@ -86,6 +86,8 @@ export interface Callback {
   ibdata?: string
   user_ip?: string
   user_cb_message?: string
+  sentiment_score?: number
+  sentiment_justification?: string // Add sentiment justification
 }
 
 // Get ALL bots from database
@@ -126,9 +128,16 @@ export async function getThreadsClient(limit = 50, botShareName?: string | null)
   return data || []
 }
 
-// Get callbacks - filter by bot_share_name if provided
+// Get callbacks with sentiment scores and justification - filter by bot_share_name if provided
 export async function getCallbacksClient(limit = 50, botShareName?: string | null): Promise<Callback[]> {
-  let query = supabase.from("callbacks").select("*").order("created_at", { ascending: false }).limit(limit)
+  let query = supabase
+    .from("callbacks")
+    .select(`
+      *,
+      threads!inner(sentiment_score, sentiment_justification)
+    `)
+    .order("created_at", { ascending: false })
+    .limit(limit)
 
   // If a specific bot is selected, filter by that bot_share_name
   if (botShareName) {
@@ -142,7 +151,15 @@ export async function getCallbacksClient(limit = 50, botShareName?: string | nul
     return []
   }
 
-  return data || []
+  // Transform the data to include sentiment data at the top level
+  const transformedData =
+    data?.map((callback: any) => ({
+      ...callback,
+      sentiment_score: callback.threads?.sentiment_score || null,
+      sentiment_justification: callback.threads?.sentiment_justification || null,
+    })) || []
+
+  return transformedData
 }
 
 // Get current user's email
@@ -193,46 +210,137 @@ export async function getThreadStatsClient(botShareName?: string | null) {
   }
 }
 
-// Get callback stats - filter by bot_share_name if provided
-export async function getCallbackStatsClient(botShareName?: string | null) {
-  let totalQuery = supabase.from("callbacks").select("*", { count: "exact", head: true })
-  let recentQuery = supabase.from("callbacks").select("*", { count: "exact", head: true })
-  let countryQuery = supabase.from("callbacks").select("user_country")
+// Add this new function to replace getCallbackStatsClient
+export async function getCallbackStatsClientWithPeriod(
+  botShareName?: string | null,
+  period: "today" | "last7days" | "last30days" | "last90days" | "alltime" = "last30days",
+) {
+  // Calculate date range based on period
+  let startDate: string | null = null
+  const now = new Date()
 
-  if (botShareName) {
-    totalQuery = totalQuery.eq("bot_share_name", botShareName)
-    recentQuery = recentQuery.eq("bot_share_name", botShareName)
-    countryQuery = countryQuery.eq("bot_share_name", botShareName)
+  switch (period) {
+    case "today":
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+      break
+    case "last7days":
+      const sevenDaysAgo = new Date(now)
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+      startDate = sevenDaysAgo.toISOString()
+      break
+    case "last30days":
+      const thirtyDaysAgo = new Date(now)
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      startDate = thirtyDaysAgo.toISOString()
+      break
+    case "last90days":
+      const ninetyDaysAgo = new Date(now)
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+      startDate = ninetyDaysAgo.toISOString()
+      break
+    case "alltime":
+      startDate = null
+      break
   }
 
-  // Get callbacks from last 7 days
-  const sevenDaysAgo = new Date()
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-  recentQuery = recentQuery.gte("created_at", sevenDaysAgo.toISOString())
+  // Build queries with date filtering
+  let totalCallbacksQuery = supabase.from("callbacks").select("*", { count: "exact", head: true })
+  let totalThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
+  let callbackRequestsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
+  let callbacksDroppedQuery = supabase.from("threads").select("id")
 
-  // Get country data
-  countryQuery = countryQuery.not("user_country", "is", null)
+  // Apply bot filter if provided
+  if (botShareName) {
+    totalCallbacksQuery = totalCallbacksQuery.eq("bot_share_name", botShareName)
+    totalThreadsQuery = totalThreadsQuery.eq("bot_share_name", botShareName)
+    callbackRequestsQuery = callbackRequestsQuery.eq("bot_share_name", botShareName)
+    callbacksDroppedQuery = callbacksDroppedQuery.eq("bot_share_name", botShareName)
+  }
 
-  const [{ count: totalCallbacks }, { count: recentCallbacks }, { data: countryData }] = await Promise.all([
-    totalQuery,
-    recentQuery,
-    countryQuery,
-  ])
+  // Apply date filter if not all time
+  if (startDate) {
+    totalCallbacksQuery = totalCallbacksQuery.gte("created_at", startDate)
+    totalThreadsQuery = totalThreadsQuery.gte("created_at", startDate)
+    callbackRequestsQuery = callbackRequestsQuery.gte("created_at", startDate)
+    callbacksDroppedQuery = callbacksDroppedQuery.gte("created_at", startDate)
+  }
 
-  const countryStats = countryData?.reduce((acc: { [key: string]: number }, callback) => {
-    const country = callback.user_country || "Unknown"
-    acc[country] = (acc[country] || 0) + 1
-    return acc
-  }, {})
+  // Add specific filters
+  callbackRequestsQuery = callbackRequestsQuery.eq("callback", true)
+  callbacksDroppedQuery = callbacksDroppedQuery.eq("callback", true)
 
-  const topCountries = Object.entries(countryStats || {})
-    .sort(([, a], [, b]) => (b as number) - (a as number))
-    .slice(0, 5)
+  const [
+    { count: totalCallbacks },
+    { count: totalThreads },
+    { count: callbackRequests },
+    { data: threadsWithCallbacks },
+  ] = await Promise.all([totalCallbacksQuery, totalThreadsQuery, callbackRequestsQuery, callbacksDroppedQuery])
+
+  // Calculate callbacks dropped (threads with callback=true but no actual callback record)
+  let callbacksDropped = 0
+  if (threadsWithCallbacks && threadsWithCallbacks.length > 0) {
+    const threadIds = threadsWithCallbacks.map((t) => t.id)
+    let existingCallbacksQuery = supabase
+      .from("callbacks")
+      .select("thread_id", { count: "exact", head: true })
+      .in("thread_id", threadIds)
+
+    if (botShareName) {
+      existingCallbacksQuery = existingCallbacksQuery.eq("bot_share_name", botShareName)
+    }
+
+    const { count: existingCallbacks } = await existingCallbacksQuery
+    callbacksDropped = threadsWithCallbacks.length - (existingCallbacks || 0)
+  }
+
+  // Calculate conversion rate
+  const conversionRate =
+    totalThreads && totalThreads > 0 ? Math.round(((callbackRequests || 0) / totalThreads) * 100) : 0
 
   return {
     totalCallbacks: totalCallbacks || 0,
-    recentCallbacks: recentCallbacks || 0,
-    topCountries,
+    recentCallbacks: callbackRequests || 0,
+    callbacksDropped,
+    conversionRate,
+    totalThreads: totalThreads || 0,
+  }
+}
+
+// Add function to analyze callback data structure
+export async function analyzeCallbackColumns(botShareName?: string | null): Promise<{
+  hasCompany: boolean
+  hasCountry: boolean
+  hasUrl: boolean
+  hasPhone: boolean
+  hasRevenue: boolean
+}> {
+  let query = supabase
+    .from("callbacks")
+    .select("user_company, user_country, user_url, user_phone, user_revenue")
+    .limit(100)
+
+  if (botShareName) {
+    query = query.eq("bot_share_name", botShareName)
+  }
+
+  const { data } = await query
+
+  if (!data || data.length === 0) {
+    return {
+      hasCompany: false,
+      hasCountry: false,
+      hasUrl: false,
+      hasPhone: false,
+      hasRevenue: false,
+    }
+  }
+
+  return {
+    hasCompany: data.some((cb) => cb.user_company),
+    hasCountry: data.some((cb) => cb.user_country),
+    hasUrl: data.some((cb) => cb.user_url),
+    hasPhone: data.some((cb) => cb.user_phone),
+    hasRevenue: data.some((cb) => cb.user_revenue),
   }
 }
 
@@ -374,5 +482,202 @@ export async function getAccessibleBotsClient(): Promise<Bot[]> {
   } catch (error) {
     console.error("Exception in getAccessibleBotsClient:", error)
     return []
+  }
+}
+
+// Get comprehensive dashboard metrics with period comparison
+export async function getDashboardMetrics(
+  botShareName?: string | null,
+  period: "today" | "last7days" | "last30days" | "alltime" | "custom" = "last30days",
+) {
+  // Calculate date ranges for current and previous periods
+  const now = new Date()
+  let currentStartDate: string | null = null
+  let previousStartDate: string | null = null
+  let previousEndDate: string | null = null
+
+  switch (period) {
+    case "today":
+      currentStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+      // Previous period is yesterday
+      const yesterday = new Date(now)
+      yesterday.setDate(yesterday.getDate() - 1)
+      previousStartDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate()).toISOString()
+      previousEndDate = new Date(
+        yesterday.getFullYear(),
+        yesterday.getMonth(),
+        yesterday.getDate(),
+        23,
+        59,
+        59,
+      ).toISOString()
+      break
+    case "last7days":
+      const sevenDaysAgo = new Date(now)
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+      currentStartDate = sevenDaysAgo.toISOString()
+      // Previous period is 7 days before that
+      const fourteenDaysAgo = new Date(now)
+      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
+      previousStartDate = fourteenDaysAgo.toISOString()
+      previousEndDate = sevenDaysAgo.toISOString()
+      break
+    case "last30days":
+      const thirtyDaysAgo = new Date(now)
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      currentStartDate = thirtyDaysAgo.toISOString()
+      // Previous period is 30 days before that
+      const sixtyDaysAgo = new Date(now)
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
+      previousStartDate = sixtyDaysAgo.toISOString()
+      previousEndDate = thirtyDaysAgo.toISOString()
+      break
+    case "alltime":
+      currentStartDate = null
+      previousStartDate = null
+      previousEndDate = null
+      break
+  }
+
+  // Build current period queries
+  let currentThreadsQuery = supabase.from("threads").select("*")
+  let currentCallbacksQuery = supabase.from("callbacks").select("*", { count: "exact", head: true })
+  let currentCallbackThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
+  let currentSentimentQuery = supabase.from("threads").select("sentiment_score")
+  let currentResponseTimeQuery = supabase.from("threads").select("mean_response_time")
+
+  // Build previous period queries
+  let previousThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
+  let previousCallbacksQuery = supabase.from("callbacks").select("*", { count: "exact", head: true })
+  let previousCallbackThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
+  let previousSentimentQuery = supabase.from("threads").select("sentiment_score")
+  let previousResponseTimeQuery = supabase.from("threads").select("mean_response_time")
+
+  // Apply bot filter if provided
+  if (botShareName) {
+    currentThreadsQuery = currentThreadsQuery.eq("bot_share_name", botShareName)
+    currentCallbacksQuery = currentCallbacksQuery.eq("bot_share_name", botShareName)
+    currentCallbackThreadsQuery = currentCallbackThreadsQuery.eq("bot_share_name", botShareName)
+    currentSentimentQuery = currentSentimentQuery.eq("bot_share_name", botShareName)
+    currentResponseTimeQuery = currentResponseTimeQuery.eq("bot_share_name", botShareName)
+
+    previousThreadsQuery = previousThreadsQuery.eq("bot_share_name", botShareName)
+    previousCallbacksQuery = previousCallbacksQuery.eq("bot_share_name", botShareName)
+    previousCallbackThreadsQuery = previousCallbackThreadsQuery.eq("bot_share_name", botShareName)
+    previousSentimentQuery = previousSentimentQuery.eq("bot_share_name", botShareName)
+    previousResponseTimeQuery = previousResponseTimeQuery.eq("bot_share_name", botShareName)
+  }
+
+  // Apply date filters for current period
+  if (currentStartDate) {
+    currentThreadsQuery = currentThreadsQuery.gte("created_at", currentStartDate)
+    currentCallbacksQuery = currentCallbacksQuery.gte("created_at", currentStartDate)
+    currentCallbackThreadsQuery = currentCallbackThreadsQuery.gte("created_at", currentStartDate)
+    currentSentimentQuery = currentSentimentQuery.gte("created_at", currentStartDate)
+    currentResponseTimeQuery = currentResponseTimeQuery.gte("created_at", currentStartDate)
+  }
+
+  // Apply date filters for previous period
+  if (previousStartDate && previousEndDate) {
+    previousThreadsQuery = previousThreadsQuery.gte("created_at", previousStartDate).lte("created_at", previousEndDate)
+    previousCallbacksQuery = previousCallbacksQuery
+      .gte("created_at", previousStartDate)
+      .lte("created_at", previousEndDate)
+    previousCallbackThreadsQuery = previousCallbackThreadsQuery
+      .gte("created_at", previousStartDate)
+      .lte("created_at", previousEndDate)
+    previousSentimentQuery = previousSentimentQuery
+      .gte("created_at", previousStartDate)
+      .lte("created_at", previousEndDate)
+    previousResponseTimeQuery = previousResponseTimeQuery
+      .gte("created_at", previousStartDate)
+      .lte("created_at", previousEndDate)
+  }
+
+  // Add specific filters
+  currentCallbackThreadsQuery = currentCallbackThreadsQuery.eq("callback", true)
+  previousCallbackThreadsQuery = previousCallbackThreadsQuery.eq("callback", true)
+
+  currentSentimentQuery = currentSentimentQuery.not("sentiment_score", "is", null)
+  previousSentimentQuery = previousSentimentQuery.not("sentiment_score", "is", null)
+
+  currentResponseTimeQuery = currentResponseTimeQuery.not("mean_response_time", "is", null)
+  previousResponseTimeQuery = previousResponseTimeQuery.not("mean_response_time", "is", null)
+
+  // Execute all queries
+  const [
+    { data: currentThreads },
+    { count: currentCallbacks },
+    { count: currentCallbackThreads },
+    { data: currentSentimentData },
+    { data: currentResponseTimeData },
+    { count: previousThreads },
+    { count: previousCallbacks },
+    { count: previousCallbackThreads },
+    { data: previousSentimentData },
+    { data: previousResponseTimeData },
+  ] = await Promise.all([
+    currentThreadsQuery,
+    currentCallbacksQuery,
+    currentCallbackThreadsQuery,
+    currentSentimentQuery,
+    currentResponseTimeQuery,
+    previousThreadsQuery,
+    previousCallbacksQuery,
+    previousCallbackThreadsQuery,
+    previousSentimentQuery,
+    previousResponseTimeQuery,
+  ])
+
+  // Calculate current period metrics
+  const totalChats = currentThreads?.length || 0
+  const totalCallbacks = currentCallbacks || 0
+  const callbackPercentage = totalChats > 0 ? ((currentCallbackThreads || 0) / totalChats) * 100 : 0
+
+  const averageSentiment = currentSentimentData?.length
+    ? currentSentimentData.reduce((sum, thread) => sum + (thread.sentiment_score || 0), 0) / currentSentimentData.length
+    : 0
+
+  const averageResponseTime = currentResponseTimeData?.length
+    ? currentResponseTimeData.reduce((sum, thread) => sum + (thread.mean_response_time || 0), 0) /
+      currentResponseTimeData.length
+    : 0
+
+  // Calculate sentiment distribution
+  const sentimentDistribution = [1, 2, 3, 4, 5].map((score) => ({
+    score,
+    count: currentSentimentData?.filter((thread) => thread.sentiment_score === score).length || 0,
+  }))
+
+  // Calculate previous period metrics
+  const previousTotalChats = previousThreads || 0
+  const previousTotalCallbacks = previousCallbacks || 0
+  const previousCallbackPercentage =
+    previousTotalChats > 0 ? ((previousCallbackThreads || 0) / previousTotalChats) * 100 : 0
+
+  const previousAverageSentiment = previousSentimentData?.length
+    ? previousSentimentData.reduce((sum, thread) => sum + (thread.sentiment_score || 0), 0) /
+      previousSentimentData.length
+    : 0
+
+  const previousAverageResponseTime = previousResponseTimeData?.length
+    ? previousResponseTimeData.reduce((sum, thread) => sum + (thread.mean_response_time || 0), 0) /
+      previousResponseTimeData.length
+    : 0
+
+  return {
+    totalChats,
+    totalCallbacks,
+    callbackPercentage,
+    averageSentiment,
+    averageResponseTime,
+    sentimentDistribution,
+    previousPeriodComparison: {
+      totalChats: previousTotalChats,
+      totalCallbacks: previousTotalCallbacks,
+      callbackPercentage: previousCallbackPercentage,
+      averageSentiment: previousAverageSentiment,
+      averageResponseTime: previousAverageResponseTime,
+    },
   }
 }

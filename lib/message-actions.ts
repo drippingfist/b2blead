@@ -22,7 +22,7 @@ export interface MessageThread {
 // Get the most recent threads with their messages for a specific bot
 export async function getRecentThreadsWithMessages(
   botShareName: string | null,
-  limit = 10,
+  limit = 20,
   offset = 0,
   specificDate: string | null = null,
   cursor: string | null = null, // Add cursor for better pagination
@@ -94,40 +94,85 @@ export async function getRecentThreadsWithMessages(
       }
     }
 
-    // Step 3: For each thread, get all its messages
-    const threadsWithMessages = await Promise.all(
-      threads.map(async (thread) => {
-        const threadId = thread.id || thread.thread_id
+    // Step 3: Fetch all messages for the retrieved threads in one batch
+    const threadIds = threads.map((t) => t.id)
+    const { data: messagesData, error: messagesError } = await supabase
+      .from("messages")
+      .select("*")
+      .in("thread_id", threadIds)
+      .order("created_at", { ascending: true })
 
-        const { data: messages, error: messagesError } = await supabase
-          .from("messages")
-          .select("*")
-          .eq("thread_id", threadId)
-          .order("created_at", { ascending: true })
+    if (messagesError) {
+      console.error("❌ Error fetching messages:", messagesError)
+      return []
+    }
 
-        if (messagesError) {
-          console.error(`❌ Error fetching messages for thread ${threadId}:`, messagesError)
-          return { ...thread, messages: [], formattedTime: formatTimeInTimezone(thread.created_at, botTimezone) }
-        }
+    // Group messages by thread_id
+    const messagesByThreadId = messagesData.reduce((acc, message) => {
+      if (!acc[message.thread_id]) {
+        acc[message.thread_id] = []
+      }
+      acc[message.thread_id].push({
+        ...message,
+        formattedTime: formatTimeInTimezone(message.created_at, botTimezone),
+      })
+      return acc
+    }, {})
 
-        // Format timestamps using bot timezone
-        const messagesWithFormattedTime =
-          messages?.map((message) => ({
-            ...message,
-            formattedTime: formatTimeInTimezone(message.created_at, botTimezone),
-          })) || []
+    // Step 3b: Fetch callback data for threads that have callback=true
+    const threadsWithCallbacks = threads.filter((t) => t.callback === true)
+    let callbackData = {}
 
-        return {
-          ...thread,
-          messages: messagesWithFormattedTime,
-          formattedTime: formatTimeInTimezone(thread.created_at, botTimezone),
-          formattedDate: formatTimeInTimezone(thread.created_at, botTimezone, "yyyy-MM-dd"),
-          botTimezone,
-        }
-      }),
-    )
+    if (threadsWithCallbacks.length > 0) {
+      console.log(`🔍 Found ${threadsWithCallbacks.length} threads with callbacks`)
 
-    // Step 4: Sort threads from oldest to newest for display
+      // Fetch all callbacks in one query
+      const { data: callbacks, error: callbacksError } = await supabase
+        .from("callbacks")
+        .select("*")
+        .in(
+          "id",
+          threadsWithCallbacks.map((t) => t.id),
+        )
+
+      if (callbacksError) {
+        console.error("❌ Error fetching callbacks:", callbacksError)
+      } else if (callbacks && callbacks.length > 0) {
+        console.log(`✅ Found ${callbacks.length} callback records`)
+
+        // Create a map of thread_id to callback data
+        callbackData = callbacks.reduce((acc, callback) => {
+          acc[callback.id] = callback
+          return acc
+        }, {})
+      } else {
+        console.log("⚠️ No callback records found despite threads having callback=true")
+      }
+    }
+
+    // Step 4: Create threads with messages and format timestamps
+    const threadsWithMessages = threads.map((thread) => {
+      // Get callback data if this thread has callback=true
+      const threadCallbackData = thread.callback === true ? callbackData[thread.id] : null
+
+      if (thread.callback === true) {
+        console.log(
+          `Thread ${thread.id} has callback=${thread.callback}, callbackData:`,
+          threadCallbackData || "Not found",
+        )
+      }
+
+      return {
+        ...thread,
+        messages: messagesByThreadId[thread.id] || [],
+        callbackData: threadCallbackData,
+        formattedTime: formatTimeInTimezone(thread.created_at, botTimezone),
+        formattedDate: formatTimeInTimezone(thread.created_at, botTimezone, "yyyy-MM-dd"),
+        botTimezone,
+      }
+    })
+
+    // Step 5: Sort threads from oldest to newest for display
     // This is crucial for infinite scroll to work properly
     const sortedThreads = threadsWithMessages.sort(
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),

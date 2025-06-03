@@ -3,8 +3,6 @@
 import { useState } from "react"
 import {
   Search,
-  SlidersHorizontal,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Phone,
@@ -15,23 +13,41 @@ import {
   MapPin,
   User,
   MoreVertical,
+  Info,
+  Calendar,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { Callback } from "@/lib/database"
 
 interface CallbacksViewProps {
   initialCallbacks: Callback[]
   stats: {
-    totalCallbacks: number
     recentCallbacks: number
-    topCountries: [string, number][]
+    callbacksDropped: number
+    conversionRate: number
+    totalThreads: number
   }
+  columnConfig: {
+    hasCompany: boolean
+    hasCountry: boolean
+    hasUrl: boolean
+    hasPhone: boolean
+    hasRevenue: boolean
+  }
+  onPeriodChange: (period: string) => void
+  selectedPeriod: string
 }
 
-export default function CallbacksView({ initialCallbacks, stats }: CallbacksViewProps) {
+export default function CallbacksView({
+  initialCallbacks,
+  stats,
+  columnConfig,
+  onPeriodChange,
+  selectedPeriod,
+}: CallbacksViewProps) {
   const [callbacks, setCallbacks] = useState<Callback[]>(initialCallbacks)
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedStatus, setSelectedStatus] = useState("all")
 
   // Filter callbacks based on search query
   const filteredCallbacks = searchQuery
@@ -61,14 +77,30 @@ export default function CallbacksView({ initialCallbacks, stats }: CallbacksView
   }, {})
 
   const formatPhoneNumber = (phone?: string) => {
-    if (!phone) return "Not provided"
-    // Basic phone formatting - you can enhance this
+    if (!phone) return "-"
     return phone.replace(/(\d{3})(\d{3})(\d{4})/, "($1) $2-$3")
   }
 
   const getRevenueDisplay = (revenue?: string) => {
     if (!revenue) return "Not disclosed"
     return revenue
+  }
+
+  const getPeriodLabel = (period: string) => {
+    switch (period) {
+      case "today":
+        return "Today"
+      case "last7days":
+        return "Last 7 days"
+      case "last30days":
+        return "Last 30 days"
+      case "last90days":
+        return "Last 90 days"
+      case "alltime":
+        return "All time"
+      default:
+        return "Last 30 days"
+    }
   }
 
   return (
@@ -79,35 +111,60 @@ export default function CallbacksView({ initialCallbacks, stats }: CallbacksView
           <h1 className="text-2xl font-semibold text-[#212121]">Callbacks</h1>
           <p className="text-[#616161]">Manage your callback requests and customer information.</p>
         </div>
-        <Button className="bg-[#038a71] hover:bg-[#038a71]/90 w-full md:w-auto">Export Callbacks</Button>
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <Calendar className="h-4 w-4 text-[#616161]" />
+            <Select value={selectedPeriod} onValueChange={onPeriodChange}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="last7days">Last 7 days</SelectItem>
+                <SelectItem value="last30days">Last 30 days</SelectItem>
+                <SelectItem value="last90days">Last 90 days</SelectItem>
+                <SelectItem value="alltime">All time</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button className="bg-[#038a71] hover:bg-[#038a71]/90 w-full md:w-auto">Export Callbacks</Button>
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
+      {/* Stats Cards - Removed Total Callbacks */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-8">
         <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121]">Total Callbacks</h2>
-          <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{stats.totalCallbacks}</p>
-          <p className="text-sm text-[#616161] mt-1">All time</p>
-        </div>
-
-        <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121]">Recent Requests</h2>
+          <h2 className="text-lg font-medium text-[#212121]">Callback Requests</h2>
           <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{stats.recentCallbacks}</p>
-          <p className="text-sm text-[#616161] mt-1">Last 7 days</p>
+          <p className="text-sm text-[#616161] mt-1">{getPeriodLabel(selectedPeriod)}</p>
         </div>
 
         <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121]">Top Country</h2>
-          <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{stats.topCountries[0]?.[0] || "N/A"}</p>
-          <p className="text-sm text-[#616161] mt-1">{stats.topCountries[0]?.[1] || 0} requests</p>
+          <div className="flex items-center space-x-1">
+            <h2 className="text-lg font-medium text-[#212121]">Callbacks Dropped</h2>
+            <div className="group relative">
+              <Info className="h-4 w-4 text-[#616161] cursor-help" />
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                Number of times a user requested a callback but didn't complete the callback flow
+              </div>
+            </div>
+          </div>
+          <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{stats.callbacksDropped}</p>
+          <p className="text-sm text-[#616161] mt-1">{getPeriodLabel(selectedPeriod)}</p>
         </div>
 
         <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121]">Conversion Rate</h2>
-          <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">
-            {callbacks.length > 0 ? Math.round((stats.recentCallbacks / stats.totalCallbacks) * 100) : 0}%
-          </p>
-          <p className="text-sm text-[#616161] mt-1">Recent activity</p>
+          <div className="flex items-center space-x-1">
+            <h2 className="text-lg font-medium text-[#212121]">Conversion Rate</h2>
+            <div className="group relative">
+              <Info className="h-4 w-4 text-[#616161] cursor-help" />
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                Percentage of threads that resulted in a callback request
+              </div>
+            </div>
+          </div>
+          <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{stats.conversionRate}%</p>
+          <p className="text-sm text-[#616161] mt-1">{getPeriodLabel(selectedPeriod)}</p>
         </div>
       </div>
 
@@ -125,17 +182,6 @@ export default function CallbacksView({ initialCallbacks, stats }: CallbacksView
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
-          <div className="flex items-center border border-[#e0e0e0] rounded-md px-3 py-2">
-            <SlidersHorizontal className="h-4 w-4 text-[#616161] mr-2" />
-            <span className="text-sm text-[#616161]">Filters</span>
-            <ChevronDown className="h-4 w-4 text-[#616161] ml-2" />
-          </div>
-
-          <div className="flex items-center border border-[#e0e0e0] rounded-md px-3 py-2">
-            <span className="text-sm text-[#616161]">All Status</span>
-            <ChevronDown className="h-4 w-4 text-[#616161] ml-2" />
-          </div>
-
           <div className="hidden sm:flex items-center space-x-4">
             <div className="text-sm text-[#616161]">
               1 - {Math.min(50, filteredCallbacks.length)} of {filteredCallbacks.length}
@@ -152,26 +198,25 @@ export default function CallbacksView({ initialCallbacks, stats }: CallbacksView
         </div>
       </div>
 
-      {/* Desktop Table */}
+      {/* Dynamic Desktop Table */}
       <div className="hidden lg:block border border-[#e0e0e0] rounded-md overflow-hidden">
         <table className="w-full">
           <thead>
             <tr className="bg-white border-b border-[#e0e0e0]">
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                <div className="flex items-center">
-                  Date
-                  <ChevronDown className="h-4 w-4 ml-1" />
-                </div>
-              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">Date</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                 Contact Info
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                Company
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                Location
-              </th>
+              {columnConfig.hasCompany && (
+                <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
+                  Company
+                </th>
+              )}
+              {columnConfig.hasCountry && (
+                <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
+                  Location
+                </th>
+              )}
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                 Message
               </th>
@@ -184,7 +229,10 @@ export default function CallbacksView({ initialCallbacks, stats }: CallbacksView
             {Object.entries(groupedCallbacks).map(([date, dateCallbacks]) => (
               <>
                 <tr key={`date-${date}`} className="bg-gray-50">
-                  <td colSpan={6} className="px-6 py-2 text-sm font-medium text-[#616161]">
+                  <td
+                    colSpan={4 + (columnConfig.hasCompany ? 1 : 0) + (columnConfig.hasCountry ? 1 : 0)}
+                    className="px-6 py-2 text-sm font-medium text-[#616161]"
+                  >
                     {date}
                   </td>
                 </tr>
@@ -210,53 +258,55 @@ export default function CallbacksView({ initialCallbacks, stats }: CallbacksView
                             {callback.user_email}
                           </div>
                         )}
-                        {callback.user_phone && (
-                          <div className="text-xs text-[#616161] flex items-center">
-                            <Phone className="h-3 w-3 mr-1" />
-                            {formatPhoneNumber(callback.user_phone)}
-                          </div>
-                        )}
+                        <div className="text-xs text-[#616161] flex items-center">
+                          <Phone className="h-3 w-3 mr-1" />
+                          {formatPhoneNumber(callback.user_phone)}
+                        </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="space-y-1">
-                        {callback.user_company && (
-                          <div className="text-sm text-[#212121] flex items-center">
-                            <Building className="h-4 w-4 mr-1 text-[#616161]" />
-                            {callback.user_company}
-                          </div>
-                        )}
-                        {callback.user_revenue && (
-                          <div className="text-xs text-[#616161] flex items-center">
-                            <DollarSign className="h-3 w-3 mr-1" />
-                            {getRevenueDisplay(callback.user_revenue)}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="space-y-1">
-                        {callback.user_country && (
-                          <div className="text-sm text-[#212121] flex items-center">
-                            <MapPin className="h-4 w-4 mr-1 text-[#616161]" />
-                            {callback.user_country}
-                          </div>
-                        )}
-                        {callback.user_url && (
-                          <div className="text-xs text-[#616161] flex items-center">
-                            <Globe className="h-3 w-3 mr-1" />
-                            <a
-                              href={callback.user_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="hover:underline"
-                            >
-                              Website
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                    </td>
+                    {columnConfig.hasCompany && (
+                      <td className="px-6 py-4">
+                        <div className="space-y-1">
+                          {callback.user_company && (
+                            <div className="text-sm text-[#212121] flex items-center">
+                              <Building className="h-4 w-4 mr-1 text-[#616161]" />
+                              {callback.user_company}
+                            </div>
+                          )}
+                          {columnConfig.hasRevenue && callback.user_revenue && (
+                            <div className="text-xs text-[#616161] flex items-center">
+                              <DollarSign className="h-3 w-3 mr-1" />
+                              {getRevenueDisplay(callback.user_revenue)}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                    {columnConfig.hasCountry && (
+                      <td className="px-6 py-4">
+                        <div className="space-y-1">
+                          {callback.user_country && (
+                            <div className="text-sm text-[#212121] flex items-center">
+                              <MapPin className="h-4 w-4 mr-1 text-[#616161]" />
+                              {callback.user_country}
+                            </div>
+                          )}
+                          {columnConfig.hasUrl && callback.user_url && (
+                            <div className="text-xs text-[#616161] flex items-center">
+                              <Globe className="h-3 w-3 mr-1" />
+                              <a
+                                href={callback.user_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="hover:underline"
+                              >
+                                Website
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    )}
                     <td className="px-6 py-4 max-w-xs">
                       <div className="text-sm text-[#212121] truncate">
                         {callback.user_cb_message || "No message provided"}
@@ -301,7 +351,6 @@ export default function CallbacksView({ initialCallbacks, stats }: CallbacksView
                           minute: "2-digit",
                         })}
                       </span>
-                      <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">New</span>
                     </div>
                     <button className="text-[#616161] hover:text-[#212121]">
                       <MoreVertical className="h-4 w-4" />
@@ -325,12 +374,10 @@ export default function CallbacksView({ initialCallbacks, stats }: CallbacksView
                       </div>
                     )}
 
-                    {callback.user_phone && (
-                      <div className="flex items-center">
-                        <Phone className="h-4 w-4 mr-2 text-[#616161]" />
-                        <span className="text-sm text-[#212121]">{formatPhoneNumber(callback.user_phone)}</span>
-                      </div>
-                    )}
+                    <div className="flex items-center">
+                      <Phone className="h-4 w-4 mr-2 text-[#616161]" />
+                      <span className="text-sm text-[#212121]">{formatPhoneNumber(callback.user_phone)}</span>
+                    </div>
 
                     {callback.user_company && (
                       <div className="flex items-center">
