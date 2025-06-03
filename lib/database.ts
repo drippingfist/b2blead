@@ -707,6 +707,7 @@ export async function getDashboardMetrics(
   if (currentThreads && currentThreads.length > 0) {
     const currentCallbackThreadIds = currentThreads.filter((t) => t.callback === true).map((t) => t.id)
     console.log("📊 Current threads requesting callbacks:", currentCallbackThreadIds.length)
+    console.log("📊 Sample thread IDs requesting callbacks:", currentCallbackThreadIds.slice(0, 3))
 
     if (currentCallbackThreadIds.length > 0) {
       // Get all callback records that exist for these thread IDs
@@ -719,7 +720,12 @@ export async function getDashboardMetrics(
         existingCurrentCallbacksQuery = existingCurrentCallbacksQuery.eq("bot_share_name", botShareName)
       }
 
-      const { data: existingCallbacks } = await existingCurrentCallbacksQuery
+      const { data: existingCallbacks, error: callbackError } = await existingCurrentCallbacksQuery
+
+      console.log("📊 Callback query error:", callbackError)
+      console.log("📊 Raw callback data:", existingCallbacks)
+      console.log("📊 Sample callback thread_ids:", existingCallbacks?.slice(0, 3))
+
       const existingThreadIds = new Set(existingCallbacks?.map((cb) => cb.thread_id) || [])
 
       // Count threads that have callback=true but NO corresponding callback record
@@ -727,7 +733,16 @@ export async function getDashboardMetrics(
 
       console.log("📊 Threads requesting callbacks:", currentCallbackThreadIds.length)
       console.log("📊 Threads with actual callback records:", existingThreadIds.size)
+      console.log("📊 Existing thread IDs set:", Array.from(existingThreadIds).slice(0, 3))
       console.log("📊 Dropped callbacks (no record):", currentDroppedCallbacks)
+
+      // Let's also check if there are ANY callbacks for this bot
+      let allCallbacksQuery = supabase.from("callbacks").select("thread_id, bot_share_name").limit(5)
+      if (botShareName) {
+        allCallbacksQuery = allCallbacksQuery.eq("bot_share_name", botShareName)
+      }
+      const { data: allCallbacks } = await allCallbacksQuery
+      console.log("📊 Sample callbacks for bot:", allCallbacks)
     }
   }
 
