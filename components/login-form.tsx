@@ -9,7 +9,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2 } from "lucide-react"
 
-export default function LoginForm() {
+interface LoginFormProps {
+  isHidden?: boolean
+}
+
+export default function LoginForm({ isHidden = false }: LoginFormProps) {
   const router = useRouter()
   const [state, action, isPending] = useActionState(signIn, null)
 
@@ -19,6 +23,11 @@ export default function LoginForm() {
       router.push("/")
     }
   }, [state?.success, router])
+
+  // Don't render if hidden (during password reset)
+  if (isHidden) {
+    return null
+  }
 
   return (
     <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">

@@ -1,8 +1,6 @@
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
-import LoginForm from "@/components/login-form"
-import InviteHandler from "@/components/invite-handler"
-import PasswordResetHandler from "@/components/password-reset-handler"
+import LoginPageClient from "./login-page-client"
 
 export default async function LoginPage() {
   // If Supabase is not configured, show setup message directly
@@ -25,21 +23,5 @@ export default async function LoginPage() {
     redirect("/")
   }
 
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-[#fdfdfd] px-4 py-12 sm:px-6 lg:px-8">
-      <div className="w-full max-w-md space-y-8">
-        <div className="text-center">
-          <img src="/logo.svg" alt="b2bLEAD.ai" className="h-12 w-auto mx-auto" />
-        </div>
-
-        {/* Handle password reset if present */}
-        <PasswordResetHandler />
-
-        {/* Handle invitation acceptance if present */}
-        <InviteHandler />
-
-        <LoginForm />
-      </div>
-    </div>
-  )
+  return <LoginPageClient />
 }
