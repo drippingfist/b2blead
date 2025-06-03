@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Save, X, CreditCard, Receipt, Users, Info, Trash2 } from "lucide-react"
+import { Loader2, Save, X, CreditCard, Receipt, Users, Info, Trash2, UserPlus, Edit } from "lucide-react"
 import { supabase } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { timezones } from "@/lib/timezones"
@@ -304,14 +304,12 @@ export default function SettingsPage() {
         })
         setAddingUser(false)
 
-        // Updated message for the invitation email approach
-        alert(
-          `Invitation email sent to ${newUser.email}! They will receive an email with a link to set their password and access the ${newUser.bot_share_name} bot.`,
-        )
+        // Show success message
+        setSuccess(true)
+        setTimeout(() => setSuccess(false), 5000) // Clear success message after 5 seconds
 
         await loadUsers()
         await loadInvitations()
-        setSuccess(true)
       } else {
         setError(result.error || "Failed to add user")
       }
@@ -332,6 +330,7 @@ export default function SettingsPage() {
       if (result.success) {
         await loadUsers()
         setSuccess(true)
+        setTimeout(() => setSuccess(false), 3000)
       } else {
         setError(result.error || "Failed to remove user")
       }
@@ -350,6 +349,7 @@ export default function SettingsPage() {
       if (result.success) {
         await loadInvitations()
         setSuccess(true)
+        setTimeout(() => setSuccess(false), 3000)
       } else {
         setError(result.error || "Failed to delete invitation")
       }
@@ -457,13 +457,11 @@ export default function SettingsPage() {
 
         {/* Users Management Section */}
         <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          {/* Temporarily hidden - invitation flow needs work */}
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-medium text-[#212121] flex items-center">
               <Users className="h-5 w-5 mr-2" />
               User Management
             </h2>
-            {/* Temporarily hidden - invitation flow needs work
             <Button
               onClick={() => setAddingUser(true)}
               className="bg-[#038a71] hover:bg-[#038a71]/90 flex items-center"
@@ -472,8 +470,87 @@ export default function SettingsPage() {
               <UserPlus className="h-4 w-4 mr-2" />
               Add User
             </Button>
-            */}
           </div>
+
+          {/* Add User Form */}
+          {addingUser && (
+            <div className="mb-6 p-4 border border-[#e0e0e0] rounded-lg bg-gray-50">
+              <h3 className="text-sm font-medium text-[#212121] mb-3">Invite New User</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs">Email *</Label>
+                  <Input
+                    value={newUser.email}
+                    onChange={(e) => handleNewUserChange("email", e.target.value)}
+                    placeholder="user@example.com"
+                    className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Bot Access *</Label>
+                  <Select
+                    value={newUser.bot_share_name}
+                    onValueChange={(value) => handleNewUserChange("bot_share_name", value)}
+                  >
+                    <SelectTrigger className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8">
+                      <SelectValue placeholder="Select bot" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableBots.map((bot) => (
+                        <SelectItem key={bot.bot_share_name} value={bot.bot_share_name}>
+                          {bot.client_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">First Name</Label>
+                  <Input
+                    value={newUser.first_name}
+                    onChange={(e) => handleNewUserChange("first_name", e.target.value)}
+                    placeholder="John"
+                    className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Surname</Label>
+                  <Input
+                    value={newUser.surname}
+                    onChange={(e) => handleNewUserChange("surname", e.target.value)}
+                    placeholder="Doe"
+                    className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Role</Label>
+                  <Select value={newUser.role} onValueChange={(value) => handleNewUserChange("role", value)}>
+                    <SelectTrigger className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="member">Member</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2 mt-4">
+                <Button
+                  onClick={handleAddUser}
+                  disabled={addingUserLoading}
+                  className="bg-[#038a71] hover:bg-[#038a71]/90"
+                  size="sm"
+                >
+                  {addingUserLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                  Send Invitation
+                </Button>
+                <Button onClick={() => setAddingUser(false)} variant="outline" size="sm">
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
 
           {usersLoading ? (
             <div className="flex items-center justify-center py-8">
@@ -538,20 +615,35 @@ export default function SettingsPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
-                            <div>
-                              <p className="text-sm font-medium text-[#212121]">
-                                {user.first_name} {user.surname}
-                              </p>
-                              <p className="text-xs text-[#616161]">{user.email}</p>
+                          <div className="flex items-center justify-between">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
+                              <div>
+                                <p className="text-sm font-medium text-[#212121]">
+                                  {user.first_name} {user.surname}
+                                </p>
+                                <p className="text-xs text-[#616161]">{user.email}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-[#616161] uppercase tracking-wider">Role</p>
+                                <p className="text-sm text-[#212121] capitalize">{user.role}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-[#616161] uppercase tracking-wider">Bot Access</p>
+                                <p className="text-sm text-[#212121]">{user.bot_share_name}</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-xs text-[#616161] uppercase tracking-wider">Role</p>
-                              <p className="text-sm text-[#212121] capitalize">{user.role}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-[#616161] uppercase tracking-wider">Bot Access</p>
-                              <p className="text-sm text-[#212121]">{user.bot_share_name}</p>
+                            <div className="flex items-center space-x-2 ml-4">
+                              <Button onClick={() => setEditingUser(user.id)} variant="outline" size="sm">
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                onClick={() => handleDeleteUser(user.id)}
+                                variant="outline"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700 hover:border-red-300"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
                           </div>
                         )}
@@ -567,14 +659,14 @@ export default function SettingsPage() {
                   <h3 className="text-sm font-medium text-[#212121] mb-3">Pending Invitations</h3>
                   <div className="space-y-2">
                     {invitedUsers.map((invitation) => (
-                      <div key={invitation.id} className="p-4 border border-[#e0e0e0] rounded-lg bg-gray-50">
+                      <div key={invitation.id} className="p-4 border border-[#e0e0e0] rounded-lg bg-yellow-50">
                         <div className="flex items-center justify-between">
                           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
                             <div>
                               <p className="text-sm font-medium text-[#212121]">
                                 {invitation.first_name} {invitation.surname}
                                 <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
-                                  Invited
+                                  Pending
                                 </span>
                               </p>
                               <p className="text-xs text-[#616161]">{invitation.email}</p>

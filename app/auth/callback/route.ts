@@ -6,55 +6,61 @@ export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get("code")
   const setup = requestUrl.searchParams.get("setup")
-
-  // Check if this is an invitation acceptance (from URL hash)
-  const urlHash = requestUrl.hash
-  const isInviteAcceptance = urlHash.includes("type=invite")
-  const isPasswordReset = urlHash.includes("type=recovery")
+  const type = requestUrl.searchParams.get("type")
 
   console.log("🔗 Auth callback received:", {
-    code,
+    code: !!code,
     setup,
-    isInviteAcceptance,
-    isPasswordReset,
+    type,
     fullUrl: request.url,
-    hash: urlHash,
+    searchParams: Object.fromEntries(requestUrl.searchParams),
   })
 
   if (code) {
     const cookieStore = cookies()
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
 
-    // Exchange the code for a session
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+    try {
+      // Exchange the code for a session
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code)
 
-    if (error) {
-      console.error("Error exchanging code for session:", error)
-      return NextResponse.redirect(new URL("/auth/login?error=Invalid link", request.url))
+      if (error) {
+        console.error("❌ Error exchanging code for session:", error)
+        return NextResponse.redirect(new URL("/auth/login?error=Invalid invitation link", request.url))
+      }
+
+      console.log("✅ Session created for user:", data.user?.email)
+
+      // Check if this is an invitation acceptance
+      if (type === "invite" || setup === "true") {
+        console.log("📧 Processing invitation acceptance for:", data.user?.email)
+
+        // Check if user already has a profile
+        const { data: existingProfile } = await supabase
+          .from("user_profiles")
+          .select("id")
+          .eq("id", data.user!.id)
+          .single()
+
+        if (existingProfile) {
+          console.log("✅ User already has profile, redirecting to dashboard")
+          return NextResponse.redirect(new URL("/", request.url))
+        } else {
+          console.log("🔧 New user, redirecting to setup")
+          return NextResponse.redirect(new URL("/auth/setup", request.url))
+        }
+      }
+
+      // Regular login, redirect to dashboard
+      console.log("🏠 Regular login, redirecting to dashboard")
+      return NextResponse.redirect(new URL("/", request.url))
+    } catch (error) {
+      console.error("❌ Unexpected error in auth callback:", error)
+      return NextResponse.redirect(new URL("/auth/login?error=Authentication failed", request.url))
     }
-
-    if (data.user && setup === "true") {
-      // This is a new user from an invitation, redirect to setup page
-      console.log("🔧 Redirecting new user to setup page")
-      return NextResponse.redirect(new URL("/auth/setup", request.url))
-    }
   }
 
-  // Handle invitation acceptance from URL hash parameters
-  if (isInviteAcceptance) {
-    console.log("📧 Processing invitation acceptance")
-    return NextResponse.redirect(new URL("/auth/setup", request.url))
-  }
-
-  // Handle password reset - redirect to login page with hash intact
-  if (isPasswordReset) {
-    console.log("🔐 Processing password reset - redirecting to login with hash")
-    const loginUrl = new URL("/auth/login", request.url)
-    loginUrl.hash = requestUrl.hash
-    return NextResponse.redirect(loginUrl)
-  }
-
-  // Regular callback, redirect to dashboard
-  console.log("🏠 Regular callback, redirecting to dashboard")
-  return NextResponse.redirect(new URL("/", request.url))
+  // No code provided
+  console.log("❌ No auth code provided")
+  return NextResponse.redirect(new URL("/auth/login?error=No authentication code", request.url))
 }

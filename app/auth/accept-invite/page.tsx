@@ -1,47 +1,47 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase/client"
 import { Loader2, Check, X } from "lucide-react"
 
 export default function AcceptInvitePage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [status, setStatus] = useState<"processing" | "success" | "error">("processing")
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const handleInviteAcceptance = async () => {
       try {
-        // Get the hash parameters from the URL
-        const hashParams = new URLSearchParams(window.location.hash.substring(1))
-        const accessToken = hashParams.get("access_token")
-        const refreshToken = hashParams.get("refresh_token")
-        const type = hashParams.get("type")
+        // Get parameters from URL
+        const code = searchParams.get("code")
+        const type = searchParams.get("type")
 
         console.log("🔗 Processing invite acceptance:", {
-          accessToken: !!accessToken,
-          refreshToken: !!refreshToken,
+          code: !!code,
           type,
+          fullUrl: window.location.href,
         })
 
-        if (!accessToken || !refreshToken || type !== "invite") {
-          throw new Error("Invalid invitation link")
+        if (!code) {
+          throw new Error("No invitation code found")
         }
 
-        // Set the session using the tokens from the invitation
-        const { data, error } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        })
+        if (type !== "invite") {
+          throw new Error("Invalid invitation type")
+        }
+
+        // Exchange code for session
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code)
 
         if (error) {
           throw error
         }
 
-        console.log("✅ Session set successfully, user:", data.user?.email)
+        console.log("✅ Session created successfully, user:", data.user?.email)
 
-        // Check if user already has a profile (shouldn't happen for new invites)
+        // Check if user already has a profile
         const { data: existingProfile } = await supabase
           .from("user_profiles")
           .select("id")
@@ -50,9 +50,14 @@ export default function AcceptInvitePage() {
 
         if (existingProfile) {
           // User already exists, redirect to dashboard
-          router.push("/")
+          console.log("✅ User already has profile, redirecting to dashboard")
+          setStatus("success")
+          setTimeout(() => {
+            router.push("/")
+          }, 2000)
         } else {
           // New user, redirect to setup
+          console.log("🔧 New user, redirecting to setup")
           setStatus("success")
           setTimeout(() => {
             router.push("/auth/setup")
@@ -66,7 +71,7 @@ export default function AcceptInvitePage() {
     }
 
     handleInviteAcceptance()
-  }, [router])
+  }, [router, searchParams])
 
   if (status === "processing") {
     return (

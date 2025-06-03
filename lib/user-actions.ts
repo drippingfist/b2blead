@@ -52,7 +52,7 @@ export async function inviteUser(userData: {
         role: userData.role,
         invited_by: userData.invited_by,
       },
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/set-password`,
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/accept-invite?type=invite`,
     })
 
     if (inviteError) {
