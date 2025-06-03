@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useActionState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -29,11 +27,6 @@ export default function LoginForm({ isHidden = false }: LoginFormProps) {
   // Don't render if hidden (during password reset)
   if (isHidden) {
     return null
-  }
-
-  const handleForgotPassword = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    e.preventDefault()
-    router.push("/auth/forgot-password")
   }
 
   return (
@@ -93,12 +86,9 @@ export default function LoginForm({ isHidden = false }: LoginFormProps) {
       </form>
 
       <div className="text-center mt-4">
-        <button
-          onClick={handleForgotPassword}
-          className="text-sm text-[#038a71] hover:text-[#038a71]/80 hover:underline"
-        >
+        <a href="/auth/forgot-password" className="text-sm text-[#038a71] hover:text-[#038a71]/80 hover:underline">
           Forgot your password?
-        </button>
+        </a>
       </div>
 
       <div className="text-center mt-6 pt-6 border-t border-[#e0e0e0]">
