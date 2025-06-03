@@ -17,6 +17,76 @@ const getAdminClient = () => {
   })
 }
 
+// Get bots that the current user can invite others to
+export async function getInvitableBots() {
+  try {
+    const cookieStore = cookies()
+    const supabase = createServerActionClient({ cookies: () => cookieStore })
+
+    // Get current user
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user?.id) {
+      return { success: false, error: "User not authenticated", bots: [] }
+    }
+
+    // Get user's bot assignments
+    const { data: userBots, error: userBotsError } = await supabase
+      .from("bot_users")
+      .select("bot_share_name, role")
+      .eq("id", user.id)
+      .eq("is_active", true)
+
+    if (userBotsError) {
+      throw userBotsError
+    }
+
+    if (!userBots || userBots.length === 0) {
+      return { success: false, error: "You don't have access to any bots", bots: [] }
+    }
+
+    // Check if user is superadmin (can invite to all bots)
+    const isSuperAdmin = userBots.some((bot) => bot.role === "superadmin")
+
+    let botShareNames: string[]
+
+    if (isSuperAdmin) {
+      // Superadmin can invite to all bots
+      const { data: allBots, error: allBotsError } = await supabase
+        .from("bots")
+        .select("bot_share_name")
+        .not("bot_share_name", "is", null)
+
+      if (allBotsError) throw allBotsError
+      botShareNames = allBots?.map((bot) => bot.bot_share_name).filter(Boolean) || []
+    } else {
+      // Regular admin/member can only invite to their assigned bots
+      botShareNames = userBots.map((bot) => bot.bot_share_name).filter(Boolean)
+    }
+
+    if (botShareNames.length === 0) {
+      return { success: false, error: "No bots available for invitation", bots: [] }
+    }
+
+    // Get bot details
+    const { data: bots, error: botsError } = await supabase
+      .from("bots")
+      .select("bot_share_name, client_name, timezone")
+      .in("bot_share_name", botShareNames)
+      .order("client_name")
+
+    if (botsError) throw botsError
+
+    return { success: true, bots: bots || [] }
+  } catch (error: any) {
+    console.error("Error getting invitable bots:", error)
+    return { success: false, error: error.message, bots: [] }
+  }
+}
+
 // Invite a new user using Supabase's built-in invitation system
 export async function inviteUser(userData: {
   email: string
@@ -28,9 +98,29 @@ export async function inviteUser(userData: {
   invited_by: string
 }) {
   try {
+    const cookieStore = cookies()
+    const supabase = createServerActionClient({ cookies: () => cookieStore })
     const adminClient = getAdminClient()
 
     console.log("🔍 Starting invitation process for:", userData.email)
+
+    // Verify the inviting user has access to the bot they're trying to invite to
+    const { data: inviterBots, error: inviterBotsError } = await supabase
+      .from("bot_users")
+      .select("bot_share_name, role")
+      .eq("id", userData.invited_by)
+      .eq("is_active", true)
+
+    if (inviterBotsError) {
+      throw inviterBotsError
+    }
+
+    const isSuperAdmin = inviterBots?.some((bot) => bot.role === "superadmin")
+    const hasAccessToBot = inviterBots?.some((bot) => bot.bot_share_name === userData.bot_share_name)
+
+    if (!isSuperAdmin && !hasAccessToBot) {
+      return { success: false, error: "You don't have permission to invite users to this bot" }
+    }
 
     // Check if user already exists in auth.users
     const { data: existingUsers } = await adminClient.auth.admin.listUsers()
@@ -40,14 +130,29 @@ export async function inviteUser(userData: {
       return { success: false, error: "A user with this email already exists" }
     }
 
-    console.log("✅ No existing user found")
+    // Check if there's already a pending invitation for this email
+    const { data: existingInvitation, error: invitationCheckError } = await supabase
+      .from("user_invitations")
+      .select("id")
+      .eq("email", userData.email)
+      .single()
+
+    if (invitationCheckError && invitationCheckError.code !== "PGRST116") {
+      // PGRST116 is "not found" which is what we want
+      throw invitationCheckError
+    }
+
+    if (existingInvitation) {
+      return { success: false, error: "An invitation has already been sent to this email address" }
+    }
+
+    console.log("✅ No existing user or invitation found")
 
     // Send Supabase invitation email using inviteUserByEmail
     const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(userData.email, {
       data: {
         first_name: userData.first_name,
         surname: userData.surname,
-        timezone: userData.timezone,
         bot_share_name: userData.bot_share_name,
         role: userData.role,
         invited_by: userData.invited_by,
@@ -61,6 +166,23 @@ export async function inviteUser(userData: {
     }
 
     console.log("✅ Invitation email sent successfully")
+
+    // Record the invitation in user_invitations table
+    const { error: recordError } = await supabase.from("user_invitations").insert({
+      email: userData.email,
+      first_name: userData.first_name,
+      surname: userData.surname,
+      role: userData.role,
+      bot_share_name: userData.bot_share_name,
+      invited_by: userData.invited_by,
+    })
+
+    if (recordError) {
+      console.error("❌ Error recording invitation:", recordError)
+      // Don't fail the whole process if recording fails, but log it
+    } else {
+      console.log("✅ Invitation recorded in database")
+    }
 
     return {
       success: true,

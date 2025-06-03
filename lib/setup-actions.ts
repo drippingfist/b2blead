@@ -6,10 +6,10 @@ import { cookies } from "next/headers"
 interface InvitationData {
   first_name: string
   surname: string
-  timezone: string
+  timezone?: string
   bot_share_name: string
   role: string
-  invitation_id: string
+  invitation_id?: string
   email: string
 }
 
@@ -35,7 +35,7 @@ export async function completeUserSetup(invitationData: InvitationData) {
       id: user.id,
       first_name: invitationData.first_name,
       surname: invitationData.surname,
-      timezone: invitationData.timezone,
+      timezone: invitationData.timezone || "Asia/Bangkok", // Default timezone if not provided
       bot_share_name: invitationData.bot_share_name,
     })
 
@@ -73,6 +73,21 @@ export async function completeUserSetup(invitationData: InvitationData) {
         // Don't fail the setup for this
       } else {
         console.log("✅ Invitation record cleaned up")
+      }
+    } else {
+      // Try to find and clean up by email
+      const { data: invitation, error: findError } = await supabase
+        .from("user_invitations")
+        .select("id")
+        .eq("email", invitationData.email)
+        .single()
+
+      if (!findError && invitation) {
+        const { error: cleanupError } = await supabase.from("user_invitations").delete().eq("id", invitation.id)
+
+        if (!cleanupError) {
+          console.log("✅ Invitation record cleaned up by email")
+        }
       }
     }
 

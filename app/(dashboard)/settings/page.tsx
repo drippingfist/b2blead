@@ -16,6 +16,7 @@ import {
   updateUser,
   removeUserAccess,
   deleteInvitation,
+  getInvitableBots,
 } from "@/lib/user-actions"
 
 interface UserData {
@@ -139,16 +140,17 @@ export default function SettingsPage() {
 
   const loadAvailableBots = async () => {
     try {
-      const { data: bots, error } = await supabase
-        .from("bots")
-        .select("bot_share_name, client_name, timezone")
-        .not("bot_share_name", "is", null)
-        .order("client_name")
+      const result = await getInvitableBots()
 
-      if (error) throw error
-      setAvailableBots(bots || [])
+      if (result.success) {
+        setAvailableBots(result.bots || [])
+      } else {
+        console.error("Error loading invitable bots:", result.error)
+        setError(result.error || "Failed to load available bots")
+      }
     } catch (err: any) {
       console.error("Error loading bots:", err)
+      setError("Failed to load available bots")
     }
   }
 
@@ -281,6 +283,13 @@ export default function SettingsPage() {
     try {
       if (!newUser.email || !newUser.bot_share_name) {
         setError("Email and bot selection are required")
+        return
+      }
+
+      // Additional validation: check if the selected bot is in available bots
+      const selectedBot = availableBots.find((bot) => bot.bot_share_name === newUser.bot_share_name)
+      if (!selectedBot) {
+        setError("Invalid bot selection. Please choose from the available bots.")
         return
       }
 

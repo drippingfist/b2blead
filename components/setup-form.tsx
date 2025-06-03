@@ -95,7 +95,8 @@ export default function SetupForm({ invitationData }: SetupFormProps) {
           <div>
             <p className="text-sm font-medium text-[#212121]">Role & Timezone</p>
             <p className="text-xs text-[#616161]">
-              {invitationData.role.charAt(0).toUpperCase() + invitationData.role.slice(1)} • {invitationData.timezone}
+              {invitationData.role.charAt(0).toUpperCase() + invitationData.role.slice(1)} •{" "}
+              {invitationData.timezone || "Asia/Bangkok"}
             </p>
           </div>
         </div>
