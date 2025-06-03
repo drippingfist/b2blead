@@ -195,21 +195,66 @@ export async function inviteUser(userData: {
   }
 }
 
-// Get users with bot access
+// Get users that the current admin can manage
 export async function getUsers() {
   try {
     const cookieStore = cookies()
     const supabase = createServerActionClient({ cookies: () => cookieStore })
     const adminClient = getAdminClient()
 
-    // Step 1: Get all users from auth.users using admin client
+    // Get current user
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user?.id) {
+      return { success: false, error: "User not authenticated", users: [] }
+    }
+
+    console.log("🔍 Getting users for admin:", user.id)
+
+    // Get current user's bot assignments to determine their access level
+    const { data: currentUserBots, error: currentUserBotsError } = await supabase
+      .from("bot_users")
+      .select("bot_share_name, role")
+      .eq("id", user.id)
+      .eq("is_active", true)
+
+    if (currentUserBotsError) {
+      throw currentUserBotsError
+    }
+
+    if (!currentUserBots || currentUserBots.length === 0) {
+      return { success: false, error: "You don't have access to any bots", users: [] }
+    }
+
+    const isSuperAdmin = currentUserBots.some((bot) => bot.role === "superadmin")
+    const currentUserBotNames = currentUserBots.map((bot) => bot.bot_share_name)
+
+    console.log("🔍 Current user bot access:", currentUserBotNames, "Is superadmin:", isSuperAdmin)
+
+    // Step 1: Get users invited by the current admin
+    const { data: invitedUsers, error: invitedUsersError } = await supabase
+      .from("user_invitations")
+      .select("email")
+      .eq("invited_by", user.id)
+
+    if (invitedUsersError) {
+      throw invitedUsersError
+    }
+
+    const invitedEmails = invitedUsers?.map((inv) => inv.email) || []
+    console.log("🔍 Users invited by current admin:", invitedEmails)
+
+    // Step 2: Get all users from auth.users using admin client
     const { data: authUsers, error: authError } = await adminClient.auth.admin.listUsers()
 
     if (authError) {
       throw authError
     }
 
-    // Step 2: Get user profiles and bot access data
+    // Step 3: Get user profiles and bot access data
     const { data: userProfiles, error: profilesError } = await supabase.from("user_profiles").select("*")
 
     if (profilesError) {
@@ -222,7 +267,7 @@ export async function getUsers() {
       throw botUsersError
     }
 
-    // Step 3: Create a map of profiles and bot users by user ID for quick lookup
+    // Step 4: Create maps for quick lookup
     const profilesMap = new Map()
     userProfiles?.forEach((profile) => {
       profilesMap.set(profile.id, profile)
@@ -233,36 +278,66 @@ export async function getUsers() {
       botUsersMap.set(botUser.id, botUser)
     })
 
-    // Step 4: Combine the data for each user
+    // Step 5: Filter and transform users based on access rules
     const transformedUsers = authUsers.users
-      .filter((user) => !user.is_super_admin) // Filter out super admins if needed
-      .map((user) => {
-        const profile = profilesMap.get(user.id)
-        const botUser = botUsersMap.get(user.id)
+      .filter((authUser) => {
+        // Don't show the current user in the list
+        if (authUser.id === user.id) return false
 
-        // Filter out superadmins based on role in bot_users table
-        if (botUser?.role === "superadmin") {
-          return null
+        // Don't show super admins
+        if (authUser.is_super_admin) return false
+
+        const botUser = botUsersMap.get(authUser.id)
+
+        // Don't show superadmins based on role in bot_users table
+        if (botUser?.role === "superadmin") return false
+
+        // Only include users who have bot access
+        const profile = profilesMap.get(authUser.id)
+        if (!profile?.bot_share_name && !botUser?.bot_share_name) return false
+
+        // Check if user should be visible based on access rules
+        const userEmail = authUser.email
+        const userBotShareName = profile?.bot_share_name || botUser?.bot_share_name
+
+        // Rule 1: Show users invited by the current admin
+        if (invitedEmails.includes(userEmail)) {
+          console.log("✅ Showing user (invited by current admin):", userEmail)
+          return true
         }
 
-        // Only include users who have bot access (either in user_profiles or bot_users)
-        if (!profile?.bot_share_name && !botUser?.bot_share_name) {
-          return null
+        // Rule 2: Show users who share the same bot_share_name
+        if (currentUserBotNames.includes(userBotShareName)) {
+          console.log("✅ Showing user (same bot access):", userEmail, "Bot:", userBotShareName)
+          return true
         }
+
+        // Rule 3: Superadmins can see all users
+        if (isSuperAdmin) {
+          console.log("✅ Showing user (superadmin access):", userEmail)
+          return true
+        }
+
+        console.log("❌ Hiding user:", userEmail, "Bot:", userBotShareName)
+        return false
+      })
+      .map((authUser) => {
+        const profile = profilesMap.get(authUser.id)
+        const botUser = botUsersMap.get(authUser.id)
 
         return {
-          id: user.id,
-          email: user.email || "Unknown",
+          id: authUser.id,
+          email: authUser.email || "Unknown",
           first_name: profile?.first_name || "",
           surname: profile?.surname || "",
           role: botUser?.role || "member",
-          timezone: profile?.timezone || "Asia/Bangkok",
           bot_share_name: profile?.bot_share_name || botUser?.bot_share_name || "",
           is_active: botUser?.is_active || false,
         }
       })
-      .filter(Boolean) // Remove null entries
       .sort((a, b) => (a.first_name || "").localeCompare(b.first_name || ""))
+
+    console.log("✅ Final user list:", transformedUsers.length, "users")
 
     return { success: true, users: transformedUsers }
   } catch (error: any) {
@@ -271,16 +346,48 @@ export async function getUsers() {
   }
 }
 
-// Get pending invitations
+// Get pending invitations that the current user can see
 export async function getInvitations() {
   try {
     const cookieStore = cookies()
     const supabase = createServerActionClient({ cookies: () => cookieStore })
 
-    const { data: invitations, error } = await supabase
-      .from("user_invitations")
-      .select("*")
-      .order("created_at", { ascending: false })
+    // Get current user
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user?.id) {
+      return { success: false, error: "User not authenticated", invitations: [] }
+    }
+
+    // Get current user's bot assignments to determine their access level
+    const { data: currentUserBots, error: currentUserBotsError } = await supabase
+      .from("bot_users")
+      .select("bot_share_name, role")
+      .eq("id", user.id)
+      .eq("is_active", true)
+
+    if (currentUserBotsError) {
+      throw currentUserBotsError
+    }
+
+    const isSuperAdmin = currentUserBots?.some((bot) => bot.role === "superadmin")
+    const currentUserBotNames = currentUserBots?.map((bot) => bot.bot_share_name) || []
+
+    let invitationsQuery = supabase.from("user_invitations").select("*")
+
+    if (!isSuperAdmin) {
+      // Non-superadmins can only see:
+      // 1. Invitations they sent
+      // 2. Invitations for bots they have access to
+      invitationsQuery = invitationsQuery.or(
+        `invited_by.eq.${user.id},bot_share_name.in.(${currentUserBotNames.map((name) => `"${name}"`).join(",")})`,
+      )
+    }
+
+    const { data: invitations, error } = await invitationsQuery.order("created_at", { ascending: false })
 
     if (error) throw error
     return { success: true, invitations }
@@ -310,7 +417,6 @@ export async function updateUser(
       .update({
         first_name: userData.first_name,
         surname: userData.surname,
-        timezone: userData.timezone,
         bot_share_name: userData.bot_share_name,
       })
       .eq("id", userId)
