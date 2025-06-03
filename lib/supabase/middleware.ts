@@ -66,9 +66,12 @@ export async function updateSession(request: NextRequest) {
   await supabase.auth.getSession()
 
   // Protected routes - redirect to login if not authenticated
+  // FIXED: Added forgot-password and test to the list of allowed auth routes
   const isAuthRoute =
     request.nextUrl.pathname.startsWith("/auth/login") ||
     request.nextUrl.pathname.startsWith("/auth/sign-up") ||
+    request.nextUrl.pathname.startsWith("/auth/forgot-password") ||
+    request.nextUrl.pathname.startsWith("/auth/test") ||
     request.nextUrl.pathname === "/auth/callback" ||
     request.nextUrl.pathname === "/auth/setup"
 
