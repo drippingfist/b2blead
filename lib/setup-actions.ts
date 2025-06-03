@@ -6,7 +6,7 @@ import { cookies } from "next/headers"
 interface InvitationData {
   first_name: string
   surname: string
-  timezone?: string
+  timezone?: string // Keep in interface for backward compatibility
   bot_share_name: string
   role: string
   invitation_id?: string
@@ -30,12 +30,11 @@ export async function completeUserSetup(invitationData: InvitationData) {
 
     console.log("🔧 Setting up user:", user.id, "with invitation data:", invitationData)
 
-    // Step 1: Create user profile
+    // Step 1: Create user profile - REMOVED TIMEZONE FIELD
     const { error: profileError } = await supabase.from("user_profiles").upsert({
       id: user.id,
       first_name: invitationData.first_name,
       surname: invitationData.surname,
-      timezone: invitationData.timezone || "Asia/Bangkok", // Default timezone if not provided
       bot_share_name: invitationData.bot_share_name,
     })
 

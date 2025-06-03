@@ -2,17 +2,17 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Loader2, Check, User, Building, Globe } from "lucide-react"
+import { Loader2, Check, User, Building } from "lucide-react"
 import { completeUserSetup } from "@/lib/setup-actions"
 import { useRouter } from "next/navigation"
 
 interface InvitationData {
   first_name: string
   surname: string
-  timezone: string
+  timezone?: string // Keep for backward compatibility
   bot_share_name: string
   role: string
-  invitation_id: string
+  invitation_id?: string
   email: string
 }
 
@@ -91,12 +91,11 @@ export default function SetupForm({ invitationData }: SetupFormProps) {
         </div>
 
         <div className="flex items-center p-3 bg-gray-50 rounded-md">
-          <Globe className="h-5 w-5 text-[#616161] mr-3" />
+          <User className="h-5 w-5 text-[#616161] mr-3" />
           <div>
-            <p className="text-sm font-medium text-[#212121]">Role & Timezone</p>
+            <p className="text-sm font-medium text-[#212121]">Role</p>
             <p className="text-xs text-[#616161]">
-              {invitationData.role.charAt(0).toUpperCase() + invitationData.role.slice(1)} •{" "}
-              {invitationData.timezone || "Asia/Bangkok"}
+              {invitationData.role.charAt(0).toUpperCase() + invitationData.role.slice(1)}
             </p>
           </div>
         </div>
