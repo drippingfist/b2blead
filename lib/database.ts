@@ -703,86 +703,20 @@ export async function getDashboardMetrics(
   let currentDroppedCallbacks = 0
   let previousDroppedCallbacks = 0
 
-  // Current period dropped callbacks
-  if (currentThreads && currentThreads.length > 0) {
-    const currentCallbackThreadIds = currentThreads.filter((t) => t.callback === true).map((t) => t.id)
-    console.log("📊 Current threads requesting callbacks:", currentCallbackThreadIds.length)
-    console.log("📊 Sample thread IDs requesting callbacks:", currentCallbackThreadIds.slice(0, 3))
+  // Current period: threads requesting callbacks vs actual callback records
+  const currentThreadsRequestingCallbacks = currentCallbackThreads || 0
+  const currentActualCallbacks = currentCallbacks || 0
+  currentDroppedCallbacks = Math.max(0, currentThreadsRequestingCallbacks - currentActualCallbacks)
 
-    if (currentCallbackThreadIds.length > 0) {
-      // Get all callback records that exist for these thread IDs
-      let existingCurrentCallbacksQuery = supabase
-        .from("callbacks")
-        .select("thread_id")
-        .in("thread_id", currentCallbackThreadIds)
+  // Previous period: threads requesting callbacks vs actual callback records
+  const previousThreadsRequestingCallbacks = previousCallbackThreads || 0
+  const previousActualCallbacks = previousCallbacks || 0
+  previousDroppedCallbacks = Math.max(0, previousThreadsRequestingCallbacks - previousActualCallbacks)
 
-      if (botShareName) {
-        existingCurrentCallbacksQuery = existingCurrentCallbacksQuery.eq("bot_share_name", botShareName)
-      }
-
-      const { data: existingCallbacks, error: callbackError } = await existingCurrentCallbacksQuery
-
-      console.log("📊 Callback query error:", callbackError)
-      console.log("📊 Raw callback data:", existingCallbacks)
-      console.log("📊 Sample callback thread_ids:", existingCallbacks?.slice(0, 3))
-
-      const existingThreadIds = new Set(existingCallbacks?.map((cb) => cb.thread_id) || [])
-
-      // Count threads that have callback=true but NO corresponding callback record
-      currentDroppedCallbacks = currentCallbackThreadIds.filter((threadId) => !existingThreadIds.has(threadId)).length
-
-      console.log("📊 Threads requesting callbacks:", currentCallbackThreadIds.length)
-      console.log("📊 Threads with actual callback records:", existingThreadIds.size)
-      console.log("📊 Existing thread IDs set:", Array.from(existingThreadIds).slice(0, 3))
-      console.log("📊 Dropped callbacks (no record):", currentDroppedCallbacks)
-
-      // Let's also check if there are ANY callbacks for this bot
-      let allCallbacksQuery = supabase.from("callbacks").select("thread_id, bot_share_name").limit(5)
-      if (botShareName) {
-        allCallbacksQuery = allCallbacksQuery.eq("bot_share_name", botShareName)
-      }
-      const { data: allCallbacks } = await allCallbacksQuery
-      console.log("📊 Sample callbacks for bot:", allCallbacks)
-    }
-  }
-
-  // Previous period dropped callbacks
-  if (previousStartDate && previousEndDate) {
-    let previousCallbackThreadsFullQuery = supabase
-      .from("threads")
-      .select("id")
-      .eq("callback", true)
-      .gte("created_at", previousStartDate)
-      .lte("created_at", previousEndDate)
-
-    if (botShareName) {
-      previousCallbackThreadsFullQuery = previousCallbackThreadsFullQuery.eq("bot_share_name", botShareName)
-    }
-
-    const { data: previousCallbackThreadsData } = await previousCallbackThreadsFullQuery
-
-    if (previousCallbackThreadsData && previousCallbackThreadsData.length > 0) {
-      const previousCallbackThreadIds = previousCallbackThreadsData.map((t) => t.id)
-
-      // Get all callback records that exist for these thread IDs
-      let existingPreviousCallbacksQuery = supabase
-        .from("callbacks")
-        .select("thread_id")
-        .in("thread_id", previousCallbackThreadIds)
-
-      if (botShareName) {
-        existingPreviousCallbacksQuery = existingPreviousCallbacksQuery.eq("bot_share_name", botShareName)
-      }
-
-      const { data: existingPreviousCallbacks } = await existingPreviousCallbacksQuery
-      const existingPreviousThreadIds = new Set(existingPreviousCallbacks?.map((cb) => cb.thread_id) || [])
-
-      // Count threads that have callback=true but NO corresponding callback record
-      previousDroppedCallbacks = previousCallbackThreadIds.filter(
-        (threadId) => !existingPreviousThreadIds.has(threadId),
-      ).length
-    }
-  }
+  console.log("📊 SIMPLIFIED CALCULATION:")
+  console.log("📊 Current threads requesting callbacks:", currentThreadsRequestingCallbacks)
+  console.log("📊 Current actual callback records:", currentActualCallbacks)
+  console.log("📊 Current dropped callbacks:", currentDroppedCallbacks)
 
   console.log("📊 Final metrics:", {
     totalChats,
