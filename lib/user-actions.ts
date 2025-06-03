@@ -434,21 +434,55 @@ export async function updateUser(
   }
 }
 
-// Remove user access
-export async function removeUserAccess(userId: string) {
+// Completely delete a user and all their data
+export async function deleteUser(userId: string) {
   try {
     const cookieStore = cookies()
     const supabase = createServerActionClient({ cookies: () => cookieStore })
+    const adminClient = getAdminClient()
 
-    const { error } = await supabase.from("user_profiles").update({ bot_share_name: null }).eq("id", userId)
+    console.log("🗑️ Starting complete user deletion for:", userId)
 
-    if (error) throw error
+    // Step 1: Delete from user_profiles table
+    const { error: profileError } = await supabase.from("user_profiles").delete().eq("id", userId)
 
-    return { success: true }
+    if (profileError) {
+      console.error("❌ Error deleting user profile:", profileError)
+      throw new Error(`Failed to delete user profile: ${profileError.message}`)
+    }
+    console.log("✅ User profile deleted")
+
+    // Step 2: Delete from bot_users table
+    const { error: botUserError } = await supabase.from("bot_users").delete().eq("id", userId)
+
+    if (botUserError) {
+      console.error("❌ Error deleting bot user:", botUserError)
+      throw new Error(`Failed to delete bot user: ${botUserError.message}`)
+    }
+    console.log("✅ Bot user deleted")
+
+    // Step 3: Delete from auth.users table using admin client
+    const { error: authError } = await adminClient.auth.admin.deleteUser(userId)
+
+    if (authError) {
+      console.error("❌ Error deleting auth user:", authError)
+      throw new Error(`Failed to delete auth user: ${authError.message}`)
+    }
+    console.log("✅ Auth user deleted")
+
+    console.log("✅ User completely deleted from all tables")
+
+    return { success: true, message: "User has been completely removed from the system" }
   } catch (error: any) {
-    console.error("Error removing user access:", error)
-    return { success: false, error: error.message }
+    console.error("❌ Error deleting user:", error)
+    return { success: false, error: error.message || "Failed to delete user" }
   }
+}
+
+// Remove user access (legacy function - kept for backward compatibility)
+export async function removeUserAccess(userId: string) {
+  // This now calls the complete delete function
+  return await deleteUser(userId)
 }
 
 // Delete invitation

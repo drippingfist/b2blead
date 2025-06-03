@@ -14,10 +14,11 @@ import {
   getUsers,
   getInvitations,
   updateUser,
-  removeUserAccess,
+  deleteUser,
   deleteInvitation,
   getInvitableBots,
 } from "@/lib/user-actions"
+import { DeleteUserModal } from "@/components/delete-user-modal"
 
 interface UserData {
   id: string
@@ -74,6 +75,9 @@ export default function SettingsPage() {
   const [availableBots, setAvailableBots] = useState<
     { bot_share_name: string; client_name: string; timezone: string }[]
   >([])
+
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [userToDelete, setUserToDelete] = useState<{ id: string; name: string; email: string } | null>(null)
 
   useEffect(() => {
     async function loadUserData() {
@@ -331,21 +335,35 @@ export default function SettingsPage() {
   }
 
   const handleDeleteUser = async (userId: string) => {
-    try {
-      if (!confirm("Are you sure you want to remove this user's access?")) return
+    const user = users.find((u) => u.id === userId)
+    if (!user) return
 
-      const result = await removeUserAccess(userId)
+    setUserToDelete({
+      id: userId,
+      name: `${user.first_name} ${user.surname}`.trim() || "Unknown User",
+      email: user.email || "Unknown Email",
+    })
+    setDeleteModalOpen(true)
+  }
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return
+
+    try {
+      const result = await deleteUser(userToDelete.id)
 
       if (result.success) {
         await loadUsers()
         setSuccess(true)
         setTimeout(() => setSuccess(false), 3000)
       } else {
-        setError(result.error || "Failed to remove user")
+        setError(result.error || "Failed to delete user")
       }
     } catch (err: any) {
       console.error("Error deleting user:", err)
-      setError("Failed to remove user")
+      setError("Failed to delete user")
+    } finally {
+      setUserToDelete(null)
     }
   }
 
@@ -806,6 +824,17 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+      {/* Delete User Modal */}
+      <DeleteUserModal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false)
+          setUserToDelete(null)
+        }}
+        onConfirm={confirmDeleteUser}
+        userName={userToDelete?.name || ""}
+        userEmail={userToDelete?.email || ""}
+      />
     </div>
   )
 }
