@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Save, X, CreditCard, Receipt, Users, Info, Edit, Trash2 } from "lucide-react"
+import { Loader2, Save, X, CreditCard, Receipt, Users, Info, Trash2 } from "lucide-react"
 import { supabase } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { timezones } from "@/lib/timezones"
@@ -262,7 +262,6 @@ export default function SettingsPage() {
         first_name: user.first_name,
         surname: user.surname,
         role: user.role,
-        timezone: user.timezone,
         bot_share_name: user.bot_share_name,
       })
 
@@ -493,7 +492,7 @@ export default function SettingsPage() {
                     users.map((user) => (
                       <div key={user.id} className="p-4 border border-[#e0e0e0] rounded-lg">
                         {editingUser === user.id ? (
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="space-y-1">
                               <Label className="text-xs">First Name</Label>
                               <Input
@@ -525,25 +524,7 @@ export default function SettingsPage() {
                                 </SelectContent>
                               </Select>
                             </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Timezone</Label>
-                              <Select
-                                value={user.timezone}
-                                onValueChange={(value) => handleUserEdit(user.id, "timezone", value)}
-                              >
-                                <SelectTrigger className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {timezones.map((timezone) => (
-                                    <SelectItem key={timezone.value} value={timezone.value}>
-                                      {timezone.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="flex items-end space-x-2 md:col-span-4">
+                            <div className="flex items-end space-x-2 md:col-span-3">
                               <Button
                                 onClick={() => handleSaveUser(user.id)}
                                 className="bg-[#038a71] hover:bg-[#038a71]/90"
@@ -557,42 +538,20 @@ export default function SettingsPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="flex items-center justify-between">
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
-                              <div>
-                                <p className="text-sm font-medium text-[#212121]">
-                                  {user.first_name} {user.surname}
-                                </p>
-                                <p className="text-xs text-[#616161]">{user.email}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-[#616161] uppercase tracking-wider">Role</p>
-                                <p className="text-sm text-[#212121] capitalize">{user.role}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-[#616161] uppercase tracking-wider">Bot Access</p>
-                                <p className="text-sm text-[#212121]">{user.bot_share_name}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-[#616161] uppercase tracking-wider">Timezone</p>
-                                <p className="text-sm text-[#212121]">
-                                  {timezones.find((tz) => tz.value === user.timezone)?.label.split(")")[0] + ")" ||
-                                    user.timezone}
-                                </p>
-                              </div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
+                            <div>
+                              <p className="text-sm font-medium text-[#212121]">
+                                {user.first_name} {user.surname}
+                              </p>
+                              <p className="text-xs text-[#616161]">{user.email}</p>
                             </div>
-                            <div className="flex items-center space-x-2 ml-4">
-                              <Button onClick={() => setEditingUser(user.id)} variant="outline" size="sm">
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                onClick={() => handleDeleteUser(user.id)}
-                                variant="outline"
-                                size="sm"
-                                className="text-red-600 hover:text-red-700 hover:border-red-300"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                            <div>
+                              <p className="text-xs text-[#616161] uppercase tracking-wider">Role</p>
+                              <p className="text-sm text-[#212121] capitalize">{user.role}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-[#616161] uppercase tracking-wider">Bot Access</p>
+                              <p className="text-sm text-[#212121]">{user.bot_share_name}</p>
                             </div>
                           </div>
                         )}
