@@ -14,6 +14,7 @@ interface DashboardMetrics {
   droppedCallbacks: number
   averageSentiment: number
   averageResponseTime: number
+  globalAverageResponseTime: number
   sentimentDistribution: { score: number; count: number }[]
   previousPeriodComparison: {
     totalChats: number
@@ -22,6 +23,7 @@ interface DashboardMetrics {
     droppedCallbacks: number
     averageSentiment: number
     averageResponseTime: number
+    globalAverageResponseTime: number
   }
 }
 
@@ -35,6 +37,7 @@ export default function Dashboard() {
     droppedCallbacks: 0,
     averageSentiment: 0,
     averageResponseTime: 0,
+    globalAverageResponseTime: 0,
     sentimentDistribution: [],
     previousPeriodComparison: {
       totalChats: 0,
@@ -43,11 +46,13 @@ export default function Dashboard() {
       droppedCallbacks: 0,
       averageSentiment: 0,
       averageResponseTime: 0,
+      globalAverageResponseTime: 0,
     },
   })
   const [bots, setBots] = useState<any[]>([])
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [currentBotName, setCurrentBotName] = useState<string>("Selected Bot")
 
   // Load selected bot from localStorage
   useEffect(() => {
@@ -80,6 +85,14 @@ export default function Dashboard() {
         setMetrics(fetchedMetrics)
         setBots(fetchedBots)
         setUserEmail(fetchedUserEmail)
+
+        // Set current bot name
+        if (selectedBot) {
+          const currentBot = fetchedBots.find((b) => b.bot_share_name === selectedBot)
+          setCurrentBotName(currentBot?.client_name || currentBot?.bot_share_name || "Selected Bot")
+        } else {
+          setCurrentBotName("All Bots")
+        }
       } catch (error) {
         console.error("Error fetching dashboard data:", error)
       } finally {
@@ -96,15 +109,29 @@ export default function Dashboard() {
     return change > 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`
   }
 
-  const getChangeColor = (current: number, previous: number) => {
-    if (current > previous) return "text-green-600"
-    if (current < previous) return "text-red-600"
+  const getChangeColor = (current: number, previous: number, isResponseTime = false) => {
+    if (isResponseTime) {
+      // For response time, lower is better
+      if (current < previous) return "text-green-600"
+      if (current > previous) return "text-red-600"
+    } else {
+      // For other metrics, higher is better
+      if (current > previous) return "text-green-600"
+      if (current < previous) return "text-red-600"
+    }
     return "text-gray-500"
   }
 
-  const getChangeIcon = (current: number, previous: number) => {
-    if (current > previous) return <TrendingUp className="h-3 w-3" />
-    if (current < previous) return <TrendingDown className="h-3 w-3" />
+  const getChangeIcon = (current: number, previous: number, isResponseTime = false) => {
+    if (isResponseTime) {
+      // For response time, lower is better
+      if (current < previous) return <TrendingDown className="h-3 w-3" />
+      if (current > previous) return <TrendingUp className="h-3 w-3" />
+    } else {
+      // For other metrics, higher is better
+      if (current > previous) return <TrendingUp className="h-3 w-3" />
+      if (current < previous) return <TrendingDown className="h-3 w-3" />
+    }
     return null
   }
 
@@ -253,9 +280,9 @@ export default function Dashboard() {
               <p className="text-2xl md:text-3xl font-bold mt-2 text-red-600">{metrics.droppedCallbacks}</p>
             </div>
             <div
-              className={`flex items-center text-sm ${getChangeColor(metrics.droppedCallbacks, metrics.previousPeriodComparison.droppedCallbacks)}`}
+              className={`flex items-center text-sm ${getChangeColor(metrics.droppedCallbacks, metrics.previousPeriodComparison.droppedCallbacks, true)}`}
             >
-              {getChangeIcon(metrics.droppedCallbacks, metrics.previousPeriodComparison.droppedCallbacks)}
+              {getChangeIcon(metrics.droppedCallbacks, metrics.previousPeriodComparison.droppedCallbacks, true)}
               <span className="ml-1">
                 {formatPercentageChange(metrics.droppedCallbacks, metrics.previousPeriodComparison.droppedCallbacks)}
               </span>
@@ -322,34 +349,73 @@ export default function Dashboard() {
               <Clock className="h-5 w-5 mr-2 text-[#038a71]" />
               Response Speed
             </h3>
-            <div
-              className={`flex items-center text-sm ${getChangeColor(metrics.averageResponseTime, metrics.previousPeriodComparison.averageResponseTime)}`}
-            >
-              {getChangeIcon(metrics.averageResponseTime, metrics.previousPeriodComparison.averageResponseTime)}
-              <span className="ml-1">
-                {formatPercentageChange(
-                  metrics.averageResponseTime,
-                  metrics.previousPeriodComparison.averageResponseTime,
-                )}
-              </span>
-            </div>
           </div>
 
-          <div className="mb-6">
-            <p className="text-sm text-[#616161] mb-2">Average Response Time</p>
-            <p className="text-3xl font-bold text-[#038a71]">{(metrics.averageResponseTime / 1000).toFixed(1)}s</p>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-md">
-              <span className="text-sm text-[#616161]">Current Period</span>
-              <span className="font-medium text-[#212121]">{(metrics.averageResponseTime / 1000).toFixed(1)}s</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Bot-specific response time */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium text-[#212121]">{currentBotName}</h4>
+                <div
+                  className={`flex items-center text-xs ${getChangeColor(metrics.averageResponseTime, metrics.previousPeriodComparison.averageResponseTime, true)}`}
+                >
+                  {getChangeIcon(
+                    metrics.averageResponseTime,
+                    metrics.previousPeriodComparison.averageResponseTime,
+                    true,
+                  )}
+                  <span className="ml-1">
+                    {formatPercentageChange(
+                      metrics.averageResponseTime,
+                      metrics.previousPeriodComparison.averageResponseTime,
+                    )}
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm text-[#616161] mb-1">Average Response Time</p>
+              <p className="text-2xl font-bold text-[#038a71]">{(metrics.averageResponseTime / 1000).toFixed(1)}s</p>
+              <div className="mt-3 text-xs text-[#616161]">
+                <div className="flex justify-between items-center">
+                  <span>Previous period:</span>
+                  <span className="font-medium">
+                    {(metrics.previousPeriodComparison.averageResponseTime / 1000).toFixed(1)}s
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-md">
-              <span className="text-sm text-[#616161]">Previous Period</span>
-              <span className="font-medium text-[#212121]">
-                {(metrics.previousPeriodComparison.averageResponseTime / 1000).toFixed(1)}s
-              </span>
+
+            {/* Global response time */}
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium text-[#212121]">Global Average</h4>
+                <div
+                  className={`flex items-center text-xs ${getChangeColor(metrics.globalAverageResponseTime, metrics.previousPeriodComparison.globalAverageResponseTime, true)}`}
+                >
+                  {getChangeIcon(
+                    metrics.globalAverageResponseTime,
+                    metrics.previousPeriodComparison.globalAverageResponseTime,
+                    true,
+                  )}
+                  <span className="ml-1">
+                    {formatPercentageChange(
+                      metrics.globalAverageResponseTime,
+                      metrics.previousPeriodComparison.globalAverageResponseTime,
+                    )}
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm text-[#616161] mb-1">Average Response Time</p>
+              <p className="text-2xl font-bold text-[#038a71]">
+                {(metrics.globalAverageResponseTime / 1000).toFixed(1)}s
+              </p>
+              <div className="mt-3 text-xs text-[#616161]">
+                <div className="flex justify-between items-center">
+                  <span>Previous period:</span>
+                  <span className="font-medium">
+                    {(metrics.previousPeriodComparison.globalAverageResponseTime / 1000).toFixed(1)}s
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -553,6 +553,10 @@ export async function getDashboardMetrics(
   let previousSentimentQuery = supabase.from("threads").select("sentiment_score")
   let previousResponseTimeQuery = supabase.from("threads").select("mean_response_time")
 
+  // Build global response time queries (all bots)
+  let currentGlobalResponseTimeQuery = supabase.from("threads").select("mean_response_time")
+  let previousGlobalResponseTimeQuery = supabase.from("threads").select("mean_response_time")
+
   // Apply bot filter if provided
   if (botShareName) {
     currentThreadsQuery = currentThreadsQuery.eq("bot_share_name", botShareName)
@@ -575,6 +579,7 @@ export async function getDashboardMetrics(
     currentCallbackThreadsQuery = currentCallbackThreadsQuery.gte("created_at", currentStartDate)
     currentSentimentQuery = currentSentimentQuery.gte("created_at", currentStartDate)
     currentResponseTimeQuery = currentResponseTimeQuery.gte("created_at", currentStartDate)
+    currentGlobalResponseTimeQuery = currentGlobalResponseTimeQuery.gte("created_at", currentStartDate)
   }
 
   // Apply date filters for previous period
@@ -592,6 +597,9 @@ export async function getDashboardMetrics(
     previousResponseTimeQuery = previousResponseTimeQuery
       .gte("created_at", previousStartDate)
       .lte("created_at", previousEndDate)
+    previousGlobalResponseTimeQuery = previousGlobalResponseTimeQuery
+      .gte("created_at", previousStartDate)
+      .lte("created_at", previousEndDate)
   }
 
   // Add specific filters
@@ -603,6 +611,10 @@ export async function getDashboardMetrics(
 
   currentResponseTimeQuery = currentResponseTimeQuery.not("mean_response_time", "is", null)
   previousResponseTimeQuery = previousResponseTimeQuery.not("mean_response_time", "is", null)
+
+  // Add filters for non-null response times
+  currentGlobalResponseTimeQuery = currentGlobalResponseTimeQuery.not("mean_response_time", "is", null)
+  previousGlobalResponseTimeQuery = previousGlobalResponseTimeQuery.not("mean_response_time", "is", null)
 
   // Execute all queries
   const [
@@ -616,6 +628,8 @@ export async function getDashboardMetrics(
     { count: previousCallbackThreads },
     { data: previousSentimentData },
     { data: previousResponseTimeData },
+    { data: currentGlobalResponseTimeData },
+    { data: previousGlobalResponseTimeData },
   ] = await Promise.all([
     currentThreadsQuery,
     currentCallbacksQuery,
@@ -627,6 +641,8 @@ export async function getDashboardMetrics(
     previousCallbackThreadsQuery,
     previousSentimentQuery,
     previousResponseTimeQuery,
+    currentGlobalResponseTimeQuery,
+    previousGlobalResponseTimeQuery,
   ])
 
   // Calculate current period metrics
@@ -663,6 +679,17 @@ export async function getDashboardMetrics(
   const previousAverageResponseTime = previousResponseTimeData?.length
     ? previousResponseTimeData.reduce((sum, thread) => sum + (thread.mean_response_time || 0), 0) /
       previousResponseTimeData.length
+    : 0
+
+  // Calculate global average response times
+  const globalAverageResponseTime = currentGlobalResponseTimeData?.length
+    ? currentGlobalResponseTimeData.reduce((sum, thread) => sum + (thread.mean_response_time || 0), 0) /
+      currentGlobalResponseTimeData.length
+    : 0
+
+  const previousGlobalAverageResponseTime = previousGlobalResponseTimeData?.length
+    ? previousGlobalResponseTimeData.reduce((sum, thread) => sum + (thread.mean_response_time || 0), 0) /
+      previousGlobalResponseTimeData.length
     : 0
 
   // Calculate dropped callbacks (threads with callback=true but no actual callback record)
@@ -726,6 +753,7 @@ export async function getDashboardMetrics(
     droppedCallbacks: currentDroppedCallbacks,
     averageSentiment,
     averageResponseTime,
+    globalAverageResponseTime,
     sentimentDistribution,
     previousPeriodComparison: {
       totalChats: previousTotalChats,
@@ -734,6 +762,7 @@ export async function getDashboardMetrics(
       droppedCallbacks: previousDroppedCallbacks,
       averageSentiment: previousAverageSentiment,
       averageResponseTime: previousAverageResponseTime,
+      globalAverageResponseTime: previousGlobalAverageResponseTime,
     },
   }
 }

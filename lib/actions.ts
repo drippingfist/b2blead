@@ -124,3 +124,36 @@ export async function refreshSentimentAnalysis(threadId: string) {
     return { error: `Unexpected error: ${error.message}` }
   }
 }
+
+// New server action to send password reset email
+export async function sendPasswordReset(prevState: any, formData: FormData) {
+  // Check if formData is valid
+  if (!formData) {
+    return { error: "Form data is missing" }
+  }
+
+  const email = formData.get("email")
+
+  // Validate required fields
+  if (!email) {
+    return { error: "Email is required" }
+  }
+
+  const cookieStore = cookies()
+  const supabase = createServerActionClient({ cookies: () => cookieStore })
+
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.toString(), {
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`,
+    })
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    return { success: "Check your email for a password reset link." }
+  } catch (error) {
+    console.error("Password reset error:", error)
+    return { error: "An unexpected error occurred. Please try again." }
+  }
+}
