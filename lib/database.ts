@@ -247,12 +247,14 @@ export async function getCallbackStatsClientWithPeriod(
   let totalCallbacksQuery = supabase.from("callbacks").select("*", { count: "exact", head: true })
   let totalThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
   let callbackRequestsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
+  let callbacksDroppedQuery = supabase.from("threads").select("id")
 
   // Apply bot filter if provided
   if (botShareName) {
     totalCallbacksQuery = totalCallbacksQuery.eq("bot_share_name", botShareName)
     totalThreadsQuery = totalThreadsQuery.eq("bot_share_name", botShareName)
     callbackRequestsQuery = callbackRequestsQuery.eq("bot_share_name", botShareName)
+    callbacksDroppedQuery = callbacksDroppedQuery.eq("bot_share_name", botShareName)
   }
 
   // Apply date filter if not all time
@@ -260,35 +262,47 @@ export async function getCallbackStatsClientWithPeriod(
     totalCallbacksQuery = totalCallbacksQuery.gte("created_at", startDate)
     totalThreadsQuery = totalThreadsQuery.gte("created_at", startDate)
     callbackRequestsQuery = callbackRequestsQuery.gte("created_at", startDate)
+    callbacksDroppedQuery = callbacksDroppedQuery.gte("created_at", startDate)
   }
 
-  // Add specific filters - threads with callback = true
+  // Add specific filters - updated to use 'callback' field
   callbackRequestsQuery = callbackRequestsQuery.eq("callback", true)
+  callbacksDroppedQuery = callbacksDroppedQuery.eq("callback", true)
 
-  const [{ count: totalCallbacks }, { count: totalThreads }, { count: callbackRequests }] = await Promise.all([
-    totalCallbacksQuery,
-    totalThreadsQuery,
-    callbackRequestsQuery,
-  ])
+  const [
+    { count: totalCallbacks },
+    { count: totalThreads },
+    { count: callbackRequests },
+    { data: threadsWithCallbacks },
+  ] = await Promise.all([totalCallbacksQuery, totalThreadsQuery, callbackRequestsQuery, callbacksDroppedQuery])
 
-  // Calculate callbacks dropped: threads with callback=true minus actual callback records
-  const callbacksDropped = (callbackRequests || 0) - (totalCallbacks || 0)
+  // Calculate callbacks dropped (threads with callback=true but no actual callback record)
+  let callbacksDropped = 0
+  if (threadsWithCallbacks && threadsWithCallbacks.length > 0) {
+    const threadIds = threadsWithCallbacks.map((t) => t.id)
+
+    // Get all callback records that exist for these thread IDs
+    let existingCallbacksQuery = supabase.from("callbacks").select("thread_id").in("thread_id", threadIds)
+
+    if (botShareName) {
+      existingCallbacksQuery = existingCallbacksQuery.eq("bot_share_name", botShareName)
+    }
+
+    const { data: existingCallbacks } = await existingCallbacksQuery
+    const existingThreadIds = new Set(existingCallbacks?.map((cb) => cb.thread_id) || [])
+
+    // Count threads that have callback=true but NO corresponding callback record
+    callbacksDropped = threadIds.filter((threadId) => !existingThreadIds.has(threadId)).length
+  }
 
   // Calculate conversion rate
   const conversionRate =
     totalThreads && totalThreads > 0 ? Math.round(((callbackRequests || 0) / totalThreads) * 100) : 0
 
-  console.log("📊 Callback Stats Calculation:")
-  console.log("📊 Threads with callback=true:", callbackRequests)
-  console.log("📊 Actual callback records:", totalCallbacks)
-  console.log("📊 Callbacks dropped:", callbacksDropped)
-  console.log("📊 Total threads:", totalThreads)
-  console.log("📊 Conversion rate:", conversionRate)
-
   return {
     totalCallbacks: totalCallbacks || 0,
     recentCallbacks: callbackRequests || 0,
-    callbacksDropped: Math.max(0, callbacksDropped), // Ensure it's not negative
+    callbacksDropped,
     conversionRate,
     totalThreads: totalThreads || 0,
   }
@@ -376,7 +390,8 @@ export async function getThreadById(id: string): Promise<Thread | null> {
   return data
 }
 
-// Update the getUserBotAccess function to also return member role
+// Update the getUserBotAccess function to properly handle the RLS policy
+
 export async function getUserBotAccess(): Promise<{
   role: "superadmin" | "admin" | "member" | null
   accessibleBots: string[]
@@ -388,10 +403,12 @@ export async function getUserBotAccess(): Promise<{
     } = await supabase.auth.getUser()
 
     if (!user?.id) {
+      console.log("🔐 No authenticated user found")
       return { role: null, accessibleBots: [], isSuperAdmin: false }
     }
 
     console.log("🔐 Getting bot access for user ID:", user.id)
+    console.log("🔐 User email:", user.email)
 
     // Get user's bot assignments using the FK relationship (id column)
     const { data: botUsers, error } = await supabase
@@ -401,11 +418,11 @@ export async function getUserBotAccess(): Promise<{
       .eq("is_active", true)
 
     if (error) {
-      console.error("Error fetching user bot access:", error)
+      console.error("❌ Error fetching user bot access:", error)
       return { role: null, accessibleBots: [], isSuperAdmin: false }
     }
 
-    console.log("🔐 Bot users found:", botUsers)
+    console.log("🔐 Bot users query result:", botUsers)
 
     if (!botUsers || botUsers.length === 0) {
       console.log("🔐 No bot access found for user")
@@ -414,18 +431,22 @@ export async function getUserBotAccess(): Promise<{
 
     // Check if user is superadmin
     const isSuperAdmin = botUsers.some((bu) => bu.role === "superadmin")
+    console.log("🔐 Is superadmin:", isSuperAdmin)
 
     if (isSuperAdmin) {
-      console.log("🔐 User is superadmin - getting all bots")
-      // Superadmin can see all bots
-      const { data: allBots } = await supabase.from("bots").select("bot_share_name").not("bot_share_name", "is", null)
-
-      const accessibleBots = allBots?.map((b) => b.bot_share_name).filter(Boolean) || []
-      return { role: "superadmin", accessibleBots, isSuperAdmin: true }
+      console.log("🔐 User is superadmin - they should have access to all bots")
+      // For superadmin, we don't need to fetch all bots here - the component will do that
+      // We just need to indicate they are superadmin
+      return {
+        role: "superadmin",
+        accessibleBots: [], // Empty array - component will fetch all bots
+        isSuperAdmin: true,
+      }
     }
 
-    // Get the user's role (admin or member)
-    const userRole = botUsers[0]?.role as "admin" | "member"
+    // Get the user's highest role (admin or member)
+    const isAdmin = botUsers.some((bu) => bu.role === "admin")
+    const userRole = isAdmin ? "admin" : "member"
 
     // Regular admin/member - get their specific bot assignments
     const accessibleBots = botUsers
@@ -441,7 +462,7 @@ export async function getUserBotAccess(): Promise<{
       isSuperAdmin: false,
     }
   } catch (error) {
-    console.error("Exception in getUserBotAccess:", error)
+    console.error("❌ Exception in getUserBotAccess:", error)
     return { role: null, accessibleBots: [], isSuperAdmin: false }
   }
 }
@@ -547,14 +568,6 @@ export async function getDashboardMetrics(
   let currentGlobalResponseTimeQuery = supabase.from("threads").select("mean_response_time")
   let previousGlobalResponseTimeQuery = supabase.from("threads").select("mean_response_time")
 
-  // Build VRG user response time queries (threads.user_mean_response_time)
-  let currentVrgResponseTimeQuery = supabase.from("threads").select("user_mean_response_time")
-  let previousVrgResponseTimeQuery = supabase.from("threads").select("user_mean_response_time")
-
-  // Build global VRG user response time queries (all bots - threads.user_mean_response_time)
-  let currentGlobalVrgResponseTimeQuery = supabase.from("threads").select("user_mean_response_time")
-  let previousGlobalVrgResponseTimeQuery = supabase.from("threads").select("user_mean_response_time")
-
   // Apply bot filter if provided
   if (botShareName) {
     currentThreadsQuery = currentThreadsQuery.eq("bot_share_name", botShareName)
@@ -568,9 +581,6 @@ export async function getDashboardMetrics(
     previousCallbackThreadsQuery = previousCallbackThreadsQuery.eq("bot_share_name", botShareName)
     previousSentimentQuery = previousSentimentQuery.eq("bot_share_name", botShareName)
     previousResponseTimeQuery = previousResponseTimeQuery.eq("bot_share_name", botShareName)
-
-    currentVrgResponseTimeQuery = currentVrgResponseTimeQuery.eq("bot_share_name", botShareName)
-    previousVrgResponseTimeQuery = previousVrgResponseTimeQuery.eq("bot_share_name", botShareName)
   }
 
   // Apply date filters for current period
@@ -581,8 +591,6 @@ export async function getDashboardMetrics(
     currentSentimentQuery = currentSentimentQuery.gte("created_at", currentStartDate)
     currentResponseTimeQuery = currentResponseTimeQuery.gte("created_at", currentStartDate)
     currentGlobalResponseTimeQuery = currentGlobalResponseTimeQuery.gte("created_at", currentStartDate)
-    currentVrgResponseTimeQuery = currentVrgResponseTimeQuery.gte("created_at", currentStartDate)
-    currentGlobalVrgResponseTimeQuery = currentGlobalVrgResponseTimeQuery.gte("created_at", currentStartDate)
   }
 
   // Apply date filters for previous period
@@ -603,12 +611,6 @@ export async function getDashboardMetrics(
     previousGlobalResponseTimeQuery = previousGlobalResponseTimeQuery
       .gte("created_at", previousStartDate)
       .lte("created_at", previousEndDate)
-    previousVrgResponseTimeQuery = previousVrgResponseTimeQuery
-      .gte("created_at", previousStartDate)
-      .lte("created_at", previousEndDate)
-    previousGlobalVrgResponseTimeQuery = previousGlobalVrgResponseTimeQuery
-      .gte("created_at", previousStartDate)
-      .lte("created_at", previousEndDate)
   }
 
   // Add specific filters - FIXED: Use 'callback' instead of 'cb_requested'
@@ -625,14 +627,6 @@ export async function getDashboardMetrics(
   currentGlobalResponseTimeQuery = currentGlobalResponseTimeQuery.not("mean_response_time", "is", null)
   previousGlobalResponseTimeQuery = previousGlobalResponseTimeQuery.not("mean_response_time", "is", null)
 
-  // Add filters for non-null VRG response times
-  currentVrgResponseTimeQuery = currentVrgResponseTimeQuery.not("user_mean_response_time", "is", null)
-  previousVrgResponseTimeQuery = previousVrgResponseTimeQuery.not("user_mean_response_time", "is", null)
-
-  // Add filters for non-null global VRG response times
-  currentGlobalVrgResponseTimeQuery = currentGlobalVrgResponseTimeQuery.not("user_mean_response_time", "is", null)
-  previousGlobalVrgResponseTimeQuery = previousGlobalVrgResponseTimeQuery.not("user_mean_response_time", "is", null)
-
   // Execute all queries
   const [
     { data: currentThreads },
@@ -647,10 +641,6 @@ export async function getDashboardMetrics(
     { data: previousResponseTimeData },
     { data: currentGlobalResponseTimeData },
     { data: previousGlobalResponseTimeData },
-    { data: currentVrgResponseTimeData },
-    { data: previousVrgResponseTimeData },
-    { data: currentGlobalVrgResponseTimeData },
-    { data: previousGlobalVrgResponseTimeData },
   ] = await Promise.all([
     currentThreadsQuery,
     currentCallbacksQuery,
@@ -664,10 +654,6 @@ export async function getDashboardMetrics(
     previousResponseTimeQuery,
     currentGlobalResponseTimeQuery,
     previousGlobalResponseTimeQuery,
-    currentVrgResponseTimeQuery,
-    previousVrgResponseTimeQuery,
-    currentGlobalVrgResponseTimeQuery,
-    previousGlobalVrgResponseTimeQuery,
   ])
 
   console.log("📊 Current threads with callback=true:", currentCallbackThreads)
@@ -720,28 +706,6 @@ export async function getDashboardMetrics(
       previousGlobalResponseTimeData.length
     : 0
 
-  // Calculate VRG user average response times
-  const vrgUserResponseTime = currentVrgResponseTimeData?.length
-    ? currentVrgResponseTimeData.reduce((sum, thread) => sum + (thread.user_mean_response_time || 0), 0) /
-      currentVrgResponseTimeData.length
-    : 0
-
-  const previousVrgUserResponseTime = previousVrgResponseTimeData?.length
-    ? previousVrgResponseTimeData.reduce((sum, thread) => sum + (thread.user_mean_response_time || 0), 0) /
-      previousVrgResponseTimeData.length
-    : 0
-
-  // Calculate global VRG user average response times
-  const globalVrgUserResponseTime = currentGlobalVrgResponseTimeData?.length
-    ? currentGlobalVrgResponseTimeData.reduce((sum, thread) => sum + (thread.user_mean_response_time || 0), 0) /
-      currentGlobalVrgResponseTimeData.length
-    : 0
-
-  const previousGlobalVrgUserResponseTime = previousGlobalVrgResponseTimeData?.length
-    ? previousGlobalVrgResponseTimeData.reduce((sum, thread) => sum + (thread.user_mean_response_time || 0), 0) /
-      previousGlobalVrgResponseTimeData.length
-    : 0
-
   // FIXED: Calculate dropped callbacks properly - threads with callback=true but NO linked callback record
   let currentDroppedCallbacks = 0
   let previousDroppedCallbacks = 0
@@ -775,9 +739,7 @@ export async function getDashboardMetrics(
     droppedCallbacks: currentDroppedCallbacks,
     averageSentiment,
     averageResponseTime,
-    vrgUserResponseTime,
     globalAverageResponseTime,
-    globalVrgUserResponseTime,
     sentimentDistribution,
     previousPeriodComparison: {
       totalChats: previousTotalChats,
@@ -786,9 +748,7 @@ export async function getDashboardMetrics(
       droppedCallbacks: previousDroppedCallbacks,
       averageSentiment: previousAverageSentiment,
       averageResponseTime: previousAverageResponseTime,
-      vrgUserResponseTime: previousVrgUserResponseTime,
       globalAverageResponseTime: previousGlobalAverageResponseTime,
-      globalVrgUserResponseTime: previousGlobalVrgUserResponseTime,
     },
   }
 }

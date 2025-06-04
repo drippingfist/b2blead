@@ -79,16 +79,6 @@ export default function SettingsPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [userToDelete, setUserToDelete] = useState<{ id: string; name: string; email: string } | null>(null)
 
-  const [botSettings, setBotSettings] = useState<{
-    bot_share_name: string
-    client_email: string
-  }>({
-    bot_share_name: "",
-    client_email: "",
-  })
-  const [botSettingsLoading, setBotSettingsLoading] = useState(false)
-  const [botSettingsSaving, setBotSettingsSaving] = useState(false)
-
   useEffect(() => {
     async function loadUserData() {
       try {
@@ -141,7 +131,6 @@ export default function SettingsPage() {
         await loadAvailableBots()
         await loadUsers()
         await loadInvitations()
-        await loadBotSettings()
       } catch (err: any) {
         console.error("Error loading user data:", err)
         setError(err.message || "Failed to load user data")
@@ -198,84 +187,6 @@ export default function SettingsPage() {
       }
     } catch (err: any) {
       console.error("Error loading invited users:", err)
-    }
-  }
-
-  const loadBotSettings = async () => {
-    try {
-      setBotSettingsLoading(true)
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
-
-      if (userError || !user?.id) {
-        return
-      }
-
-      // Get user's bot assignment
-      const { data: botUser, error: botUserError } = await supabase
-        .from("bot_users")
-        .select("bot_share_name, role")
-        .eq("id", user.id)
-        .eq("is_active", true)
-        .single()
-
-      if (botUserError || !botUser) {
-        console.error("Error loading bot user:", botUserError)
-        return
-      }
-
-      // Only load bot settings for admins and superadmins (not members)
-      if (botUser.role !== "admin" && botUser.role !== "superadmin") {
-        return
-      }
-
-      // Get the bot details
-      const { data: bot, error: botError } = await supabase
-        .from("bots")
-        .select("bot_share_name, client_email")
-        .eq("bot_share_name", botUser.bot_share_name)
-        .single()
-
-      if (botError) {
-        console.error("Error loading bot settings:", botError)
-        return
-      }
-
-      setBotSettings({
-        bot_share_name: bot.bot_share_name || "",
-        client_email: bot.client_email || "",
-      })
-    } catch (err: any) {
-      console.error("Error loading bot settings:", err)
-    } finally {
-      setBotSettingsLoading(false)
-    }
-  }
-
-  const handleSaveBotSettings = async () => {
-    try {
-      setBotSettingsSaving(true)
-      setError(null)
-
-      const { error: updateError } = await supabase
-        .from("bots")
-        .update({ client_email: botSettings.client_email })
-        .eq("bot_share_name", botSettings.bot_share_name)
-
-      if (updateError) {
-        throw new Error(updateError.message)
-      }
-
-      setSuccess(true)
-      setTimeout(() => setSuccess(false), 3000)
-    } catch (err: any) {
-      console.error("Error saving bot settings:", err)
-      setError(err.message || "Failed to save bot settings")
-    } finally {
-      setBotSettingsSaving(false)
     }
   }
 
@@ -570,56 +481,6 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
-
-        {/* Bot Settings Section - Only show for admins */}
-        {botSettings.bot_share_name && (
-          <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-            <h2 className="text-lg font-medium text-[#212121] mb-4 flex items-center">
-              <Info className="h-5 w-5 mr-2" />
-              Bot Settings
-            </h2>
-            <div className="space-y-4">
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-                <p className="text-sm text-blue-800">
-                  <strong>Bot:</strong> {botSettings.bot_share_name}
-                </p>
-                <p className="text-xs text-blue-600 mt-1">You can edit the client email for this bot below.</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="clientEmail">Client Email</Label>
-                <Input
-                  id="clientEmail"
-                  type="email"
-                  value={botSettings.client_email}
-                  onChange={(e) => setBotSettings((prev) => ({ ...prev, client_email: e.target.value }))}
-                  placeholder="Enter client email address"
-                  disabled={botSettingsLoading || botSettingsSaving}
-                  className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
-                />
-                <p className="text-xs text-[#616161]">
-                  This email will be used for client communications and notifications.
-                </p>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Button
-                  onClick={handleSaveBotSettings}
-                  disabled={botSettingsSaving || botSettingsLoading}
-                  className="bg-[#038a71] hover:bg-[#038a71]/90"
-                  size="sm"
-                >
-                  {botSettingsSaving ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4 mr-2" />
-                  )}
-                  Save Bot Settings
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Users Management Section */}
         <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">

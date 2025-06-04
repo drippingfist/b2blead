@@ -1,13 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useRef, useEffect } from "react"
 import { ChevronDown, Check } from "lucide-react"
-import { getUserBotAccess, getAccessibleBotsClient } from "@/lib/database"
+import { supabase } from "@/lib/supabase/client"
+import { getUserBotAccess } from "@/lib/database"
 
 interface Bot {
   id: string
   bot_share_name: string
-  client_name: string
+  client_name?: string
 }
 
 interface SimpleBotSelectorProps {
@@ -15,112 +16,206 @@ interface SimpleBotSelectorProps {
   onSelectBot: (botShareName: string | null) => void
 }
 
-// Update the component to handle member role and hide for single bot users
 export default function SimpleBotSelector({ selectedBot, onSelectBot }: SimpleBotSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [bots, setBots] = useState<Bot[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
   const [userAccess, setUserAccess] = useState<{
     role: "superadmin" | "admin" | "member" | null
     accessibleBots: string[]
     isSuperAdmin: boolean
   }>({ role: null, accessibleBots: [], isSuperAdmin: false })
 
+  // Load accessible bots for the current user
   useEffect(() => {
-    const fetchUserAccessAndBots = async () => {
+    const loadBots = async () => {
       try {
-        console.log("🔐 Fetching user access and bots...")
+        setLoading(true)
+        setError(null)
+        console.log("🔍 Loading accessible bots for current user...")
 
-        // Get user's access level and accessible bots
+        // First get user access to determine which bots they can see
         const access = await getUserBotAccess()
-        console.log("🔐 User access:", access)
         setUserAccess(access)
+        console.log("🔐 User access:", access)
 
-        // Get the actual bot records the user has access to
-        const accessibleBots = await getAccessibleBotsClient()
-        console.log("🤖 Accessible bots:", accessibleBots)
-        setBots(accessibleBots)
+        if (!access.role) {
+          console.log("❌ No role assigned to user")
+          setError("No bot access assigned")
+          setBots([])
+          return
+        }
 
-        // If user has bots but no selection, auto-select the first one
-        if (accessibleBots.length > 0 && !selectedBot) {
-          const firstBot = accessibleBots[0]
+        let botsData: Bot[] = []
+
+        if (access.isSuperAdmin) {
+          console.log("🔐 User is superadmin - fetching ALL bots")
+          // Superadmin gets all bots
+          const { data, error: botsError } = await supabase
+            .from("bots")
+            .select("id, bot_share_name, client_name")
+            .not("bot_share_name", "is", null)
+            .order("client_name", { ascending: true })
+
+          if (botsError) {
+            console.error("❌ Error loading all bots for superadmin:", botsError)
+            setError(`Database error: ${botsError.message}`)
+            return
+          }
+
+          botsData = data || []
+          console.log(`✅ Superadmin loaded ${botsData.length} bots:`, botsData)
+        } else {
+          // Regular user - get their specific bot assignments
+          if (access.accessibleBots.length === 0) {
+            console.log("❌ No accessible bots for user")
+            setError("No bot access assigned")
+            setBots([])
+            return
+          }
+
+          console.log("🔐 Regular user - fetching assigned bots:", access.accessibleBots)
+          const { data, error: botsError } = await supabase
+            .from("bots")
+            .select("id, bot_share_name, client_name")
+            .in("bot_share_name", access.accessibleBots)
+            .order("client_name", { ascending: true })
+
+          if (botsError) {
+            console.error("❌ Error loading assigned bots:", botsError)
+            setError(`Database error: ${botsError.message}`)
+            return
+          }
+
+          botsData = data || []
+          console.log(`✅ Regular user loaded ${botsData.length} assigned bots:`, botsData)
+        }
+
+        setBots(botsData)
+
+        // Auto-select first bot if no selection and user has bots
+        if (botsData.length > 0 && !selectedBot) {
+          const firstBot = botsData[0]
+          console.log("🤖 Auto-selecting first bot:", firstBot.client_name || firstBot.bot_share_name)
           onSelectBot(firstBot.bot_share_name)
         }
-      } catch (err) {
-        console.error("❌ Exception fetching user access and bots:", err)
+      } catch (error: any) {
+        console.error("❌ Exception loading bots:", error)
+        setError(`Exception: ${error.message}`)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchUserAccessAndBots()
+    loadBots()
+  }, [selectedBot, onSelectBot])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
-  // Find the selected bot to show its client_name
-  const selectedBotData = bots.find((bot) => bot.bot_share_name === selectedBot)
-  const displayName = selectedBotData?.client_name || (bots.length > 0 ? bots[0].client_name : "No bots available")
+  // Find the currently selected bot
+  const currentBot = bots.find((bot) => bot.bot_share_name === selectedBot)
+
+  // Use client_name if available, otherwise fall back to bot_share_name
+  const displayName = currentBot ? currentBot.client_name || currentBot.bot_share_name : "Select Bot"
 
   if (loading) {
-    return <div className="px-3 py-2 text-sm text-gray-500">Loading bots...</div>
-  }
-
-  // If user has no access, show message
-  if (!userAccess.role || bots.length === 0) {
     return (
-      <div className="px-3 py-2 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md">
-        No bot access assigned
+      <div className="w-full px-3 py-2 text-sm border border-[#e0e0e0] rounded-md bg-gray-50 text-[#616161]">
+        Loading bots...
       </div>
     )
   }
 
-  // Hide selector if user has only one bot (unless they're superadmin)
+  if (error && bots.length === 0) {
+    return (
+      <div className="w-full px-3 py-2 text-sm border border-[#e0e0e0] rounded-md bg-red-50 text-red-500">{error}</div>
+    )
+  }
+
+  // If user has only one bot and is not superadmin, show static display (no dropdown)
   if (bots.length === 1 && !userAccess.isSuperAdmin) {
+    const singleBot = bots[0]
     return (
-      <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md">
-        <span className="font-medium">{bots[0].client_name}</span>
+      <div className="w-full px-3 py-2 text-sm border border-[#e0e0e0] rounded-md bg-gray-50 text-[#212121] font-medium">
+        {singleBot.client_name || singleBot.bot_share_name}
       </div>
     )
   }
 
+  // Show dropdown for multiple bots or superadmin
   return (
-    <div>
-      <div className="relative">
+    <div className="space-y-2">
+      <div className="relative" ref={dropdownRef}>
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex items-center justify-between px-3 py-2 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+          className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium bg-white border border-[#e0e0e0] rounded-md hover:bg-gray-50"
         >
           <span className="truncate">{displayName}</span>
-          <ChevronDown className="h-4 w-4 text-gray-500" />
+          <ChevronDown className="h-4 w-4 text-[#616161] ml-2" />
         </button>
 
         {isOpen && (
-          <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-            {/* Individual bots - show client_name, select by bot_share_name */}
+          <div className="absolute z-[9999] mt-1 w-full bg-white border border-[#e0e0e0] rounded-md shadow-lg max-h-60 overflow-auto">
+            {/* All Bots option for superadmin */}
+            {userAccess.isSuperAdmin && (
+              <button
+                onClick={() => {
+                  console.log("🤖 Selected: All Bots")
+                  onSelectBot(null)
+                  setIsOpen(false)
+                }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-between ${
+                  selectedBot === null ? "bg-[#038a71]/10 text-[#038a71]" : "text-[#212121]"
+                }`}
+              >
+                <span className="truncate">All Bots</span>
+                {selectedBot === null && <Check className="h-4 w-4 text-[#038a71]" />}
+              </button>
+            )}
+
+            {/* Individual bot options - showing client_name if available, otherwise bot_share_name */}
             {bots.map((bot) => (
               <button
                 key={bot.id}
                 onClick={() => {
+                  console.log("🤖 Selected bot:", bot.client_name || bot.bot_share_name)
                   onSelectBot(bot.bot_share_name)
                   setIsOpen(false)
                 }}
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center justify-between ${
-                  bot.bot_share_name === selectedBot ? "bg-blue-50 text-blue-700" : ""
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-between ${
+                  bot.bot_share_name === selectedBot ? "bg-[#038a71]/10 text-[#038a71]" : "text-[#212121]"
                 }`}
               >
-                <span className="truncate">{bot.client_name}</span>
-                {bot.bot_share_name === selectedBot && <Check className="h-4 w-4" />}
+                <span className="truncate">{bot.client_name || bot.bot_share_name}</span>
+                {bot.bot_share_name === selectedBot && <Check className="h-4 w-4 text-[#038a71]" />}
               </button>
             ))}
+
+            {bots.length === 0 && <div className="px-3 py-2 text-sm text-[#616161]">No bots available</div>}
           </div>
         )}
       </div>
 
-      {/* Hide debug info for single bot users */}
-      {(bots.length > 1 || userAccess.isSuperAdmin) && (
-        <div className="text-xs text-gray-500 mt-1">
+      {/* Debug info - only show in development */}
+      {process.env.NODE_ENV === "development" && (
+        <div className="text-xs text-gray-500">
           <div>Role: {userAccess.role || "none"}</div>
           <div>Bots: {bots.length}</div>
+          <div>Selected: {selectedBot || "All Bots"}</div>
           {userAccess.isSuperAdmin && <div className="text-green-600">SuperAdmin Access</div>}
+          {error && <div className="text-red-500">Error: {error}</div>}
         </div>
       )}
     </div>
