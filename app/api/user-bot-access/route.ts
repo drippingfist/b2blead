@@ -34,7 +34,7 @@ export async function GET() {
       return NextResponse.json({ role: null, accessibleBots: [], isSuperAdmin: false })
     }
 
-    console.log("🔐 API: Getting user bot access for user ID:", user.id)
+    console.log("🔐 API: Getting bot access for user ID:", user.id)
 
     // Use service role client to bypass RLS
     const serviceClient = getServiceRoleClient()
@@ -47,7 +47,6 @@ export async function GET() {
       .single()
 
     if (superUserError && superUserError.code !== "PGRST116") {
-      // PGRST116 is "not found" which is expected for non-superadmins
       console.error("❌ API: Error checking superadmin status:", superUserError)
     }
 
@@ -55,50 +54,59 @@ export async function GET() {
     console.log("🔐 API: Is superadmin:", isSuperAdmin)
 
     if (isSuperAdmin) {
-      console.log("🔐 API: User is superadmin - getting all bots")
-      // Superadmin can see all bots
+      console.log("🔐 API: User is superadmin - returning full access")
+      // Get all bot names for superadmin
       const { data: allBots } = await serviceClient
         .from("bots")
         .select("bot_share_name")
         .not("bot_share_name", "is", null)
 
-      const accessibleBots = allBots?.map((b) => b.bot_share_name).filter(Boolean) || []
-      return NextResponse.json({ role: "superadmin", accessibleBots, isSuperAdmin: true })
+      const allBotNames = allBots?.map((b) => b.bot_share_name).filter(Boolean) || []
+
+      return NextResponse.json({
+        role: "superadmin",
+        accessibleBots: allBotNames,
+        isSuperAdmin: true,
+      })
     }
 
-    // Not a superadmin, check regular bot_users table using user_id
+    // For regular users, check their bot_users assignments using user_id
     const { data: botUsers, error: botUsersError } = await serviceClient
       .from("bot_users")
-      .select("role, bot_share_name")
-      .eq("user_id", user.id) // Changed from "id" to "user_id"
+      .select("bot_share_name, role")
+      .eq("user_id", user.id) // ✅ Fixed: Use user_id instead of id
       .eq("is_active", true)
 
     if (botUsersError) {
-      console.error("❌ API: Error fetching user bot access:", botUsersError)
+      console.error("❌ API: Error fetching user bot assignments:", botUsersError)
       return NextResponse.json({ role: null, accessibleBots: [], isSuperAdmin: false })
     }
 
-    console.log("🔐 API: Bot users query result:", botUsers)
+    console.log("🔐 API: Bot users found:", botUsers)
 
     if (!botUsers || botUsers.length === 0) {
-      console.log("🔐 API: No bot access found for user")
+      console.log("🔐 API: No bot assignments found for user")
       return NextResponse.json({ role: null, accessibleBots: [], isSuperAdmin: false })
     }
 
-    // Get the user's highest role (admin or member)
-    const isAdmin = botUsers.some((bu) => bu.role === "admin")
-    const userRole = isAdmin ? "admin" : "member"
-
-    // Get their specific bot assignments (can be multiple)
+    // Get accessible bot names and determine highest role
     const accessibleBots = botUsers
       .filter((bu) => bu.bot_share_name)
       .map((bu) => bu.bot_share_name)
       .filter(Boolean)
 
-    console.log(`🔐 API: User is ${userRole} with access to bots:`, accessibleBots)
+    // Determine the user's highest role (admin > member)
+    const hasAdminRole = botUsers.some((bu) => bu.role === "admin")
+    const role = hasAdminRole ? "admin" : "member"
+
+    console.log("🔐 API: Final access result:", {
+      role,
+      accessibleBots,
+      isSuperAdmin: false,
+    })
 
     return NextResponse.json({
-      role: userRole,
+      role,
       accessibleBots,
       isSuperAdmin: false,
     })
