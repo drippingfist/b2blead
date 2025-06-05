@@ -1,9 +1,11 @@
 "use client"
 
+import type React from "react"
+
 import { useEffect, useState } from "react"
 import { getBotsClient, getCurrentUserEmailClient, getDashboardMetrics } from "@/lib/database"
-import { Button } from "@/components/ui/button"
-import { TrendingUp, TrendingDown, MessageSquare, Phone, Clock, Smile, Meh, Frown, RefreshCw } from "lucide-react"
+import { TrendingUp, TrendingDown, MessageSquare, Phone, Clock, Smile, Meh, Frown, Calendar, Info } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 type TimePeriod = "today" | "last7days" | "last30days" | "alltime" | "custom"
 
@@ -14,7 +16,9 @@ interface DashboardMetrics {
   droppedCallbacks: number
   averageSentiment: number
   averageResponseTime: number
+  vrgUserResponseTime: number
   globalAverageResponseTime: number
+  globalVrgUserResponseTime: number
   sentimentDistribution: { score: number; count: number }[]
   previousPeriodComparison: {
     totalChats: number
@@ -23,7 +27,9 @@ interface DashboardMetrics {
     droppedCallbacks: number
     averageSentiment: number
     averageResponseTime: number
+    vrgUserResponseTime: number
     globalAverageResponseTime: number
+    globalVrgUserResponseTime: number
   }
 }
 
@@ -37,7 +43,9 @@ export default function Dashboard() {
     droppedCallbacks: 0,
     averageSentiment: 0,
     averageResponseTime: 0,
+    vrgUserResponseTime: 0,
     globalAverageResponseTime: 0,
+    globalVrgUserResponseTime: 0,
     sentimentDistribution: [],
     previousPeriodComparison: {
       totalChats: 0,
@@ -46,14 +54,17 @@ export default function Dashboard() {
       droppedCallbacks: 0,
       averageSentiment: 0,
       averageResponseTime: 0,
+      vrgUserResponseTime: 0,
       globalAverageResponseTime: 0,
+      globalVrgUserResponseTime: 0,
     },
   })
   const [bots, setBots] = useState<any[]>([])
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
   const [currentBotName, setCurrentBotName] = useState<string>("Selected Bot")
+  const [hoveredTooltip, setHoveredTooltip] = useState<string | null>(null)
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
 
   // Load selected bot from localStorage
   useEffect(() => {
@@ -73,46 +84,36 @@ export default function Dashboard() {
     return () => window.removeEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
   }, [])
 
-  const fetchData = async (isRefresh = false) => {
-    if (isRefresh) {
-      setRefreshing(true)
-    } else {
-      setLoading(true)
-    }
-
-    try {
-      const [fetchedMetrics, fetchedBots, fetchedUserEmail] = await Promise.all([
-        getDashboardMetrics(selectedBot, selectedPeriod),
-        getBotsClient(),
-        getCurrentUserEmailClient(),
-      ])
-
-      setMetrics(fetchedMetrics)
-      setBots(fetchedBots)
-      setUserEmail(fetchedUserEmail)
-
-      // Set current bot name
-      if (selectedBot) {
-        const currentBot = fetchedBots.find((b) => b.bot_share_name === selectedBot)
-        setCurrentBotName(currentBot?.client_name || currentBot?.bot_share_name || "Selected Bot")
-      } else {
-        setCurrentBotName("All Bots")
-      }
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error)
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
-    }
-  }
-
   useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      try {
+        const [fetchedMetrics, fetchedBots, fetchedUserEmail] = await Promise.all([
+          getDashboardMetrics(selectedBot, selectedPeriod),
+          getBotsClient(),
+          getCurrentUserEmailClient(),
+        ])
+
+        setMetrics(fetchedMetrics)
+        setBots(fetchedBots)
+        setUserEmail(fetchedUserEmail)
+
+        // Set current bot name
+        if (selectedBot) {
+          const currentBot = fetchedBots.find((b) => b.bot_share_name === selectedBot)
+          setCurrentBotName(currentBot?.client_name || currentBot?.bot_share_name || "Selected Bot")
+        } else {
+          setCurrentBotName("All Bots")
+        }
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
     fetchData()
   }, [selectedBot, selectedPeriod])
-
-  const handleRefresh = () => {
-    fetchData(true)
-  }
 
   const formatPercentageChange = (current: number, previous: number) => {
     if (previous === 0) return current > 0 ? "+100%" : "0%"
@@ -171,6 +172,32 @@ export default function Dashboard() {
 
   const maxSentimentCount = Math.max(...metrics.sentimentDistribution.map((s) => s.count), 1)
 
+  const handleTooltipHover = (tooltipId: string, event: React.MouseEvent) => {
+    setHoveredTooltip(tooltipId)
+    setTooltipPosition({ x: event.clientX, y: event.clientY })
+  }
+
+  const handleTooltipLeave = () => {
+    setHoveredTooltip(null)
+  }
+
+  const getTooltipText = (tooltipId: string) => {
+    switch (tooltipId) {
+      case "dropped-callbacks":
+        return "Number of times a user requested a callback but didn't complete the callback flow"
+      case "client-ai":
+        return "This is average time it takes the AI to finish responding to the user"
+      case "client-users":
+        return "This is average time it takes your users to respond in the chat"
+      case "all-ai":
+        return "This is average response time across all of our clients. Get in touch to discuss how we can increase your AI's response speed."
+      case "all-users":
+        return "This is average time for ALL users across all our deployments to respond in the chat"
+      default:
+        return ""
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -180,54 +207,50 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-4 md:p-8">
-      <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-[#212121]">Dashboard</h1>
-            <p className="text-[#616161]">
-              Welcome back, {userEmail}. You have access to {bots.length} bot(s).
-            </p>
-            {selectedBot && (
-              <p className="text-sm text-[#038a71] mt-1">
-                Currently viewing: {bots.find((b) => b.bot_share_name === selectedBot)?.client_name || selectedBot}
-              </p>
-            )}
-          </div>
-          <Button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-2"
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-            {refreshing ? "Refreshing..." : "Refresh"}
-          </Button>
+    <div className="p-4 md:p-8 relative">
+      {/* Tooltip */}
+      {hoveredTooltip && (
+        <div
+          className="fixed z-50 bg-gray-900 text-white text-sm rounded-lg px-3 py-2 max-w-xs shadow-lg pointer-events-none"
+          style={{
+            left: tooltipPosition.x + 10,
+            top: tooltipPosition.y - 10,
+          }}
+        >
+          {getTooltipText(hoveredTooltip)}
         </div>
+      )}
+
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold text-[#212121]">Dashboard</h1>
+        <p className="text-[#616161]">
+          Welcome back, {userEmail}. You have access to {bots.length} bot(s).
+        </p>
+        {selectedBot && (
+          <p className="text-sm text-[#038a71] mt-1">
+            Currently viewing: {bots.find((b) => b.bot_share_name === selectedBot)?.client_name || selectedBot}
+          </p>
+        )}
       </div>
 
       {/* Time Period Selector */}
-      <div className="mb-8">
-        <div className="flex flex-wrap gap-2">
-          {(["today", "last7days", "last30days", "alltime"] as TimePeriod[]).map((period) => (
-            <Button
-              key={period}
-              variant={selectedPeriod === period ? "default" : "outline"}
-              onClick={() => setSelectedPeriod(period)}
-              className={selectedPeriod === period ? "bg-[#038a71] hover:bg-[#038a71]/90" : ""}
-            >
-              {getPeriodLabel(period)}
-            </Button>
-          ))}
-          <Button
-            variant={selectedPeriod === "custom" ? "default" : "outline"}
-            onClick={() => setSelectedPeriod("custom")}
-            className={selectedPeriod === "custom" ? "bg-[#038a71] hover:bg-[#038a71]/90" : ""}
-            disabled
-          >
-            Custom (Coming Soon)
-          </Button>
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-8 space-y-4 md:space-y-0">
+        <div></div>
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <Calendar className="h-4 w-4 text-[#616161]" />
+            <Select value={selectedPeriod} onValueChange={(value: TimePeriod) => setSelectedPeriod(value)}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="last7days">Last 7 days</SelectItem>
+                <SelectItem value="last30days">Last 30 days</SelectItem>
+                <SelectItem value="alltime">All time</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -301,7 +324,19 @@ export default function Dashboard() {
         <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-medium text-[#212121]">Dropped Callbacks</h2>
+              <h2 className="text-lg font-medium text-[#212121] flex items-center">
+                Dropped Callbacks
+                <Info
+                  className="h-4 w-4 ml-2 text-gray-400 cursor-help"
+                  onMouseEnter={(e) => handleTooltipHover("dropped-callbacks", e)}
+                  onMouseLeave={handleTooltipLeave}
+                  onMouseMove={(e) => {
+                    if (hoveredTooltip === "dropped-callbacks") {
+                      setTooltipPosition({ x: e.clientX, y: e.clientY })
+                    }
+                  }}
+                />
+              </h2>
               <p className="text-2xl md:text-3xl font-bold mt-2 text-red-600">{metrics.droppedCallbacks}</p>
             </div>
             <div
@@ -376,11 +411,23 @@ export default function Dashboard() {
             </h3>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Bot-specific response time */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* Top Left - Bot AI response time */}
             <div className="bg-gray-50 p-4 rounded-lg">
               <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium text-[#212121]">{currentBotName}</h4>
+                <h4 className="font-medium text-[#212121] flex items-center">
+                  {currentBotName} AI
+                  <Info
+                    className="h-4 w-4 ml-2 text-gray-400 cursor-help"
+                    onMouseEnter={(e) => handleTooltipHover("client-ai", e)}
+                    onMouseLeave={handleTooltipLeave}
+                    onMouseMove={(e) => {
+                      if (hoveredTooltip === "client-ai") {
+                        setTooltipPosition({ x: e.clientX, y: e.clientY })
+                      }
+                    }}
+                  />
+                </h4>
                 <div
                   className={`flex items-center text-xs ${getChangeColor(metrics.averageResponseTime, metrics.previousPeriodComparison.averageResponseTime, true)}`}
                 >
@@ -397,7 +444,7 @@ export default function Dashboard() {
                   </span>
                 </div>
               </div>
-              <p className="text-sm text-[#616161] mb-1">Average Response Time</p>
+              <p className="text-sm text-[#616161] mb-1">Response Speed</p>
               <p className="text-2xl font-bold text-[#038a71]">{(metrics.averageResponseTime / 1000).toFixed(1)}s</p>
               <div className="mt-3 text-xs text-[#616161]">
                 <div className="flex justify-between items-center">
@@ -409,10 +456,22 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Global response time */}
+            {/* Top Right - All AI response time */}
             <div className="bg-blue-50 p-4 rounded-lg">
               <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium text-[#212121]">Global Average</h4>
+                <h4 className="font-medium text-[#212121] flex items-center">
+                  All AI
+                  <Info
+                    className="h-4 w-4 ml-2 text-gray-400 cursor-help"
+                    onMouseEnter={(e) => handleTooltipHover("all-ai", e)}
+                    onMouseLeave={handleTooltipLeave}
+                    onMouseMove={(e) => {
+                      if (hoveredTooltip === "all-ai") {
+                        setTooltipPosition({ x: e.clientX, y: e.clientY })
+                      }
+                    }}
+                  />
+                </h4>
                 <div
                   className={`flex items-center text-xs ${getChangeColor(metrics.globalAverageResponseTime, metrics.previousPeriodComparison.globalAverageResponseTime, true)}`}
                 >
@@ -429,7 +488,7 @@ export default function Dashboard() {
                   </span>
                 </div>
               </div>
-              <p className="text-sm text-[#616161] mb-1">Average Response Time</p>
+              <p className="text-sm text-[#616161] mb-1">Response Speed</p>
               <p className="text-2xl font-bold text-[#038a71]">
                 {(metrics.globalAverageResponseTime / 1000).toFixed(1)}s
               </p>
@@ -438,6 +497,96 @@ export default function Dashboard() {
                   <span>Previous period:</span>
                   <span className="font-medium">
                     {(metrics.previousPeriodComparison.globalAverageResponseTime / 1000).toFixed(1)}s
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Left - Bot Users response time */}
+            <div className="bg-green-50 p-4 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium text-[#212121] flex items-center">
+                  {currentBotName} Users
+                  <Info
+                    className="h-4 w-4 ml-2 text-gray-400 cursor-help"
+                    onMouseEnter={(e) => handleTooltipHover("client-users", e)}
+                    onMouseLeave={handleTooltipLeave}
+                    onMouseMove={(e) => {
+                      if (hoveredTooltip === "client-users") {
+                        setTooltipPosition({ x: e.clientX, y: e.clientY })
+                      }
+                    }}
+                  />
+                </h4>
+                <div
+                  className={`flex items-center text-xs ${getChangeColor(metrics.vrgUserResponseTime, metrics.previousPeriodComparison.vrgUserResponseTime, true)}`}
+                >
+                  {getChangeIcon(
+                    metrics.vrgUserResponseTime,
+                    metrics.previousPeriodComparison.vrgUserResponseTime,
+                    true,
+                  )}
+                  <span className="ml-1">
+                    {formatPercentageChange(
+                      metrics.vrgUserResponseTime,
+                      metrics.previousPeriodComparison.vrgUserResponseTime,
+                    )}
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm text-[#616161] mb-1">Response Speed</p>
+              <p className="text-2xl font-bold text-[#038a71]">{(metrics.vrgUserResponseTime / 1000).toFixed(1)}s</p>
+              <div className="mt-3 text-xs text-[#616161]">
+                <div className="flex justify-between items-center">
+                  <span>Previous period:</span>
+                  <span className="font-medium">
+                    {(metrics.previousPeriodComparison.vrgUserResponseTime / 1000).toFixed(1)}s
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Right - All Users response time */}
+            <div className="bg-purple-50 p-4 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium text-[#212121] flex items-center">
+                  All Users
+                  <Info
+                    className="h-4 w-4 ml-2 text-gray-400 cursor-help"
+                    onMouseEnter={(e) => handleTooltipHover("all-users", e)}
+                    onMouseLeave={handleTooltipLeave}
+                    onMouseMove={(e) => {
+                      if (hoveredTooltip === "all-users") {
+                        setTooltipPosition({ x: e.clientX, y: e.clientY })
+                      }
+                    }}
+                  />
+                </h4>
+                <div
+                  className={`flex items-center text-xs ${getChangeColor(metrics.globalVrgUserResponseTime, metrics.previousPeriodComparison.globalVrgUserResponseTime, true)}`}
+                >
+                  {getChangeIcon(
+                    metrics.globalVrgUserResponseTime,
+                    metrics.previousPeriodComparison.globalVrgUserResponseTime,
+                    true,
+                  )}
+                  <span className="ml-1">
+                    {formatPercentageChange(
+                      metrics.globalVrgUserResponseTime,
+                      metrics.previousPeriodComparison.globalVrgUserResponseTime,
+                    )}
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm text-[#616161] mb-1">Response Speed</p>
+              <p className="text-2xl font-bold text-[#038a71]">
+                {(metrics.globalVrgUserResponseTime / 1000).toFixed(1)}s
+              </p>
+              <div className="mt-3 text-xs text-[#616161]">
+                <div className="flex justify-between items-center">
+                  <span>Previous period:</span>
+                  <span className="font-medium">
+                    {(metrics.previousPeriodComparison.globalVrgUserResponseTime / 1000).toFixed(1)}s
                   </span>
                 </div>
               </div>

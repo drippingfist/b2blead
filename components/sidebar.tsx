@@ -54,22 +54,15 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             .eq("id", user.id)
             .single()
 
-          if (profileError) {
-            console.warn("Error fetching user profile:", profileError.message)
-          } else if (profile) {
+          if (!profileError && profile) {
             setFirstName(profile.first_name)
           }
         }
 
         // Get user access level
-        try {
-          const { getUserBotAccess } = await import("@/lib/database")
-          const access = await getUserBotAccess()
-          console.log("🔐 SIDEBAR: User access result:", access)
-          setUserAccess(access)
-        } catch (accessError: any) {
-          console.error("Failed to get user access in sidebar:", accessError)
-        }
+        const { getUserBotAccess } = await import("@/lib/database")
+        const access = await getUserBotAccess()
+        setUserAccess(access)
       } catch (error) {
         console.warn("Failed to get user in sidebar:", error)
         // Set default values on error

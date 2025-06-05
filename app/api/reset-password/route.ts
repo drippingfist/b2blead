@@ -2,29 +2,44 @@ import { createClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 
 export async function POST(request: NextRequest) {
-  const formData = await request.formData()
-  const email = formData.get("email") as string
-
-  if (!email) {
-    return NextResponse.redirect(
-      new URL(`/auth/forgot-password?error=${encodeURIComponent("Email is required")}`, request.url),
-    )
-  }
-
   try {
+    const formData = await request.formData()
+    const email = formData.get("email") as string
+
+    if (!email) {
+      return NextResponse.json({ error: "Email is required" }, { status: 400 })
+    }
+
+    // Initialize Supabase client with server-side helper
     const supabase = createClient()
+
+    // Send password reset email using Supabase auth
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/login`,
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`,
     })
 
     if (error) {
-      throw error
+      console.error("Password reset error:", error)
+      // Don't expose the actual error to the user for security
     }
 
-    return NextResponse.redirect(new URL(`/auth/forgot-password?success=${encodeURIComponent(email)}`, request.url))
+    // Always return success to prevent user enumeration
+    return NextResponse.json(
+      {
+        success: true,
+        message: "If an account with that email exists, we've sent a password reset link.",
+      },
+      { status: 200 },
+    )
   } catch (error: any) {
-    return NextResponse.redirect(
-      new URL(`/auth/forgot-password?error=${encodeURIComponent(error.message)}`, request.url),
+    console.error("Password reset error:", error)
+    // Always return success to prevent user enumeration
+    return NextResponse.json(
+      {
+        success: true,
+        message: "If an account with that email exists, we've sent a password reset link.",
+      },
+      { status: 200 },
     )
   }
 }
