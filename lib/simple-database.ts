@@ -10,160 +10,163 @@ export interface Thread {
   message_preview?: string
   sentiment_score?: number
   sentiment_justification?: string
-  cb_requested?: boolean
+  callback?: boolean
   count?: number
   mean_response_time?: number
-  starred?: boolean // Add starred field
+  starred?: boolean
 }
 
-export interface Callback {
+export interface Message {
   id: string
   created_at: string
-  bot_share_name?: string
+  typebot_id?: string
   thread_id?: string
+  user_message?: string
+  suggested_message?: string
+  bot_message?: string
+  user_id?: number
   user_name?: string
-  user_first_name?: string
-  user_surname?: string
   user_email?: string
   user_phone?: string
-  user_url?: string
-  user_country?: string
   user_company?: string
-  user_revenue?: string
-  document_referrer?: string
-  ibdata?: string
   user_ip?: string
-  user_cb_message?: string
+  user_country?: string
+  sentiment_analysis?: number
+  chat_history?: string
+  user_callback_message?: string
+  sentiment_analysis_justification?: string
+  complete_chat_history?: string
+  company_revenue?: string
+  user_url?: string
+  user_surname?: string
+  role?: string
+  starred?: boolean
 }
 
-// Update the interface to include member role
+// Get threads - filter by bot_share_name if provided
 export async function getThreadsSimple(limit = 50, botShareName?: string | null): Promise<Thread[]> {
   console.log("🧵 Fetching threads for bot_share_name:", botShareName || "ALL")
 
-  // Get user's accessible bots
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  try {
+    // First check if user has access to this bot
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-  if (!user?.id) {
-    console.log("❌ No authenticated user")
-    return []
-  }
-
-  console.log("🔐 Getting bot access for user ID:", user.id)
-
-  // Get user's bot access using FK relationship
-  const { data: botUsers, error: accessError } = await supabase
-    .from("bot_users")
-    .select("role, bot_share_name")
-    .eq("id", user.id) // Use the FK relationship
-    .eq("is_active", true)
-
-  if (accessError || !botUsers || botUsers.length === 0) {
-    console.log("❌ No bot access for user:", accessError?.message || "No records found")
-    return []
-  }
-
-  console.log("🔐 Bot users found:", botUsers)
-
-  // Check if user is superadmin
-  const isSuperAdmin = botUsers.some((bu) => bu.role === "superadmin")
-
-  let accessibleBots: string[] = []
-
-  if (isSuperAdmin) {
-    console.log("🔐 User is superadmin - getting all bots")
-    // Superadmin can see all bots
-    const { data: allBots } = await supabase.from("bots").select("bot_share_name").not("bot_share_name", "is", null)
-
-    accessibleBots = allBots?.map((b) => b.bot_share_name).filter(Boolean) || []
-  } else {
-    // Regular admin/member - get their specific bot assignments
-    accessibleBots = botUsers
-      .filter((bu) => bu.bot_share_name)
-      .map((bu) => bu.bot_share_name)
-      .filter(Boolean)
-  }
-
-  console.log("🔐 Accessible bots:", accessibleBots)
-
-  if (accessibleBots.length === 0) {
-    console.log("❌ No accessible bots found")
-    return []
-  }
-
-  let query = supabase
-    .from("threads")
-    .select(`
-      *,
-      callbacks!callbacks_id_fkey(
-        user_name,
-        user_first_name,
-        user_surname,
-        user_email
-      )
-    `)
-    .order("created_at", { ascending: false })
-    .limit(limit)
-
-  // If a specific bot is selected, filter by that bot (if user has access)
-  if (botShareName) {
-    if (accessibleBots.includes(botShareName)) {
-      console.log("🔍 Filtering threads by bot_share_name:", botShareName)
-      query = query.eq("bot_share_name", botShareName)
-    } else {
-      console.log("❌ User doesn't have access to bot:", botShareName)
+    if (!user) {
+      console.log("❌ No authenticated user")
       return []
     }
-  } else {
-    // No specific bot selected, filter by all accessible bots
-    console.log("🔍 Filtering threads by accessible bots:", accessibleBots)
-    query = query.in("bot_share_name", accessibleBots)
+
+    console.log("🔐 Getting bot access for user ID:", user.id)
+
+    // Check if user is a superadmin
+    const { data: superAdmin } = await supabase.from("bot_super_users").select("id").eq("id", user.id).single()
+
+    if (superAdmin) {
+      console.log("✅ User is superadmin - fetching threads")
+    } else {
+      // Check if user has access to this specific bot
+      const { data: botAccess, error: botAccessError } = await supabase
+        .from("bot_users")
+        .select("bot_share_name")
+        .eq("user_id", user.id) // ✅ FIXED: Changed from "id" to "user_id"
+        .eq("is_active", true)
+
+      if (botAccessError) {
+        console.error("❌ Error checking bot access:", botAccessError)
+        return []
+      }
+
+      if (!botAccess || botAccess.length === 0) {
+        console.log("❌ No bot access for user: No records found")
+        return []
+      }
+
+      const accessibleBots = botAccess.map((b) => b.bot_share_name).filter(Boolean)
+
+      if (botShareName && !accessibleBots.includes(botShareName)) {
+        console.log("❌ User does not have access to this bot:", botShareName)
+        return []
+      }
+
+      console.log("✅ User has access to bots:", accessibleBots)
+    }
+
+    // Now fetch the threads
+    let query = supabase.from("threads").select("*").order("updated_at", { ascending: false }).limit(limit)
+
+    // If a specific bot is selected, filter by that bot_share_name
+    if (botShareName) {
+      query = query.eq("bot_share_name", botShareName)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      console.error("❌ Error fetching threads:", error)
+      return []
+    }
+
+    console.log(`✅ Successfully fetched ${data?.length || 0} threads`)
+    return data || []
+  } catch (error) {
+    console.error("❌ Exception in getThreadsSimple:", error)
+    return []
   }
-
-  const { data, error } = await query
-
-  if (error) {
-    console.error("❌ Error fetching threads:", error)
-    throw new Error(`Failed to fetch threads: ${error.message}`)
-  }
-
-  console.log("✅ Successfully fetched", data?.length || 0, "threads")
-  return data || []
 }
 
-// Toggle starred status for a thread
-export async function toggleThreadStarred(threadId: string): Promise<{ success: boolean; error?: string }> {
+// Get messages for a thread
+export async function getMessagesSimple(threadId: string): Promise<Message[]> {
   try {
-    // First get the current starred status
-    const { data: currentThread, error: fetchError } = await supabase
-      .from("threads")
-      .select("starred")
-      .eq("id", threadId)
-      .single()
+    const { data, error } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("thread_id", threadId)
+      .order("created_at", { ascending: true })
 
-    if (fetchError) {
-      console.error("❌ Error fetching thread starred status:", fetchError)
-      return { success: false, error: fetchError.message }
+    if (error) {
+      console.error("Error fetching messages:", error)
+      return []
     }
 
-    // Toggle the starred status
-    const newStarredStatus = !currentThread.starred
+    return data || []
+  } catch (error) {
+    console.error("Exception in getMessagesSimple:", error)
+    return []
+  }
+}
 
-    const { error: updateError } = await supabase
-      .from("threads")
-      .update({ starred: newStarredStatus })
-      .eq("id", threadId)
+// Star/unstar a thread
+export async function toggleThreadStarred(threadId: string, isStarred: boolean): Promise<boolean> {
+  try {
+    const { error } = await supabase.from("threads").update({ starred: isStarred }).eq("id", threadId)
 
-    if (updateError) {
-      console.error("❌ Error updating thread starred status:", updateError)
-      return { success: false, error: updateError.message }
+    if (error) {
+      console.error("Error updating thread star status:", error)
+      return false
     }
 
-    console.log("✅ Successfully toggled starred status for thread:", threadId, "to:", newStarredStatus)
-    return { success: true }
-  } catch (error: any) {
-    console.error("❌ Exception toggling starred status:", error)
-    return { success: false, error: error.message }
+    return true
+  } catch (error) {
+    console.error("Exception in toggleThreadStarred:", error)
+    return false
+  }
+}
+
+// Star/unstar a message
+export async function toggleMessageStar(messageId: string, isStarred: boolean): Promise<boolean> {
+  try {
+    const { error } = await supabase.from("messages").update({ starred: isStarred }).eq("id", messageId)
+
+    if (error) {
+      console.error("Error updating message star status:", error)
+      return false
+    }
+
+    return true
+  } catch (error) {
+    console.error("Exception in toggleMessageStar:", error)
+    return false
   }
 }

@@ -114,7 +114,7 @@ export default function SettingsPage() {
         const { data: botUser, error: botUserError } = await supabase
           .from("bot_users")
           .select("bot_share_name")
-          .eq("id", user.id)
+          .eq("user_id", user.id)
           .single()
 
         let userTimezone = "Asia/Bangkok"
@@ -176,6 +176,7 @@ export default function SettingsPage() {
 
       if (result.success) {
         setUsers(result.users)
+        setUsers(result.users.filter((user) => user.role !== "superadmin"))
       } else {
         setError(result.error || "Failed to load users")
       }
@@ -218,7 +219,7 @@ export default function SettingsPage() {
       const { data: botUser, error: botUserError } = await supabase
         .from("bot_users")
         .select("bot_share_name, role")
-        .eq("id", user.id)
+        .eq("user_id", user.id)
         .eq("is_active", true)
         .single()
 
@@ -320,7 +321,7 @@ export default function SettingsPage() {
       const { data: userBots, error: userBotsError } = await supabase
         .from("bot_users")
         .select("bot_share_name")
-        .eq("id", userData.id)
+        .eq("user_id", userData.id)
 
       if (userBotsError) {
         throw new Error(userBotsError.message)
