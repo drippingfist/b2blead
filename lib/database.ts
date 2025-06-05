@@ -87,12 +87,12 @@ export interface Callback {
   user_ip?: string
   user_cb_message?: string
   sentiment_score?: number
-  sentiment_justification?: string // Add sentiment justification
+  sentiment_justification?: string
 }
 
-// Get ALL bots from database
+// Get ALL bots from database (now respects RLS)
 export async function getBotsClient(): Promise<Bot[]> {
-  console.log("🔍 getBotsClient: Fetching ALL bots...")
+  console.log("🔍 getBotsClient: Fetching bots...")
 
   const { data, error } = await supabase.from("bots").select("*").order("bot_share_name", { ascending: true })
 
@@ -128,7 +128,7 @@ export async function getThreadsClient(limit = 50, botShareName?: string | null)
   return data || []
 }
 
-// Get callbacks with sentiment scores and justification - filter by bot_share_name if provided
+// Get callbacks with sentiment scores and justification
 export async function getCallbacksClient(limit = 50, botShareName?: string | null): Promise<Callback[]> {
   let query = supabase
     .from("callbacks")
@@ -170,7 +170,65 @@ export async function getCurrentUserEmailClient(): Promise<string | null> {
   return user?.email || null
 }
 
-// Get thread stats - filter by bot_share_name if provided
+// Simple getUserBotAccess function that uses API route
+export async function getUserBotAccess(): Promise<{
+  role: "superadmin" | "admin" | "member" | null
+  accessibleBots: string[]
+  isSuperAdmin: boolean
+}> {
+  try {
+    console.log("🔐 Calling user bot access API...")
+
+    const response = await fetch("/api/user-bot-access", {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    })
+
+    if (!response.ok) {
+      console.error("❌ API response not ok:", response.status, response.statusText)
+      return { role: null, accessibleBots: [], isSuperAdmin: false }
+    }
+
+    const data = await response.json()
+    console.log("🔐 API response:", data)
+
+    return data
+  } catch (error) {
+    console.error("❌ Exception in getUserBotAccess:", error)
+    return { role: null, accessibleBots: [], isSuperAdmin: false }
+  }
+}
+
+// Simple getAccessibleBotsClient function that uses API route
+export async function getAccessibleBotsClient(): Promise<Bot[]> {
+  try {
+    console.log("🤖 getAccessibleBotsClient: Calling accessible bots API...")
+
+    const response = await fetch("/api/accessible-bots", {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    })
+
+    if (!response.ok) {
+      console.error("❌ Accessible bots API response not ok:", response.status, response.statusText)
+      return []
+    }
+
+    const bots = await response.json()
+    console.log("🤖 getAccessibleBotsClient: Successfully fetched", bots?.length || 0, "accessible bots")
+
+    return bots || []
+  } catch (error) {
+    console.error("❌ Exception in getAccessibleBotsClient:", error)
+    return []
+  }
+}
+
+// Rest of the functions remain the same...
 export async function getThreadStatsClient(botShareName?: string | null) {
   let totalQuery = supabase.from("threads").select("*", { count: "exact", head: true })
   let recentQuery = supabase.from("threads").select("*", { count: "exact", head: true })
@@ -210,7 +268,6 @@ export async function getThreadStatsClient(botShareName?: string | null) {
   }
 }
 
-// Add this new function to replace getCallbackStatsClient
 export async function getCallbackStatsClientWithPeriod(
   botShareName?: string | null,
   period: "today" | "last7days" | "last30days" | "last90days" | "alltime" = "last30days",
@@ -294,7 +351,6 @@ export async function getCallbackStatsClientWithPeriod(
   }
 }
 
-// Add function to analyze callback data structure
 export async function analyzeCallbackColumns(botShareName?: string | null): Promise<{
   hasCompany: boolean
   hasCountry: boolean
@@ -344,7 +400,7 @@ export async function getMessagesByThreadId(threadId: string): Promise<Message[]
   const { data, error } = await supabase
     .from("messages")
     .select("*")
-    .eq("thread_id", threadId) // This is correct - messages.thread_id = threads.id
+    .eq("thread_id", threadId)
     .order("created_at", { ascending: true })
 
   if (error) {
@@ -376,104 +432,6 @@ export async function getThreadById(id: string): Promise<Thread | null> {
   return data
 }
 
-// Update the getUserBotAccess function to also return member role
-export async function getUserBotAccess(): Promise<{
-  role: "superadmin" | "admin" | "member" | null
-  accessibleBots: string[]
-  isSuperAdmin: boolean
-}> {
-  try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user?.id) {
-      return { role: null, accessibleBots: [], isSuperAdmin: false }
-    }
-
-    console.log("🔐 Getting bot access for user ID:", user.id)
-
-    // Get user's bot assignments using the FK relationship (id column)
-    const { data: botUsers, error } = await supabase
-      .from("bot_users")
-      .select("role, bot_share_name")
-      .eq("id", user.id) // Use the FK relationship
-      .eq("is_active", true)
-
-    if (error) {
-      console.error("Error fetching user bot access:", error)
-      return { role: null, accessibleBots: [], isSuperAdmin: false }
-    }
-
-    console.log("🔐 Bot users found:", botUsers)
-
-    if (!botUsers || botUsers.length === 0) {
-      console.log("🔐 No bot access found for user")
-      return { role: null, accessibleBots: [], isSuperAdmin: false }
-    }
-
-    // Check if user is superadmin
-    const isSuperAdmin = botUsers.some((bu) => bu.role === "superadmin")
-
-    if (isSuperAdmin) {
-      console.log("🔐 User is superadmin - getting all bots")
-      // Superadmin can see all bots
-      const { data: allBots } = await supabase.from("bots").select("bot_share_name").not("bot_share_name", "is", null)
-
-      const accessibleBots = allBots?.map((b) => b.bot_share_name).filter(Boolean) || []
-      return { role: "superadmin", accessibleBots, isSuperAdmin: true }
-    }
-
-    // Get the user's role (admin or member)
-    const userRole = botUsers[0]?.role as "admin" | "member"
-
-    // Regular admin/member - get their specific bot assignments
-    const accessibleBots = botUsers
-      .filter((bu) => bu.bot_share_name)
-      .map((bu) => bu.bot_share_name)
-      .filter(Boolean)
-
-    console.log(`🔐 User is ${userRole} with access to bots:`, accessibleBots)
-
-    return {
-      role: userRole,
-      accessibleBots,
-      isSuperAdmin: false,
-    }
-  } catch (error) {
-    console.error("Exception in getUserBotAccess:", error)
-    return { role: null, accessibleBots: [], isSuperAdmin: false }
-  }
-}
-
-// Get bots that the current user has access to
-export async function getAccessibleBotsClient(): Promise<Bot[]> {
-  try {
-    const { accessibleBots, isSuperAdmin } = await getUserBotAccess()
-
-    if (accessibleBots.length === 0) {
-      return []
-    }
-
-    const { data, error } = await supabase
-      .from("bots")
-      .select("*")
-      .in("bot_share_name", accessibleBots)
-      .order("client_name", { ascending: true })
-
-    if (error) {
-      console.error("Error fetching accessible bots:", error)
-      return []
-    }
-
-    return data || []
-  } catch (error) {
-    console.error("Exception in getAccessibleBotsClient:", error)
-    return []
-  }
-}
-
-// Get comprehensive dashboard metrics with period comparison
 export async function getDashboardMetrics(
   botShareName?: string | null,
   period: "today" | "last7days" | "last30days" | "alltime" | "custom" = "last30days",
@@ -611,7 +569,7 @@ export async function getDashboardMetrics(
       .lte("created_at", previousEndDate)
   }
 
-  // Add specific filters - FIXED: Use 'callback' instead of 'cb_requested'
+  // Add specific filters
   currentCallbackThreadsQuery = currentCallbackThreadsQuery.eq("callback", true)
   previousCallbackThreadsQuery = previousCallbackThreadsQuery.eq("callback", true)
 
@@ -742,7 +700,7 @@ export async function getDashboardMetrics(
       previousGlobalVrgResponseTimeData.length
     : 0
 
-  // FIXED: Calculate dropped callbacks properly - threads with callback=true but NO linked callback record
+  // Calculate dropped callbacks properly
   let currentDroppedCallbacks = 0
   let previousDroppedCallbacks = 0
 

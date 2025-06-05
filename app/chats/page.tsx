@@ -15,22 +15,33 @@ export default async function ChatsPage() {
     redirect("/login")
   }
 
-  // Get user's email
+  // Get user's email and ID for debugging
   const userEmail = session.user.email
+  const userId = session.user.id
 
-  // Get bots the user has access to
-  const { data: userBots } = await supabase
+  console.log("🔍 CHATS DEBUG: User email:", userEmail)
+  console.log("🔍 CHATS DEBUG: User ID:", userId)
+
+  // Get bots the user has access to using user_id (not email)
+  const { data: userBots, error: userBotsError } = await supabase
     .from("bot_users")
     .select("bot_share_name")
-    .eq("user_email", userEmail)
+    .eq("user_id", userId) // Changed from user_email to user_id
     .eq("is_active", true)
 
+  console.log("🔍 CHATS DEBUG: bot_users query error:", userBotsError)
+  console.log("🔍 CHATS DEBUG: bot_users data:", userBots)
+
   if (!userBots || userBots.length === 0) {
+    console.log("🔍 CHATS DEBUG: No bot access found")
     return (
       <div className="container mx-auto p-6">
         <h1 className="text-2xl font-bold mb-6">Chats</h1>
         <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-md">
           You don't have access to any bots yet. Please contact an administrator.
+          <div className="mt-2 text-xs">
+            Debug: User ID: {userId}, Email: {userEmail}
+          </div>
         </div>
       </div>
     )
@@ -38,6 +49,7 @@ export default async function ChatsPage() {
 
   // Get bot share names the user has access to
   const botShareNames = userBots.map((bot) => bot.bot_share_name)
+  console.log("🔍 CHATS DEBUG: Accessible bot share names:", botShareNames)
 
   // Get threads for these bots
   const { data: threads, error } = await supabase
@@ -58,6 +70,10 @@ export default async function ChatsPage() {
     .order("updated_at", { ascending: false })
     .limit(50)
 
+  console.log("🔍 CHATS DEBUG: threads query error:", error)
+  console.log("🔍 CHATS DEBUG: threads data:", threads)
+  console.log("🔍 CHATS DEBUG: threads count:", threads?.length || 0)
+
   if (error) {
     console.error("Error fetching threads:", error)
   }
@@ -65,6 +81,15 @@ export default async function ChatsPage() {
   return (
     <div className="container mx-auto p-4">
       <ChatsHeader />
+      <div className="mb-4 p-4 bg-gray-100 rounded text-xs">
+        <strong>Debug Info:</strong>
+        <br />
+        User ID: {userId}
+        <br />
+        Bot Access: {botShareNames.join(", ")}
+        <br />
+        Threads Found: {threads?.length || 0}
+      </div>
       <ChatsList threads={threads || []} />
     </div>
   )

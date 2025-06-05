@@ -33,11 +33,11 @@ export async function getInvitableBots() {
       return { success: false, error: "User not authenticated", bots: [] }
     }
 
-    // Get user's bot assignments
+    // Get user's bot assignments - UPDATED to use user_id
     const { data: userBots, error: userBotsError } = await supabase
       .from("bot_users")
       .select("bot_share_name, role")
-      .eq("id", user.id)
+      .eq("user_id", user.id) // Changed from 'id' to 'user_id'
       .eq("is_active", true)
 
     if (userBotsError) {
@@ -218,7 +218,7 @@ export async function getUsers() {
     const { data: currentUserBots, error: currentUserBotsError } = await supabase
       .from("bot_users")
       .select("bot_share_name, role")
-      .eq("id", user.id)
+      .eq("user_id", user.id) // Changed from 'id' to 'user_id'
       .eq("is_active", true)
 
     if (currentUserBotsError) {
@@ -275,7 +275,7 @@ export async function getUsers() {
 
     const botUsersMap = new Map()
     botUsers?.forEach((botUser) => {
-      botUsersMap.set(botUser.id, botUser)
+      botUsersMap.set(botUser.user_id, botUser) // Changed from 'id' to 'user_id'
     })
 
     // Step 5: Filter and transform users based on access rules
@@ -423,7 +423,7 @@ export async function updateUser(
 
     if (profileError) throw profileError
 
-    const { error: roleError } = await supabase.from("bot_users").update({ role: userData.role }).eq("id", userId)
+    const { error: roleError } = await supabase.from("bot_users").update({ role: userData.role }).eq("user_id", userId) // Changed from 'id' to 'user_id'
 
     if (roleError) throw roleError
 
@@ -452,8 +452,8 @@ export async function deleteUser(userId: string) {
     }
     console.log("✅ User profile deleted")
 
-    // Step 2: Delete from bot_users table
-    const { error: botUserError } = await supabase.from("bot_users").delete().eq("id", userId)
+    // Step 2: Delete from bot_users table - UPDATED to use user_id
+    const { error: botUserError } = await supabase.from("bot_users").delete().eq("user_id", userId) // Changed from 'id' to 'user_id'
 
     if (botUserError) {
       console.error("❌ Error deleting bot user:", botUserError)

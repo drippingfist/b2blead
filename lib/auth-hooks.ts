@@ -31,9 +31,9 @@ export async function checkAndActivateInvitation(userId: string, email: string) 
       return false
     }
 
-    // Create bot_users entry
+    // Create bot_users entry - UPDATED to use user_id
     const { error: botUserError } = await supabase.from("bot_users").upsert({
-      id: userId,
+      user_id: userId, // Changed from 'id' to 'user_id'
       role: invitation.role,
       bot_share_name: invitation.bot_share_name,
       is_active: true,

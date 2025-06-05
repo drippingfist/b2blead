@@ -45,9 +45,9 @@ export async function completeUserSetup(invitationData: InvitationData) {
 
     console.log("✅ User profile created")
 
-    // Step 2: Create bot_users entry
+    // Step 2: Create bot_users entry - UPDATED to use user_id
     const { error: botUserError } = await supabase.from("bot_users").upsert({
-      id: user.id,
+      user_id: user.id, // Changed from 'id' to 'user_id'
       role: invitationData.role,
       bot_share_name: invitationData.bot_share_name,
       is_active: true,
