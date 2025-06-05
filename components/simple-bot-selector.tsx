@@ -41,6 +41,12 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot }: SimpleBo
         console.log("🤖 Accessible bots:", accessibleBots)
         setBots(accessibleBots)
 
+        // Store bots in localStorage for other components
+        localStorage.setItem("userBots", JSON.stringify(accessibleBots))
+
+        // Emit event so other components know bots are loaded
+        window.dispatchEvent(new CustomEvent("botsLoaded", { detail: accessibleBots }))
+
         // If user has bots but no selection, auto-select the first one
         if (accessibleBots.length > 0 && !selectedBot) {
           const firstBot = accessibleBots[0]

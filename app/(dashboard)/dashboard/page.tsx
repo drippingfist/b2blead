@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useEffect, useState } from "react"
-import { getBotsClient, getCurrentUserEmailClient, getDashboardMetrics } from "@/lib/database"
+import { getDashboardMetrics, getCurrentUserEmailClient } from "@/lib/database"
 import { TrendingUp, TrendingDown, MessageSquare, Phone, Clock, Smile, Meh, Frown, Calendar, Info } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
@@ -88,19 +88,21 @@ export default function Dashboard() {
     const fetchData = async () => {
       setLoading(true)
       try {
-        const [fetchedMetrics, fetchedBots, fetchedUserEmail] = await Promise.all([
+        const [fetchedMetrics, fetchedUserEmail] = await Promise.all([
           getDashboardMetrics(selectedBot, selectedPeriod),
-          getBotsClient(),
           getCurrentUserEmailClient(),
         ])
 
         setMetrics(fetchedMetrics)
-        setBots(fetchedBots)
         setUserEmail(fetchedUserEmail)
+
+        // Get bots from the global bot selector instead of fetching again
+        const storedBots = JSON.parse(localStorage.getItem("userBots") || "[]")
+        setBots(storedBots)
 
         // Set current bot name
         if (selectedBot) {
-          const currentBot = fetchedBots.find((b) => b.bot_share_name === selectedBot)
+          const currentBot = storedBots.find((b) => b.bot_share_name === selectedBot)
           setCurrentBotName(currentBot?.client_name || currentBot?.bot_share_name || "Selected Bot")
         } else {
           setCurrentBotName("All Bots")
@@ -114,6 +116,16 @@ export default function Dashboard() {
 
     fetchData()
   }, [selectedBot, selectedPeriod])
+
+  // Listen for bots being loaded by other components
+  useEffect(() => {
+    const handleBotsLoaded = (event: CustomEvent) => {
+      setBots(event.detail)
+    }
+
+    window.addEventListener("botsLoaded", handleBotsLoaded as EventListener)
+    return () => window.removeEventListener("botsLoaded", handleBotsLoaded as EventListener)
+  }, [])
 
   const formatPercentageChange = (current: number, previous: number) => {
     if (previous === 0) return current > 0 ? "+100%" : "0%"
