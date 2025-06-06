@@ -42,6 +42,7 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
 
       // Get messages using the thread ID
       const messagesData = await getMessagesByThreadId(threadData.id)
+      console.log("🔍 ThreadDetailPage: Messages data:", messagesData)
       setMessages(messagesData)
       setLoading(false)
     }
@@ -415,7 +416,7 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
       {/* Right Panel - Chat Messages */}
       <div className="flex-1 flex flex-col bg-gray-50">
         <div className="bg-white border-b border-[#e0e0e0] p-4">
-          <h2 className="text-lg font-medium text-[#212121]">Chat Transcript</h2>
+          <h2 className="text-lg font-medium text-[#212121]">{thread?.message_preview || "Chat Transcript"}</h2>
           <p className="text-sm text-[#616161]">{messages.length} messages</p>
         </div>
 
@@ -425,15 +426,18 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
               message.role === "user" || message.role === "menu_button" || message.role === "suggested_button"
             const isButtonMessage = message.role === "menu_button" || message.role === "suggested_button"
 
+            // Determine message content based on role
             let messageContent = ""
             if (message.role === "user") {
-              messageContent = message.user_message || "No content"
+              messageContent = message.user_message || message.content || "No content"
             } else if (message.role === "menu_button") {
               messageContent = message.content || "No content"
             } else if (message.role === "suggested_button") {
-              messageContent = message.suggested_message || "No content"
+              messageContent = message.suggested_message || message.content || "No content"
+            } else if (message.role === "bot") {
+              messageContent = message.content || message.bot_message || "No content"
             } else {
-              messageContent = message.bot_message || "No content"
+              messageContent = message.content || "No content"
             }
 
             let roleLabel = "AI"
