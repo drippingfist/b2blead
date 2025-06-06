@@ -17,6 +17,7 @@ interface Thread {
   message_preview: string
   sentiment_score: number
   cb_requested: boolean
+  count: number
   bots: {
     client_name: string
   } | null
@@ -29,13 +30,16 @@ interface ChatsListProps {
 export default function ChatsList({ threads }: ChatsListProps) {
   const [selectedBotFilter, setSelectedBotFilter] = useState<string | null>(null)
 
-  // Get unique bot names for filter
-  const uniqueBots = Array.from(new Set(threads.map((thread) => thread.bot_share_name)))
+  // Filter out threads with count < 1
+  const validThreads = threads.filter((thread) => thread.count >= 1)
+
+  // Get unique bot names for filter (from valid threads only)
+  const uniqueBots = Array.from(new Set(validThreads.map((thread) => thread.bot_share_name)))
 
   // Filter threads based on selected bot
   const filteredThreads = selectedBotFilter
-    ? threads.filter((thread) => thread.bot_share_name === selectedBotFilter)
-    : threads
+    ? validThreads.filter((thread) => thread.bot_share_name === selectedBotFilter)
+    : validThreads
 
   // Function to render sentiment icon based on score
   const renderSentimentIcon = (score: number) => {
@@ -65,6 +69,12 @@ export default function ChatsList({ threads }: ChatsListProps) {
               {bot}
             </Badge>
           ))}
+        </div>
+      )}
+
+      {filteredThreads.length > 0 && (
+        <div className="text-sm text-gray-500 mb-4">
+          {filteredThreads.length} {filteredThreads.length === 1 ? "thread" : "threads"}
         </div>
       )}
 
