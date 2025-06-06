@@ -22,11 +22,25 @@ export default async function ChatsPage() {
   console.log("🔍 CHATS DEBUG: User email:", userEmail)
   console.log("🔍 CHATS DEBUG: User ID:", userId)
 
-  // Check if user is superadmin
-  const { data: superAdminCheck } = await supabase.from("bot_super_users").select("id").eq("user_id", userId).single()
+  // Check if user is superadmin - check if their ID exists in bot_super_users table
+  console.log("🔍 CHATS DEBUG: Checking superadmin status...")
+  const { data: superAdminCheck, error: superAdminError } = await supabase
+    .from("bot_super_users")
+    .select("id")
+    .eq("id", userId) // Check if the user's ID exists as a record
+    .single()
+
+  console.log("🔍 CHATS DEBUG: Superadmin query error:", superAdminError)
+  console.log("🔍 CHATS DEBUG: Superadmin query data:", superAdminCheck)
 
   const isSuperAdmin = !!superAdminCheck
   console.log("🔍 CHATS DEBUG: Is superadmin:", isSuperAdmin)
+
+  // Also check what's in the bot_super_users table
+  const { data: allSuperAdmins, error: allSuperAdminsError } = await supabase.from("bot_super_users").select("*")
+
+  console.log("🔍 CHATS DEBUG: All superadmins:", allSuperAdmins)
+  console.log("🔍 CHATS DEBUG: All superadmins error:", allSuperAdminsError)
 
   // Get bots the user has access to using user_id (not email)
   const { data: userBots, error: userBotsError } = await supabase
@@ -99,6 +113,10 @@ export default async function ChatsPage() {
         Threads Found: {threads?.length || 0}
         <br />
         SuperAdmin: {isSuperAdmin.toString()}
+        <br />
+        SuperAdmin Check Error: {superAdminError?.message || "none"}
+        <br />
+        SuperAdmin Data: {JSON.stringify(superAdminCheck)}
       </div>
       <ChatsPageClient threads={threads || []} isSuperAdmin={isSuperAdmin} />
     </div>

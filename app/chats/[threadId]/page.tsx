@@ -421,7 +421,7 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
       {/* Right Panel - Chat Messages */}
       <div className="flex-1 flex flex-col bg-gray-50">
         <div className="bg-white border-b border-[#e0e0e0] p-4">
-          <h2 className="text-lg font-medium text-[#212121]">Conversation</h2>
+          <h2 className="text-lg font-medium text-[#212121]">Chat Transcript</h2>
           <p className="text-sm text-[#616161]">
             {messages.length} messages • Times in {timezoneAbbr}
           </p>
