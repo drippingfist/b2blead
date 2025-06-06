@@ -1,7 +1,7 @@
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import ChatsList from "./chats-list"
+import ChatsPageClient from "./chats-page-client"
 import { ChatsHeader } from "./chats-header"
 
 export default async function ChatsPage() {
@@ -22,11 +22,17 @@ export default async function ChatsPage() {
   console.log("🔍 CHATS DEBUG: User email:", userEmail)
   console.log("🔍 CHATS DEBUG: User ID:", userId)
 
+  // Check if user is superadmin
+  const { data: superAdminCheck } = await supabase.from("bot_super_users").select("id").eq("user_id", userId).single()
+
+  const isSuperAdmin = !!superAdminCheck
+  console.log("🔍 CHATS DEBUG: Is superadmin:", isSuperAdmin)
+
   // Get bots the user has access to using user_id (not email)
   const { data: userBots, error: userBotsError } = await supabase
     .from("bot_users")
     .select("bot_share_name")
-    .eq("user_id", userId) // Changed from user_email to user_id
+    .eq("user_id", userId)
     .eq("is_active", true)
 
   console.log("🔍 CHATS DEBUG: bot_users query error:", userBotsError)
@@ -40,7 +46,7 @@ export default async function ChatsPage() {
         <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-md">
           You don't have access to any bots yet. Please contact an administrator.
           <div className="mt-2 text-xs">
-            Debug: User ID: {userId}, Email: {userEmail}
+            Debug: User ID: {userId}, Email: {userEmail}, SuperAdmin: {isSuperAdmin.toString()}
           </div>
         </div>
       </div>
@@ -64,9 +70,11 @@ export default async function ChatsPage() {
       message_preview,
       sentiment_score,
       cb_requested,
+      count,
       bots(client_name)
     `)
     .in("bot_share_name", botShareNames)
+    .gt("count", 0)
     .order("updated_at", { ascending: false })
     .limit(50)
 
@@ -89,8 +97,10 @@ export default async function ChatsPage() {
         Bot Access: {botShareNames.join(", ")}
         <br />
         Threads Found: {threads?.length || 0}
+        <br />
+        SuperAdmin: {isSuperAdmin.toString()}
       </div>
-      <ChatsList threads={threads || []} />
+      <ChatsPageClient threads={threads || []} isSuperAdmin={isSuperAdmin} />
     </div>
   )
 }
