@@ -29,9 +29,7 @@ interface DashboardMetrics {
   droppedCallbacks: number
   averageSentiment: number
   averageResponseTime: number
-  vrgUserResponseTime: number
   globalAverageResponseTime: number
-  globalVrgUserResponseTime: number
   sentimentDistribution: { score: number; count: number }[]
   previousPeriodComparison: {
     totalChats: number
@@ -40,9 +38,7 @@ interface DashboardMetrics {
     droppedCallbacks: number
     averageSentiment: number
     averageResponseTime: number
-    vrgUserResponseTime: number
     globalAverageResponseTime: number
-    globalVrgUserResponseTime: number
   }
 }
 
@@ -56,9 +52,7 @@ export default function Dashboard() {
     droppedCallbacks: 0,
     averageSentiment: 0,
     averageResponseTime: 0,
-    vrgUserResponseTime: 0,
     globalAverageResponseTime: 0,
-    globalVrgUserResponseTime: 0,
     sentimentDistribution: [],
     previousPeriodComparison: {
       totalChats: 0,
@@ -67,9 +61,7 @@ export default function Dashboard() {
       droppedCallbacks: 0,
       averageSentiment: 0,
       averageResponseTime: 0,
-      vrgUserResponseTime: 0,
       globalAverageResponseTime: 0,
-      globalVrgUserResponseTime: 0,
     },
   })
   const [chatMetrics, setChatMetrics] = useState<{
@@ -312,12 +304,8 @@ export default function Dashboard() {
         return "Number of times users requested a callback but didn't complete the callback form"
       case "client-ai":
         return "This is average time it takes the AI to finish responding to the user"
-      case "client-users":
-        return "This is average time it takes your users to respond to the AI"
       case "all-ai":
-        return "This is AI's average response time across all of our clients. Get in touch to discuss how we can speed up your AI,"
-      case "all-users":
-        return "This is average time it takes ALL users to respond in the chat across ALL our AI's,"
+        return "This is AI's average response time across all of our clients. Get in touch to discuss how we can speed up your AI"
       default:
         return ""
     }
@@ -640,12 +628,12 @@ export default function Dashboard() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-[#212121] flex items-center">
               <Clock className="h-5 w-5 mr-2 text-[#038a71]" />
-              Response Speed
+              AI Response Speed
             </h3>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            {/* Top Left - Bot AI response time */}
+          <div className="grid grid-cols-1 gap-4">
+            {/* Client AI response time */}
             <div className="bg-gray-50 p-4 rounded-lg">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="font-medium text-[#212121] flex items-center">
@@ -689,7 +677,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Top Right - All AI response time */}
+            {/* All AI response time */}
             <div className="bg-blue-50 p-4 rounded-lg">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="font-medium text-[#212121] flex items-center">
@@ -730,96 +718,6 @@ export default function Dashboard() {
                   <span>Previous period:</span>
                   <span className="font-medium">
                     {(metrics.previousPeriodComparison.globalAverageResponseTime / 1000).toFixed(1)}s
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom Left - Bot Users response time */}
-            <div className="bg-green-50 p-4 rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium text-[#212121] flex items-center">
-                  {currentBotName} Users
-                  <Info
-                    className="h-4 w-4 ml-2 text-gray-400 cursor-help"
-                    onMouseEnter={(e) => handleTooltipHover("client-users", e)}
-                    onMouseLeave={handleTooltipLeave}
-                    onMouseMove={(e) => {
-                      if (hoveredTooltip === "client-users") {
-                        setTooltipPosition({ x: e.clientX, y: e.clientY })
-                      }
-                    }}
-                  />
-                </h4>
-                <div
-                  className={`flex items-center text-xs ${getChangeColor(metrics.vrgUserResponseTime, metrics.previousPeriodComparison.vrgUserResponseTime, true)}`}
-                >
-                  {getChangeIcon(
-                    metrics.vrgUserResponseTime,
-                    metrics.previousPeriodComparison.vrgUserResponseTime,
-                    true,
-                  )}
-                  <span className="ml-1">
-                    {formatPercentageChange(
-                      metrics.vrgUserResponseTime,
-                      metrics.previousPeriodComparison.vrgUserResponseTime,
-                    )}
-                  </span>
-                </div>
-              </div>
-              <p className="text-sm text-[#616161] mb-1">Response Speed</p>
-              <p className="text-2xl font-bold text-[#038a71]">{(metrics.vrgUserResponseTime / 1000).toFixed(1)}s</p>
-              <div className="mt-3 text-xs text-[#616161]">
-                <div className="flex justify-between items-center">
-                  <span>Previous period:</span>
-                  <span className="font-medium">
-                    {(metrics.previousPeriodComparison.vrgUserResponseTime / 1000).toFixed(1)}s
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom Right - All Users response time */}
-            <div className="bg-purple-50 p-4 rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium text-[#212121] flex items-center">
-                  All Users
-                  <Info
-                    className="h-4 w-4 ml-2 text-gray-400 cursor-help"
-                    onMouseEnter={(e) => handleTooltipHover("all-users", e)}
-                    onMouseLeave={handleTooltipLeave}
-                    onMouseMove={(e) => {
-                      if (hoveredTooltip === "all-users") {
-                        setTooltipPosition({ x: e.clientX, y: e.clientY })
-                      }
-                    }}
-                  />
-                </h4>
-                <div
-                  className={`flex items-center text-xs ${getChangeColor(metrics.globalVrgUserResponseTime, metrics.previousPeriodComparison.globalVrgUserResponseTime, true)}`}
-                >
-                  {getChangeIcon(
-                    metrics.globalVrgUserResponseTime,
-                    metrics.previousPeriodComparison.globalVrgUserResponseTime,
-                    true,
-                  )}
-                  <span className="ml-1">
-                    {formatPercentageChange(
-                      metrics.globalVrgUserResponseTime,
-                      metrics.previousPeriodComparison.globalVrgUserResponseTime,
-                    )}
-                  </span>
-                </div>
-              </div>
-              <p className="text-sm text-[#616161] mb-1">Response Speed</p>
-              <p className="text-2xl font-bold text-[#038a71]">
-                {(metrics.globalVrgUserResponseTime / 1000).toFixed(1)}s
-              </p>
-              <div className="mt-3 text-xs text-[#616161]">
-                <div className="flex justify-between items-center">
-                  <span>Previous period:</span>
-                  <span className="font-medium">
-                    {(metrics.previousPeriodComparison.globalVrgUserResponseTime / 1000).toFixed(1)}s
                   </span>
                 </div>
               </div>

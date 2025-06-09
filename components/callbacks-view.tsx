@@ -230,7 +230,7 @@ export default function CallbacksView({
                 </th>
               )}
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                Subject
+                Summary
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                 Message
@@ -328,7 +328,7 @@ export default function CallbacksView({
                         {callback.thread_table_id && callback.message_preview ? (
                           <Link
                             href={`/thread/${callback.thread_table_id}`}
-                            className="truncate hover:underline text-blue-600 hover:text-blue-800"
+                            className="truncate hover:underline text-[#212121] hover:text-[#038a71]"
                           >
                             {callback.message_preview}
                           </Link>
@@ -346,12 +346,16 @@ export default function CallbacksView({
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
-                        <button className="bg-[#038a71] hover:bg-[#038a71]/90 text-white px-3 py-1 rounded text-xs">
-                          Call
-                        </button>
-                        <button className="border border-[#e0e0e0] hover:bg-gray-50 text-[#616161] px-3 py-1 rounded text-xs">
-                          Email
-                        </button>
+                        {callback.user_email ? (
+                          <a
+                            href={`mailto:${callback.user_email}`}
+                            className="bg-[#038a71] hover:bg-[#038a71]/90 text-white px-3 py-1 rounded text-xs"
+                          >
+                            Email
+                          </a>
+                        ) : (
+                          <span className="text-gray-400 px-3 py-1 rounded text-xs">No email</span>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -428,13 +432,13 @@ export default function CallbacksView({
 
                   {callback.message_preview && (
                     <div className="mb-3">
-                      <p className="text-sm text-[#616161] mb-1">Subject:</p>
+                      <p className="text-sm text-[#616161] mb-1">Summary:</p>
                       <div className="flex items-center">
                         <MessageSquare className="h-4 w-4 mr-2 text-[#616161]" />
                         {callback.thread_table_id ? (
                           <Link
                             href={`/thread/${callback.thread_table_id}`}
-                            className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                            className="text-sm text-[#212121] hover:text-[#038a71] hover:underline"
                           >
                             {callback.message_preview}
                           </Link>
@@ -453,12 +457,18 @@ export default function CallbacksView({
                   )}
 
                   <div className="flex space-x-2">
-                    <button className="flex-1 bg-[#038a71] hover:bg-[#038a71]/90 text-white px-3 py-2 rounded-md text-sm">
-                      Call Now
-                    </button>
-                    <button className="flex-1 border border-[#e0e0e0] hover:bg-gray-50 text-[#616161] px-3 py-2 rounded-md text-sm">
-                      Send Email
-                    </button>
+                    {callback.user_email ? (
+                      <a
+                        href={`mailto:${callback.user_email}`}
+                        className="flex-1 bg-[#038a71] hover:bg-[#038a71]/90 text-white px-3 py-2 rounded-md text-sm text-center"
+                      >
+                        Send Email
+                      </a>
+                    ) : (
+                      <span className="flex-1 text-gray-400 px-3 py-2 rounded-md text-sm text-center border border-gray-200">
+                        No email available
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}

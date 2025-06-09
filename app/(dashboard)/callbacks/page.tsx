@@ -46,6 +46,7 @@ export default function CallbacksPage() {
     const fetchData = async () => {
       setLoading(true)
       try {
+        console.log("Fetching callbacks data for bot:", selectedBot)
         const [fetchedCallbacks, fetchedStats, columnAnalysis] = await Promise.all([
           getCallbacksClient(100, selectedBot),
           getCallbackStatsClientWithPeriod(selectedBot, selectedPeriod as any),
