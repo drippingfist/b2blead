@@ -40,48 +40,66 @@ export async function GET() {
     const serviceClient = getServiceRoleClient()
 
     // First, check if user is a superadmin (existence of record = superadmin)
-    const { data: superUserRecord, error: superUserError } = await serviceClient
-      .from("bot_super_users")
-      .select("id")
-      .eq("id", user.id)
-      .single()
+    let isSuperAdmin = false
+    try {
+      const { data: superUserRecord, error: superUserError } = await serviceClient
+        .from("bot_super_users")
+        .select("id")
+        .eq("id", user.id)
+        .single()
 
-    if (superUserError && superUserError.code !== "PGRST116") {
-      console.error("❌ API: Error checking superadmin status:", superUserError)
+      if (superUserError && superUserError.code !== "PGRST116") {
+        console.error("❌ API: Error checking superadmin status:", superUserError)
+      } else {
+        isSuperAdmin = !!superUserRecord
+      }
+    } catch (error) {
+      console.error("❌ API: Exception checking superadmin status:", error)
+      // Continue with isSuperAdmin = false
     }
 
-    const isSuperAdmin = !!superUserRecord
     console.log("🤖 API: Is superadmin:", isSuperAdmin)
 
     let accessibleBotNames: string[] = []
 
     if (isSuperAdmin) {
       console.log("🤖 API: User is superadmin - getting all bots")
-      // Superadmin gets all bots
-      const { data: allBots } = await serviceClient
-        .from("bots")
-        .select("bot_share_name")
-        .not("bot_share_name", "is", null)
+      try {
+        // Superadmin gets all bots
+        const { data: allBots, error: botsError } = await serviceClient
+          .from("bots")
+          .select("bot_share_name")
+          .not("bot_share_name", "is", null)
 
-      accessibleBotNames = allBots?.map((b) => b.bot_share_name).filter(Boolean) || []
+        if (botsError) {
+          console.error("❌ API: Error fetching all bots:", botsError)
+        } else {
+          accessibleBotNames = allBots?.map((b) => b.bot_share_name).filter(Boolean) || []
+        }
+      } catch (error) {
+        console.error("❌ API: Exception fetching all bots:", error)
+      }
     } else {
       // Regular users get their assigned bots from bot_users using user_id and bot_share_name
-      const { data: botUsers, error: botUsersError } = await serviceClient
-        .from("bot_users")
-        .select("bot_share_name")
-        .eq("user_id", user.id)
-        .eq("is_active", true)
+      try {
+        const { data: botUsers, error: botUsersError } = await serviceClient
+          .from("bot_users")
+          .select("bot_share_name")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
 
-      if (botUsersError) {
-        console.error("❌ API: Error fetching user bot assignments:", botUsersError)
-        return NextResponse.json([])
+        if (botUsersError) {
+          console.error("❌ API: Error fetching user bot assignments:", botUsersError)
+        } else {
+          accessibleBotNames =
+            botUsers
+              ?.filter((bu) => bu.bot_share_name)
+              .map((bu) => bu.bot_share_name)
+              .filter(Boolean) || []
+        }
+      } catch (error) {
+        console.error("❌ API: Exception fetching user bot assignments:", error)
       }
-
-      accessibleBotNames =
-        botUsers
-          ?.filter((bu) => bu.bot_share_name)
-          .map((bu) => bu.bot_share_name)
-          .filter(Boolean) || []
     }
 
     console.log("🤖 API: Accessible bot names:", accessibleBotNames)
@@ -91,19 +109,24 @@ export async function GET() {
     }
 
     // Get full bot details for accessible bots
-    const { data: bots, error: botsError } = await serviceClient
-      .from("bots")
-      .select("*")
-      .in("bot_share_name", accessibleBotNames)
-      .order("client_name", { ascending: true })
+    try {
+      const { data: bots, error: botsError } = await serviceClient
+        .from("bots")
+        .select("*")
+        .in("bot_share_name", accessibleBotNames)
+        .order("client_name", { ascending: true })
 
-    if (botsError) {
-      console.error("❌ API: Error fetching bot details:", botsError)
+      if (botsError) {
+        console.error("❌ API: Error fetching bot details:", botsError)
+        return NextResponse.json([])
+      }
+
+      console.log("🤖 API: Successfully fetched", bots?.length || 0, "accessible bots")
+      return NextResponse.json(bots || [])
+    } catch (error) {
+      console.error("❌ API: Exception fetching bot details:", error)
       return NextResponse.json([])
     }
-
-    console.log("🤖 API: Successfully fetched", bots?.length || 0, "accessible bots")
-    return NextResponse.json(bots || [])
   } catch (error) {
     console.error("❌ API: Exception in accessible bots API:", error)
     return NextResponse.json([])

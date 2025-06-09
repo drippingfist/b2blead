@@ -516,12 +516,14 @@ export async function getDashboardMetrics(
   // Apply bot filter if provided
   if (botShareName) {
     currentThreadsQuery = currentThreadsQuery.eq("bot_share_name", botShareName)
+    // Fix: Ensure callbacks use bot_share_name
     currentCallbacksQuery = currentCallbacksQuery.eq("bot_share_name", botShareName)
     currentCallbackThreadsQuery = currentCallbackThreadsQuery.eq("bot_share_name", botShareName)
     currentSentimentQuery = currentSentimentQuery.eq("bot_share_name", botShareName)
     currentResponseTimeQuery = currentResponseTimeQuery.eq("bot_share_name", botShareName)
 
     previousThreadsQuery = previousThreadsQuery.eq("bot_share_name", botShareName)
+    // Fix: Ensure callbacks use bot_share_name
     previousCallbacksQuery = previousCallbacksQuery.eq("bot_share_name", botShareName)
     previousCallbackThreadsQuery = previousCallbackThreadsQuery.eq("bot_share_name", botShareName)
     previousSentimentQuery = previousSentimentQuery.eq("bot_share_name", botShareName)
@@ -747,6 +749,128 @@ export async function getDashboardMetrics(
       vrgUserResponseTime: previousVrgUserResponseTime,
       globalAverageResponseTime: previousGlobalAverageResponseTime,
       globalVrgUserResponseTime: previousGlobalVrgUserResponseTime,
+    },
+  }
+}
+
+export async function getChatMetrics(
+  botShareName?: string | null,
+  period: "today" | "last7days" | "last30days" | "alltime" | "custom" = "last30days",
+) {
+  console.log("📊 getChatMetrics: Starting calculation for bot:", botShareName, "period:", period)
+
+  // Calculate date range based on period
+  const now = new Date()
+  let currentStartDate: string | null = null
+  let previousStartDate: string | null = null
+  let previousEndDate: string | null = null
+
+  switch (period) {
+    case "today":
+      currentStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+      // Previous period is yesterday
+      const yesterday = new Date(now)
+      yesterday.setDate(yesterday.getDate() - 1)
+      previousStartDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate()).toISOString()
+      previousEndDate = new Date(
+        yesterday.getFullYear(),
+        yesterday.getMonth(),
+        yesterday.getDate(),
+        23,
+        59,
+        59,
+      ).toISOString()
+      break
+    case "last7days":
+      const sevenDaysAgo = new Date(now)
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+      currentStartDate = sevenDaysAgo.toISOString()
+      // Previous period is 7 days before that
+      const fourteenDaysAgo = new Date(now)
+      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
+      previousStartDate = fourteenDaysAgo.toISOString()
+      previousEndDate = sevenDaysAgo.toISOString()
+      break
+    case "last30days":
+      const thirtyDaysAgo = new Date(now)
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      currentStartDate = thirtyDaysAgo.toISOString()
+      // Previous period is 30 days before that
+      const sixtyDaysAgo = new Date(now)
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
+      previousStartDate = sixtyDaysAgo.toISOString()
+      previousEndDate = thirtyDaysAgo.toISOString()
+      break
+    case "alltime":
+      currentStartDate = null
+      previousStartDate = null
+      previousEndDate = null
+      break
+  }
+
+  // Build current period queries
+  let currentThreadsQuery = supabase.from("threads").select("*")
+  let currentMessagesQuery = supabase.from("messages").select("*")
+
+  // Build previous period queries
+  let previousThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
+  let previousMessagesQuery = supabase.from("messages").select("*", { count: "exact", head: true })
+
+  // Apply bot filter if provided
+  if (botShareName) {
+    currentThreadsQuery = currentThreadsQuery.eq("bot_share_name", botShareName)
+    // Fix: Use bot_share_name instead of typebot_id for messages
+    currentMessagesQuery = currentMessagesQuery.eq("bot_share_name", botShareName)
+    previousThreadsQuery = previousThreadsQuery.eq("bot_share_name", botShareName)
+    // Fix: Use bot_share_name instead of typebot_id for messages
+    previousMessagesQuery = previousMessagesQuery.eq("bot_share_name", botShareName)
+  }
+
+  // Apply date filters for current period
+  if (currentStartDate) {
+    currentThreadsQuery = currentThreadsQuery.gte("created_at", currentStartDate)
+    currentMessagesQuery = currentMessagesQuery.gte("created_at", currentStartDate)
+  }
+
+  // Apply date filters for previous period
+  if (previousStartDate && previousEndDate) {
+    previousThreadsQuery = previousThreadsQuery.gte("created_at", previousStartDate).lte("created_at", previousEndDate)
+    previousMessagesQuery = previousMessagesQuery
+      .gte("created_at", previousStartDate)
+      .lte("created_at", previousEndDate)
+  }
+
+  // Execute all queries
+  const [{ data: currentThreads }, { data: currentMessages }, { count: previousThreads }, { count: previousMessages }] =
+    await Promise.all([currentThreadsQuery, currentMessagesQuery, previousThreadsQuery, previousMessagesQuery])
+
+  // Calculate current period metrics
+  const totalThreads = currentThreads?.length || 0
+  const totalMessages = currentMessages?.length || 0
+  const messagesPerThread = totalThreads > 0 ? totalMessages / totalThreads : 0
+
+  // Calculate previous period metrics
+  const previousTotalThreads = previousThreads || 0
+  const previousTotalMessages = previousMessages || 0
+  const previousMessagesPerThread = previousTotalThreads > 0 ? previousTotalMessages / previousTotalThreads : 0
+
+  console.log("📊 Chat metrics:", {
+    totalThreads,
+    totalMessages,
+    messagesPerThread,
+    previousTotalThreads,
+    previousTotalMessages,
+    previousMessagesPerThread,
+  })
+
+  return {
+    totalThreads,
+    totalMessages,
+    messagesPerThread,
+    previousPeriodComparison: {
+      totalThreads: previousTotalThreads,
+      totalMessages: previousTotalMessages,
+      messagesPerThread: previousMessagesPerThread,
     },
   }
 }

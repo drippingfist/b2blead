@@ -1,0 +1,527 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { supabase } from "@/lib/supabase/client"
+import { getUserBotAccess } from "@/lib/database"
+import { timezones } from "@/lib/timezones"
+import { Upload, Save, Loader2 } from "lucide-react"
+
+interface BotSettings {
+  timezone: string
+  client_description: string
+  client_url: string
+  client_email: string
+  sentiment_analysis_prompt: string
+  client_email_name: string
+  gpt_assistant_system_prompt: string
+  button_background_color: string
+  button_gif: string
+  favicon_png: string
+  product_name: string
+}
+
+export default function SuperAdminPage() {
+  const [selectedBot, setSelectedBot] = useState<string | null>(null)
+  const [clientName, setClientName] = useState<string>("")
+  const [botSettings, setBotSettings] = useState<BotSettings>({
+    timezone: "",
+    client_description: "",
+    client_url: "",
+    client_email: "",
+    sentiment_analysis_prompt: "",
+    client_email_name: "",
+    gpt_assistant_system_prompt: "",
+    button_background_color: "#038a71",
+    button_gif: "",
+    favicon_png: "",
+    product_name: "",
+  })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+  const [userAccess, setUserAccess] = useState<{
+    isSuperAdmin: boolean
+  }>({ isSuperAdmin: false })
+  const [debugInfo, setDebugInfo] = useState<string | null>(null)
+
+  // Check if user is superadmin
+  useEffect(() => {
+    const checkAccess = async () => {
+      try {
+        const access = await getUserBotAccess()
+        setUserAccess({ isSuperAdmin: access.isSuperAdmin })
+
+        if (!access.isSuperAdmin) {
+          setError("Access denied. SuperAdmin privileges required.")
+          setLoading(false)
+          return
+        }
+      } catch (error) {
+        console.error("Error checking access:", error)
+        setError("Failed to verify access permissions")
+        setLoading(false)
+      }
+    }
+
+    checkAccess()
+  }, [])
+
+  // Get selected bot from localStorage and listen for changes
+  useEffect(() => {
+    const getSelectedBot = () => {
+      const storedBot = localStorage.getItem("selectedBot")
+      if (storedBot && storedBot !== "null" && storedBot !== "all") {
+        setSelectedBot(storedBot)
+      } else {
+        setSelectedBot(null)
+      }
+    }
+
+    // Get selected bot immediately
+    getSelectedBot()
+
+    // Listen for bot selection changes
+    const handleBotChange = (event: CustomEvent) => {
+      const newBot = event.detail
+      if (newBot && newBot !== "all") {
+        setSelectedBot(newBot)
+      } else {
+        setSelectedBot(null)
+      }
+    }
+
+    window.addEventListener("botSelectionChanged", handleBotChange as EventListener)
+    return () => {
+      window.removeEventListener("botSelectionChanged", handleBotChange as EventListener)
+    }
+  }, [])
+
+  // Load bot data when selected bot changes
+  useEffect(() => {
+    const loadBotData = async () => {
+      if (!selectedBot || !userAccess.isSuperAdmin) {
+        if (!selectedBot && userAccess.isSuperAdmin) {
+          setLoading(false)
+        }
+        return
+      }
+
+      setLoading(true)
+      setError(null)
+      setDebugInfo(null)
+
+      try {
+        console.log("Loading bot data for:", selectedBot)
+
+        const { data: bot, error: botError } = await supabase
+          .from("bots")
+          .select("*")
+          .eq("bot_share_name", selectedBot)
+          .single()
+
+        if (botError) {
+          throw new Error(`Failed to load bot data: ${botError.message}`)
+        }
+
+        if (bot) {
+          console.log("Bot data loaded:", bot)
+          console.log("Timezone from database:", bot.timezone)
+
+          // Debug info to display on the page
+          setDebugInfo(`Bot: ${selectedBot}, Timezone in DB: ${bot.timezone || "not set"}`)
+
+          setClientName(bot.client_name || "")
+          setBotSettings({
+            timezone: bot.timezone || "",
+            client_description: bot.client_description || "",
+            client_url: bot.client_url || "",
+            client_email: bot.client_email || "",
+            sentiment_analysis_prompt: bot.sentiment_analysis_prompt || "",
+            client_email_name: bot.client_email_name || "",
+            gpt_assistant_system_prompt: bot.gpt_assistant_system_prompt || "",
+            button_background_color: bot.button_background_color || "#038a71",
+            button_gif: bot.button_gif || "",
+            favicon_png: bot.favicon_png || "",
+            product_name: bot.product_name || "",
+          })
+
+          // Log the state after setting
+          setTimeout(() => {
+            console.log("Bot settings state after update:", botSettings)
+          }, 100)
+        }
+      } catch (error) {
+        console.error("Error loading bot data:", error)
+        setError(error instanceof Error ? error.message : "Failed to load bot data")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadBotData()
+  }, [selectedBot, userAccess.isSuperAdmin])
+
+  // Debug effect to log when botSettings changes
+  useEffect(() => {
+    console.log("botSettings updated:", botSettings)
+  }, [botSettings])
+
+  const handleInputChange = (field: keyof BotSettings, value: string) => {
+    console.log(`Changing ${field} to:`, value)
+    setBotSettings((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
+    setSuccess(false)
+  }
+
+  const handleSave = async () => {
+    if (!selectedBot) return
+
+    setSaving(true)
+    setError(null)
+
+    try {
+      console.log("Saving bot settings:", botSettings)
+
+      const { error: updateError } = await supabase.from("bots").update(botSettings).eq("bot_share_name", selectedBot)
+
+      if (updateError) {
+        throw new Error(`Failed to save settings: ${updateError.message}`)
+      }
+
+      setSuccess(true)
+      setTimeout(() => setSuccess(false), 3000)
+    } catch (error) {
+      console.error("Error saving settings:", error)
+      setError(error instanceof Error ? error.message : "Failed to save settings")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleFileUpload = (type: "gif" | "favicon") => {
+    // Create file input element
+    const input = document.createElement("input")
+    input.type = "file"
+    input.accept = type === "gif" ? "image/gif" : "image/png,image/webp"
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (file) {
+        // For now, just show an alert - file upload logic will be added later
+        alert(`File selected: ${file.name}. Upload functionality will be implemented soon.`)
+      }
+    }
+    input.click()
+  }
+
+  // Show access denied if not superadmin
+  if (!userAccess.isSuperAdmin && !loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Card className="max-w-md mx-auto">
+          <CardHeader>
+            <CardTitle className="text-red-600">Access Denied</CardTitle>
+            <CardDescription>SuperAdmin privileges are required to access this page.</CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    )
+  }
+
+  // Show bot selection required
+  if (!selectedBot && !loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Card className="max-w-md mx-auto">
+          <CardHeader>
+            <CardTitle>Bot Selection Required</CardTitle>
+            <CardDescription>Please select a specific bot from the sidebar to configure its settings.</CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <span className="ml-2">Loading bot settings...</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Card className="max-w-md mx-auto">
+          <CardHeader>
+            <CardTitle className="text-red-600">Error</CardTitle>
+            <CardDescription>{error}</CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    )
+  }
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-3xl font-bold text-[#212121]">{clientName}</h1>
+          <Button onClick={handleSave} disabled={saving} className="bg-[#038a71] hover:bg-[#038a71]/90">
+            {saving ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save Changes
+              </>
+            )}
+          </Button>
+        </div>
+
+        {success && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-md">
+            <p className="text-green-800">Settings saved successfully!</p>
+          </div>
+        )}
+
+        {debugInfo && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
+            <p className="text-blue-800 font-mono text-sm">Debug: {debugInfo}</p>
+          </div>
+        )}
+
+        <div className="grid gap-6">
+          {/* Basic Settings */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Basic Settings</CardTitle>
+              <CardDescription>Configure basic client information</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="timezone">Timezone</Label>
+                  <Select
+                    value={botSettings.timezone}
+                    onValueChange={(value) => handleInputChange("timezone", value)}
+                    defaultValue={botSettings.timezone}
+                  >
+                    <SelectTrigger id="timezone-trigger">
+                      <SelectValue placeholder="Select timezone" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {timezones.map((tz) => (
+                        <SelectItem key={tz.value} value={tz.value}>
+                          {tz.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Current timezone value: {botSettings.timezone || "not set"}
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="product_name">Product Name</Label>
+                  <Input
+                    id="product_name"
+                    value={botSettings.product_name}
+                    onChange={(e) => handleInputChange("product_name", e.target.value)}
+                    placeholder="Enter product name"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="client_url">Client URL</Label>
+                  <Input
+                    id="client_url"
+                    type="url"
+                    value={botSettings.client_url}
+                    onChange={(e) => handleInputChange("client_url", e.target.value)}
+                    placeholder="https://example.com"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="client_email">Client Email</Label>
+                  <Input
+                    id="client_email"
+                    type="email"
+                    value={botSettings.client_email}
+                    onChange={(e) => handleInputChange("client_email", e.target.value)}
+                    placeholder="contact@example.com"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="client_email_name">Client Email Name</Label>
+                <Input
+                  id="client_email_name"
+                  value={botSettings.client_email_name}
+                  onChange={(e) => handleInputChange("client_email_name", e.target.value)}
+                  placeholder="Enter email display name"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* AI Configuration */}
+          <Card>
+            <CardHeader>
+              <CardTitle>AI Configuration</CardTitle>
+              <CardDescription>Configure AI prompts and behavior</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="client_description">Client Description</Label>
+                <Textarea
+                  id="client_description"
+                  value={botSettings.client_description}
+                  onChange={(e) => handleInputChange("client_description", e.target.value)}
+                  placeholder="Enter client description"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="gpt_assistant_system_prompt">Assistant System Prompt</Label>
+                <Textarea
+                  id="gpt_assistant_system_prompt"
+                  value={botSettings.gpt_assistant_system_prompt}
+                  onChange={(e) => handleInputChange("gpt_assistant_system_prompt", e.target.value)}
+                  placeholder="Enter system prompt for GPT assistant"
+                  rows={6}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="sentiment_analysis_prompt">Sentiment Analysis Prompt</Label>
+                <Textarea
+                  id="sentiment_analysis_prompt"
+                  value={botSettings.sentiment_analysis_prompt}
+                  onChange={(e) => handleInputChange("sentiment_analysis_prompt", e.target.value)}
+                  placeholder="Enter sentiment analysis prompt"
+                  rows={4}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Visual Settings */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Visual Settings</CardTitle>
+              <CardDescription>Configure visual elements and branding</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="button_background_color">Button Background Color</Label>
+                <div className="flex items-center space-x-2">
+                  <Input
+                    id="button_background_color"
+                    type="color"
+                    value={botSettings.button_background_color}
+                    onChange={(e) => handleInputChange("button_background_color", e.target.value)}
+                    className="w-20 h-10"
+                  />
+                  <Input
+                    value={botSettings.button_background_color}
+                    onChange={(e) => handleInputChange("button_background_color", e.target.value)}
+                    placeholder="#038a71"
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label>Button GIF</Label>
+                <div className="space-y-2">
+                  {botSettings.button_gif && (
+                    <div className="border rounded-md p-2 bg-gray-50">
+                      <div className="text-sm text-gray-600 mb-2">Current GIF:</div>
+                      <img
+                        src={botSettings.button_gif || "/placeholder.svg"}
+                        alt="Button GIF"
+                        className="max-w-xs max-h-32 object-contain border rounded"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement
+                          target.src = "/placeholder.svg?height=100&width=200&text=GIF+Failed+to+Load"
+                          target.className = "max-w-xs max-h-32 object-contain border rounded opacity-50"
+                        }}
+                      />
+                    </div>
+                  )}
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      value={botSettings.button_gif}
+                      onChange={(e) => handleInputChange("button_gif", e.target.value)}
+                      placeholder="Enter GIF URL"
+                      className="flex-1"
+                    />
+                    <Button type="button" variant="outline" onClick={() => handleFileUpload("gif")}>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload New GIF
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label>Favicon</Label>
+                <div className="space-y-2">
+                  {botSettings.favicon_png && (
+                    <div className="border rounded-md p-2 bg-gray-50">
+                      <div className="text-sm text-gray-600 mb-2">Current Favicon:</div>
+                      <img
+                        src={botSettings.favicon_png || "/placeholder.svg"}
+                        alt="Favicon"
+                        className="w-8 h-8 object-contain border rounded"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement
+                          target.src = "/placeholder.svg?height=32&width=32&text=Favicon+Error"
+                          target.className = "w-8 h-8 object-contain border rounded opacity-50"
+                        }}
+                      />
+                    </div>
+                  )}
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      value={botSettings.favicon_png}
+                      onChange={(e) => handleInputChange("favicon_png", e.target.value)}
+                      placeholder="Enter favicon URL"
+                      className="flex-1"
+                    />
+                    <Button type="button" variant="outline" onClick={() => handleFileUpload("favicon")}>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload New Favicon
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  )
+}

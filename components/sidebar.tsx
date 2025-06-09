@@ -3,7 +3,19 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
-import { LayoutDashboard, MessageSquare, Mail, PhoneCall, MessageSquarePlus, Settings, LogOut, X } from "lucide-react"
+import {
+  LayoutDashboard,
+  MessageSquare,
+  Mail,
+  PhoneCall,
+  MessageSquarePlus,
+  Settings,
+  LogOut,
+  X,
+  Shield,
+  User,
+  Crown,
+} from "lucide-react"
 import { signOut } from "@/lib/actions"
 import { supabase } from "@/lib/supabase/client"
 import SimpleBotSelector from "@/components/simple-bot-selector"
@@ -26,6 +38,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     isSuperAdmin: boolean
   }>({ role: null, accessibleBots: [], isSuperAdmin: false })
   const [firstName, setFirstName] = useState<string | null>(null)
+  const [clientName, setClientName] = useState<string | null>(null)
 
   useEffect(() => {
     // Get current user info and access level
@@ -82,6 +95,29 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     }
   }, [userLoaded])
 
+  // Get client name when selected bot changes
+  useEffect(() => {
+    const getClientName = async () => {
+      if (selectedBot) {
+        try {
+          const { data: bot, error } = await supabase
+            .from("bots")
+            .select("client_name")
+            .eq("bot_share_name", selectedBot)
+            .single()
+
+          if (!error && bot) {
+            setClientName(bot.client_name)
+          }
+        } catch (error) {
+          console.warn("Failed to get client name:", error)
+        }
+      }
+    }
+
+    getClientName()
+  }, [selectedBot])
+
   // Save selected bot to localStorage and trigger page refresh
   const handleBotSelection = (botShareName: string | null) => {
     setSelectedBot(botShareName)
@@ -102,13 +138,40 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     { name: "Messages", href: "/messages", icon: Mail },
     { name: "Callbacks", href: "/callbacks", icon: PhoneCall },
     { name: "Improve Answers", href: "/improvements", icon: MessageSquarePlus, adminOnly: true },
-    { name: "Settings", href: "/settings", icon: Settings, adminOnly: true },
+    {
+      name: "Settings",
+      href: "/settings",
+      icon: Settings,
+      adminOnly: true,
+    },
+    {
+      name: "Profile",
+      href: "/profile",
+      icon: User,
+      adminOnly: true,
+    },
+    {
+      name: "Admin",
+      href: "/admin",
+      icon: Shield,
+      superAdminOnly: true,
+    },
+    {
+      name: "SuperAdmin",
+      href: "/superadmin",
+      icon: Crown,
+      superAdminOnly: true,
+    },
   ]
 
   // Filter navigation items based on user role
   const navigation = allNavigation.filter((item) => {
     // If item is admin-only and user is member, hide it
     if (item.adminOnly && userAccess.role === "member") {
+      return false
+    }
+    // If item is superadmin-only and user is not superadmin, hide it
+    if (item.superAdminOnly && !userAccess.isSuperAdmin) {
       return false
     }
     return true

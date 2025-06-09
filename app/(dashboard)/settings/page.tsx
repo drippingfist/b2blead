@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Save, X, CreditCard, Receipt, Users, Info, Trash2, UserPlus, Edit } from "lucide-react"
+import { Loader2, Save, X, Users, Info, Trash2, UserPlus, Edit } from "lucide-react"
 import { supabase } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { timezones } from "@/lib/timezones"
@@ -88,6 +88,8 @@ export default function SettingsPage() {
   })
   const [botSettingsLoading, setBotSettingsLoading] = useState(false)
   const [botSettingsSaving, setBotSettingsSaving] = useState(false)
+  const [clientName, setClientName] = useState<string>("")
+  const [selectedBot, setSelectedBot] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadUserData() {
@@ -111,22 +113,29 @@ export default function SettingsPage() {
           .single()
 
         // Get user's bot access to determine timezone
-        const { data: botUser, error: botUserError } = await supabase
+        const { data: botUsers, error: botUserError } = await supabase
           .from("bot_users")
           .select("bot_share_name")
           .eq("user_id", user.id)
-          .single()
+
+        let botUser = null
+        if (!botUserError && botUsers && botUsers.length > 0) {
+          botUser = botUsers[0] // Take the first bot
+        }
 
         let userTimezone = "Asia/Bangkok"
         if (botUser?.bot_share_name) {
           const { data: bot } = await supabase
             .from("bots")
-            .select("timezone")
+            .select("timezone, client_name")
             .eq("bot_share_name", botUser.bot_share_name)
             .single()
 
           if (bot?.timezone) {
             userTimezone = bot.timezone
+          }
+          if (bot?.client_name) {
+            setClientName(bot.client_name)
           }
         }
 
@@ -151,6 +160,33 @@ export default function SettingsPage() {
     }
 
     loadUserData()
+  }, [])
+
+  useEffect(() => {
+    const handleBotChange = (event: CustomEvent) => {
+      const newSelectedBot = event.detail
+      console.log("🔄 Bot selector changed to:", newSelectedBot)
+      setSelectedBot(newSelectedBot)
+
+      // Reload settings for the new bot
+      if (newSelectedBot) {
+        loadBotSpecificSettings(newSelectedBot)
+      }
+    }
+
+    // Listen for bot selector changes
+    window.addEventListener("botSelected", handleBotChange as EventListener)
+
+    // Also check localStorage for initial bot selection
+    const storedBot = localStorage.getItem("selectedBot")
+    if (storedBot && storedBot !== "null") {
+      setSelectedBot(storedBot)
+      loadBotSpecificSettings(storedBot)
+    }
+
+    return () => {
+      window.removeEventListener("botSelected", handleBotChange as EventListener)
+    }
   }, [])
 
   const loadAvailableBots = async () => {
@@ -216,12 +252,19 @@ export default function SettingsPage() {
       }
 
       // Get user's bot assignment
-      const { data: botUser, error: botUserError } = await supabase
+      const { data: botUsers, error: botUserError } = await supabase
         .from("bot_users")
         .select("bot_share_name, role")
         .eq("user_id", user.id)
         .eq("is_active", true)
-        .single()
+
+      if (botUserError || !botUsers || botUsers.length === 0) {
+        console.error("Error loading bot users:", botUserError)
+        return
+      }
+
+      // Take the first bot user (or you could add logic to select a specific one)
+      const botUser = botUsers[0]
 
       if (botUserError || !botUser) {
         console.error("Error loading bot user:", botUserError)
@@ -253,6 +296,39 @@ export default function SettingsPage() {
       console.error("Error loading bot settings:", err)
     } finally {
       setBotSettingsLoading(false)
+    }
+  }
+
+  const loadBotSpecificSettings = async (botShareName: string) => {
+    try {
+      console.log("🔄 Loading settings for bot:", botShareName)
+
+      // Get the bot details including timezone
+      const { data: bot, error: botError } = await supabase
+        .from("bots")
+        .select("timezone, client_name")
+        .eq("bot_share_name", botShareName)
+        .single()
+
+      if (botError) {
+        console.error("Error loading bot details:", botError)
+        return
+      }
+
+      // Update user data with bot's timezone
+      setUserData((prev) => ({
+        ...prev,
+        timezone: bot.timezone || "Asia/Bangkok",
+      }))
+
+      if (bot?.client_name) {
+        setClientName(bot.client_name)
+      }
+
+      // Reload bot settings for admins
+      await loadBotSettings()
+    } catch (err: any) {
+      console.error("Error loading bot-specific settings:", err)
     }
   }
 
@@ -306,7 +382,7 @@ export default function SettingsPage() {
       setError(null)
       setSuccess(false)
 
-      // Update user profile (without timezone)
+      // Update user profile
       const { error: updateError } = await supabase.from("user_profiles").upsert({
         id: userData.id,
         first_name: userData.firstName,
@@ -317,26 +393,38 @@ export default function SettingsPage() {
         throw new Error(updateError.message)
       }
 
-      // Update timezone for all bots the user has access to
-      const { data: userBots, error: userBotsError } = await supabase
-        .from("bot_users")
-        .select("bot_share_name")
-        .eq("user_id", userData.id)
-
-      if (userBotsError) {
-        throw new Error(userBotsError.message)
-      }
-
-      if (userBots && userBots.length > 0) {
-        const botShareNames = userBots.map((bot) => bot.bot_share_name)
-
-        const { error: botsUpdateError } = await supabase
+      // Update timezone only for the currently selected bot
+      if (selectedBot) {
+        const { error: botUpdateError } = await supabase
           .from("bots")
           .update({ timezone: userData.timezone })
-          .in("bot_share_name", botShareNames)
+          .eq("bot_share_name", selectedBot)
 
-        if (botsUpdateError) {
-          throw new Error(botsUpdateError.message)
+        if (botUpdateError) {
+          throw new Error(botUpdateError.message)
+        }
+      } else {
+        // Fallback: update timezone for all bots the user has access to (for backward compatibility)
+        const { data: userBots, error: userBotsError } = await supabase
+          .from("bot_users")
+          .select("bot_share_name")
+          .eq("user_id", userData.id)
+
+        if (userBotsError) {
+          throw new Error(userBotsError.message)
+        }
+
+        if (userBots && userBots.length > 0) {
+          const botShareNames = userBots.map((bot) => bot.bot_share_name)
+
+          const { error: botsUpdateError } = await supabase
+            .from("bots")
+            .update({ timezone: userData.timezone })
+            .in("bot_share_name", botShareNames)
+
+          if (botsUpdateError) {
+            throw new Error(botsUpdateError.message)
+          }
         }
       }
 
@@ -478,10 +566,15 @@ export default function SettingsPage() {
 
   return (
     <div className="p-4 md:p-8">
+      {clientName && (
+        <div className="mb-2">
+          <p className="text-sm text-[#616161] font-medium">{clientName}</p>
+        </div>
+      )}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-[#212121]">Settings</h1>
-          <p className="text-[#616161]">Manage your account settings and preferences.</p>
+          <p className="text-[#616161]">Manage your client-specific settings and preferences.</p>
         </div>
         <div className="flex items-center space-x-2 mt-4 md:mt-0">
           <Button variant="outline" onClick={handleCancel} disabled={saving} className="flex items-center">
@@ -508,67 +601,33 @@ export default function SettingsPage() {
       )}
 
       <div className="w-[60%] space-y-6">
-        {/* Profile Settings */}
+        {/* Timezone Settings */}
         <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121] mb-4">Profile Settings</h2>
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="firstName">First Name</Label>
-                <Input
-                  id="firstName"
-                  value={userData.firstName}
-                  onChange={(e) => handleChange("firstName", e.target.value)}
-                  placeholder="Enter your first name"
-                  disabled={loading || saving}
-                  className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
-                />
-              </div>
+          <h2 className="text-lg font-medium text-[#212121] mb-4">Timezone Settings</h2>
 
-              <div className="space-y-2">
-                <Label htmlFor="surname">Surname</Label>
-                <Input
-                  id="surname"
-                  value={userData.surname}
-                  onChange={(e) => handleChange("surname", e.target.value)}
-                  placeholder="Enter your surname"
-                  disabled={loading || saving}
-                  className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                value={userData.email}
-                disabled={true}
-                className="bg-gray-50 border-[#e0e0e0] text-gray-500"
-              />
-              <p className="text-xs text-[#616161]">Email address cannot be changed.</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="timezone">Timezone</Label>
-              <Select
-                value={userData.timezone}
-                onValueChange={(value) => handleChange("timezone", value)}
-                disabled={loading || saving}
-              >
-                <SelectTrigger className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]">
-                  <SelectValue placeholder="Select your timezone" />
-                </SelectTrigger>
-                <SelectContent>
-                  {timezones.map((timezone) => (
-                    <SelectItem key={timezone.value} value={timezone.value}>
-                      {timezone.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-[#616161]">This will update the timezone for all your bots.</p>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="timezone">Timezone</Label>
+            <Select
+              value={userData.timezone}
+              onValueChange={(value) => handleChange("timezone", value)}
+              disabled={loading || saving}
+            >
+              <SelectTrigger className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]">
+                <SelectValue placeholder="Select your timezone" />
+              </SelectTrigger>
+              <SelectContent>
+                {timezones.map((timezone) => (
+                  <SelectItem key={timezone.value} value={timezone.value}>
+                    {timezone.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-[#616161]">
+              {selectedBot
+                ? `This will update the timezone for ${clientName || selectedBot}.`
+                : "This will update the timezone for the selected AI."}
+            </p>
           </div>
         </div>
 
@@ -871,97 +930,6 @@ export default function SettingsPage() {
               )}
             </div>
           )}
-        </div>
-
-        {/* Billing Section */}
-        <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121] mb-4 flex items-center">
-            <CreditCard className="h-5 w-5 mr-2" />
-            Billing
-          </h2>
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <Label>Current Plan</Label>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-[#e0e0e0]">
-                <span className="text-sm text-[#212121]">Monthly</span>
-                <Button variant="outline" size="sm">
-                  Change Plan
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="flex items-center">
-                <Receipt className="h-4 w-4 mr-2" />
-                Invoices
-              </Label>
-              <div className="p-3 bg-gray-50 rounded-md border border-[#e0e0e0]">
-                <p className="text-sm text-[#616161]">No invoices available</p>
-                <Button variant="outline" size="sm" className="mt-2">
-                  View All Invoices
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Payment Methods</Label>
-              <div className="p-3 bg-gray-50 rounded-md border border-[#e0e0e0]">
-                <p className="text-sm text-[#616161]">No payment methods added</p>
-                <Button variant="outline" size="sm" className="mt-2">
-                  Add Payment Method
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Referrals Section */}
-        <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121] mb-4 flex items-center">
-            <Users className="h-5 w-5 mr-2" />
-            Referrals
-          </h2>
-          <div className="space-y-4">
-            <p className="text-sm text-[#212121]">Get one free month for each valid referral.</p>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-              <div className="flex items-start">
-                <Info className="h-4 w-4 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
-                <div className="text-sm text-blue-800">
-                  <p className="font-medium mb-1">How referrals work:</p>
-                  <ul className="list-disc list-inside space-y-1 text-xs">
-                    <li>Share your referral link with friends or colleagues</li>
-                    <li>They must sign up and complete their first month of service</li>
-                    <li>You'll receive one free month added to your account</li>
-                    <li>There's no limit to how many referrals you can make</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-[#e0e0e0]">
-                <div>
-                  <p className="text-sm font-medium text-[#212121]">Your Referral Link</p>
-                  <p className="text-xs text-[#616161]">https://b2blead.ai/ref/your-code</p>
-                </div>
-                <Button variant="outline" size="sm">
-                  Copy Link
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-3 bg-gray-50 rounded-md border border-[#e0e0e0] text-center">
-                  <p className="text-2xl font-bold text-[#038a71]">0</p>
-                  <p className="text-xs text-[#616161]">Successful Referrals</p>
-                </div>
-                <div className="p-3 bg-gray-50 rounded-md border border-[#e0e0e0] text-center">
-                  <p className="text-2xl font-bold text-[#038a71]">0</p>
-                  <p className="text-xs text-[#616161]">Free Months Earned</p>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
       {/* Delete User Modal */}

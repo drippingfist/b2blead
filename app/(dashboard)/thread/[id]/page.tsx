@@ -2,7 +2,7 @@
 
 import { getMessagesByThreadId } from "@/lib/database"
 import { supabase } from "@/lib/supabase/client"
-import { notFound } from "next/navigation"
+import { notFound, useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Clock, MessageSquare, Phone, Timer, Star } from "lucide-react"
 import { useState, useEffect } from "react"
@@ -12,6 +12,33 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
   const [messages, setMessages] = useState<any[]>([])
   const [thread, setThread] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [selectedBot, setSelectedBot] = useState<string | null>(null)
+  const router = useRouter()
+
+  // Listen for bot selection changes
+  useEffect(() => {
+    const handleBotSelectionChanged = (event: CustomEvent) => {
+      const newBotSelection = event.detail
+      console.log("🔄 Thread Detail: Bot selection changed to:", newBotSelection)
+
+      // If bot selection changes and we have thread data, check if thread belongs to new bot
+      if (thread && thread.bot_share_name !== newBotSelection) {
+        console.log("🔄 Thread Detail: Thread belongs to different bot, redirecting to chats")
+        router.push("/")
+      }
+
+      setSelectedBot(newBotSelection)
+    }
+
+    // Get initial bot selection from localStorage
+    const storedBot = localStorage.getItem("selectedBot")
+    if (storedBot && storedBot !== "null") {
+      setSelectedBot(storedBot)
+    }
+
+    window.addEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
+    return () => window.removeEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
+  }, [thread, router])
 
   useEffect(() => {
     async function loadData() {
@@ -38,7 +65,16 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
         notFound()
       }
 
+      console.log("🔍 ThreadDetailPage: Thread data:", threadData)
       setThread(threadData)
+
+      // Check if thread belongs to currently selected bot
+      const currentSelectedBot = localStorage.getItem("selectedBot")
+      if (currentSelectedBot && currentSelectedBot !== "null" && threadData.bot_share_name !== currentSelectedBot) {
+        console.log("🔄 Thread Detail: Thread doesn't belong to selected bot, redirecting")
+        router.push("/")
+        return
+      }
 
       // Get messages using the thread ID
       const messagesData = await getMessagesByThreadId(threadData.id)
@@ -48,7 +84,7 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
     }
 
     loadData()
-  }, [threadId])
+  }, [threadId, router])
 
   const handleStarMessage = async (messageId: string) => {
     try {
@@ -124,6 +160,16 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
           </Link>
 
           <h1 className="text-xl font-semibold text-[#212121] mb-6">Thread Details</h1>
+
+          {/* Show bot mismatch warning if applicable */}
+          {selectedBot && thread && thread.bot_share_name !== selectedBot && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-6">
+              <p className="text-sm text-yellow-800">
+                ⚠️ This thread belongs to a different bot ({thread.bot_share_name}) than currently selected (
+                {selectedBot})
+              </p>
+            </div>
+          )}
 
           {/* Callback Basic Info - Always show if callbacks exists */}
           {thread?.callbacks && (
@@ -234,6 +280,10 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
                 <div>
                   <p className="text-xs text-[#616161]">Thread ID</p>
                   <p className="text-sm font-mono text-[#212121]">{thread?.id}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-[#616161]">Bot</p>
+                  <p className="text-sm text-[#212121]">{thread?.bot_share_name}</p>
                 </div>
                 <div>
                   <p className="text-xs text-[#616161]">Created At</p>

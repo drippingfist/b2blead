@@ -3,8 +3,21 @@
 import type React from "react"
 
 import { useEffect, useState } from "react"
-import { getDashboardMetrics, getCurrentUserEmailClient } from "@/lib/database"
-import { TrendingUp, TrendingDown, MessageSquare, Phone, Clock, Smile, Meh, Frown, Calendar, Info } from "lucide-react"
+import { getDashboardMetrics, getCurrentUserEmailClient, getUserBotAccess, getChatMetrics } from "@/lib/database"
+import {
+  TrendingUp,
+  TrendingDown,
+  MessageSquare,
+  Phone,
+  Clock,
+  Smile,
+  Meh,
+  Frown,
+  Calendar,
+  Info,
+  Users,
+  BarChart3,
+} from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 type TimePeriod = "today" | "last7days" | "last30days" | "alltime" | "custom"
@@ -59,24 +72,103 @@ export default function Dashboard() {
       globalVrgUserResponseTime: 0,
     },
   })
+  const [chatMetrics, setChatMetrics] = useState<{
+    totalThreads: number
+    totalMessages: number
+    messagesPerThread: number
+    previousPeriodComparison: {
+      totalThreads: number
+      totalMessages: number
+      messagesPerThread: number
+    }
+  }>({
+    totalThreads: 0,
+    totalMessages: 0,
+    messagesPerThread: 0,
+    previousPeriodComparison: {
+      totalThreads: 0,
+      totalMessages: 0,
+      messagesPerThread: 0,
+    },
+  })
   const [bots, setBots] = useState<any[]>([])
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [currentBotName, setCurrentBotName] = useState<string>("Selected Bot")
   const [hoveredTooltip, setHoveredTooltip] = useState<string | null>(null)
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
+  const [userAccess, setUserAccess] = useState<{
+    role: "superadmin" | "admin" | "member" | null
+    accessibleBots: string[]
+    isSuperAdmin: boolean
+  } | null>(null)
+  const [botSelectionReady, setBotSelectionReady] = useState(false)
 
-  // Load selected bot from localStorage
+  // Initialize user access and bot selection
   useEffect(() => {
-    const storedBot = localStorage.getItem("selectedBot")
-    if (storedBot && storedBot !== "null") {
-      setSelectedBot(storedBot)
+    const initializeUserAccess = async () => {
+      try {
+        console.log("🔍 Dashboard: Initializing user access...")
+
+        // Get user access info
+        const access = await getUserBotAccess()
+        console.log("🔍 Dashboard: User access:", access)
+        setUserAccess(access)
+
+        // Get stored bots or wait for them to be loaded
+        const storedBots = JSON.parse(localStorage.getItem("userBots") || "[]")
+        setBots(storedBots)
+
+        // Get stored bot selection
+        const storedBot = localStorage.getItem("selectedBot")
+        console.log("🔍 Dashboard: Stored bot selection:", storedBot)
+
+        // Determine proper bot selection based on user access
+        if (access.isSuperAdmin) {
+          // Superadmin: can select "All Bots" (null) or specific bot
+          if (storedBot && storedBot !== "null") {
+            setSelectedBot(storedBot)
+            console.log("🔍 Dashboard: Superadmin using stored bot:", storedBot)
+          } else {
+            // Default to "All Bots" for superadmin if no specific selection
+            setSelectedBot(null)
+            console.log("🔍 Dashboard: Superadmin defaulting to All Bots")
+          }
+        } else {
+          // Regular user: must select a specific bot, never "All Bots"
+          if (storedBot && storedBot !== "null" && access.accessibleBots.includes(storedBot)) {
+            setSelectedBot(storedBot)
+            console.log("🔍 Dashboard: Regular user using stored bot:", storedBot)
+          } else if (storedBots.length > 0) {
+            // Auto-select first available bot for regular users
+            const firstBot = storedBots[0]
+            setSelectedBot(firstBot.bot_share_name)
+            localStorage.setItem("selectedBot", firstBot.bot_share_name)
+            console.log("🔍 Dashboard: Regular user auto-selected first bot:", firstBot.bot_share_name)
+          } else if (access.accessibleBots.length > 0) {
+            // Fallback to first accessible bot from access info
+            const firstAccessibleBot = access.accessibleBots[0]
+            setSelectedBot(firstAccessibleBot)
+            localStorage.setItem("selectedBot", firstAccessibleBot)
+            console.log("🔍 Dashboard: Regular user using first accessible bot:", firstAccessibleBot)
+          }
+        }
+
+        setBotSelectionReady(true)
+        console.log("🔍 Dashboard: Bot selection ready")
+      } catch (error) {
+        console.error("❌ Dashboard: Error initializing user access:", error)
+        setBotSelectionReady(true) // Still allow page to load
+      }
     }
+
+    initializeUserAccess()
   }, [])
 
-  // Listen for bot selection changes
+  // Listen for bot selection changes from the bot selector
   useEffect(() => {
     const handleBotSelectionChanged = (event: CustomEvent) => {
+      console.log("🔍 Dashboard: Bot selection changed to:", event.detail)
       setSelectedBot(event.detail)
     }
 
@@ -84,48 +176,59 @@ export default function Dashboard() {
     return () => window.removeEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
   }, [])
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true)
-      try {
-        const [fetchedMetrics, fetchedUserEmail] = await Promise.all([
-          getDashboardMetrics(selectedBot, selectedPeriod),
-          getCurrentUserEmailClient(),
-        ])
-
-        setMetrics(fetchedMetrics)
-        setUserEmail(fetchedUserEmail)
-
-        // Get bots from the global bot selector instead of fetching again
-        const storedBots = JSON.parse(localStorage.getItem("userBots") || "[]")
-        setBots(storedBots)
-
-        // Set current bot name
-        if (selectedBot) {
-          const currentBot = storedBots.find((b) => b.bot_share_name === selectedBot)
-          setCurrentBotName(currentBot?.client_name || currentBot?.bot_share_name || "Selected Bot")
-        } else {
-          setCurrentBotName("All Bots")
-        }
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [selectedBot, selectedPeriod])
-
   // Listen for bots being loaded by other components
   useEffect(() => {
     const handleBotsLoaded = (event: CustomEvent) => {
+      console.log("🔍 Dashboard: Bots loaded:", event.detail)
       setBots(event.detail)
     }
 
     window.addEventListener("botsLoaded", handleBotsLoaded as EventListener)
     return () => window.removeEventListener("botsLoaded", handleBotsLoaded as EventListener)
   }, [])
+
+  // Load dashboard data only when bot selection is ready
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!botSelectionReady) {
+        console.log("🔍 Dashboard: Waiting for bot selection to be ready...")
+        return
+      }
+
+      console.log("🔍 Dashboard: Loading data for bot:", selectedBot, "period:", selectedPeriod)
+      setLoading(true)
+
+      try {
+        const [fetchedMetrics, fetchedChatMetrics, fetchedUserEmail] = await Promise.all([
+          getDashboardMetrics(selectedBot, selectedPeriod),
+          getChatMetrics(selectedBot, selectedPeriod),
+          getCurrentUserEmailClient(),
+        ])
+
+        setMetrics(fetchedMetrics)
+        setChatMetrics(fetchedChatMetrics)
+        setUserEmail(fetchedUserEmail)
+
+        // Set current bot name for display
+        if (selectedBot === null && userAccess?.isSuperAdmin) {
+          setCurrentBotName("All Bots")
+        } else if (selectedBot) {
+          const currentBot = bots.find((b) => b.bot_share_name === selectedBot)
+          setCurrentBotName(currentBot?.client_name || currentBot?.bot_share_name || "Selected Bot")
+        } else {
+          setCurrentBotName("No Bot Selected")
+        }
+
+        console.log("✅ Dashboard: Data loaded successfully")
+      } catch (error) {
+        console.error("❌ Dashboard: Error fetching data:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [selectedBot, selectedPeriod, botSelectionReady, userAccess, bots])
 
   const formatPercentageChange = (current: number, previous: number) => {
     if (previous === 0) return current > 0 ? "+100%" : "0%"
@@ -195,25 +298,36 @@ export default function Dashboard() {
 
   const getTooltipText = (tooltipId: string) => {
     switch (tooltipId) {
+      case "total-threads":
+        return "Total number of conversation threads started by users during the selected time period"
+      case "total-messages":
+        return "Total number of messages (both user and AI messages) exchanged during the selected time period"
+      case "messages-per-thread":
+        return "Average number of messages per conversation thread"
+      case "total-callbacks":
+        return "Total number of completed callback requests where users provided their contact information"
+      case "callback-rate":
+        return "Percentage of conversation threads that resulted in a callback request - your conversion rate"
       case "dropped-callbacks":
-        return "Number of times a user requested a callback but didn't complete the callback flow"
+        return "Number of times users requested a callback but didn't complete the callback form"
       case "client-ai":
         return "This is average time it takes the AI to finish responding to the user"
       case "client-users":
-        return "This is average time it takes your users to respond in the chat"
+        return "This is average time it takes your users to respond to the AI"
       case "all-ai":
-        return "This is average response time across all of our clients. Get in touch to discuss how we can increase your AI's response speed."
+        return "This is AI's average response time across all of our clients. Get in touch to discuss how we can speed up your AI,"
       case "all-users":
-        return "This is average time for ALL users across all our deployments to respond in the chat"
+        return "This is average time it takes ALL users to respond in the chat across ALL our AI's,"
       default:
         return ""
     }
   }
 
-  if (loading) {
+  if (loading || !botSelectionReady) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#038a71]"></div>
+        <span className="ml-2 text-gray-600">{!botSelectionReady ? "Initializing..." : "Loading dashboard..."}</span>
       </div>
     )
   }
@@ -238,11 +352,10 @@ export default function Dashboard() {
         <p className="text-[#616161]">
           Welcome back, {userEmail}. You have access to {bots.length} bot(s).
         </p>
-        {selectedBot && (
-          <p className="text-sm text-[#038a71] mt-1">
-            Currently viewing: {bots.find((b) => b.bot_share_name === selectedBot)?.client_name || selectedBot}
-          </p>
-        )}
+        <p className="text-sm text-[#038a71] mt-1">
+          Currently viewing: {currentBotName}
+          {userAccess?.isSuperAdmin && selectedBot === null && " (All Bots)"}
+        </p>
       </div>
 
       {/* Time Period Selector */}
@@ -266,35 +379,129 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Panel #1 - Core Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
+      {/* Row 1 - Chat Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-6">
+        {/* Total Threads */}
         <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-medium text-[#212121] flex items-center">
                 <MessageSquare className="h-5 w-5 mr-2 text-[#038a71]" />
-                Total Chats
+                Total Threads
+                <Info
+                  className="h-4 w-4 ml-2 text-gray-400 cursor-help"
+                  onMouseEnter={(e) => handleTooltipHover("total-threads", e)}
+                  onMouseLeave={handleTooltipLeave}
+                  onMouseMove={(e) => {
+                    if (hoveredTooltip === "total-threads") {
+                      setTooltipPosition({ x: e.clientX, y: e.clientY })
+                    }
+                  }}
+                />
               </h2>
-              <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{metrics.totalChats}</p>
+              <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{chatMetrics.totalThreads}</p>
             </div>
             <div
-              className={`flex items-center text-sm ${getChangeColor(metrics.totalChats, metrics.previousPeriodComparison.totalChats)}`}
+              className={`flex items-center text-sm ${getChangeColor(chatMetrics.totalThreads, chatMetrics.previousPeriodComparison.totalThreads)}`}
             >
-              {getChangeIcon(metrics.totalChats, metrics.previousPeriodComparison.totalChats)}
+              {getChangeIcon(chatMetrics.totalThreads, chatMetrics.previousPeriodComparison.totalThreads)}
               <span className="ml-1">
-                {formatPercentageChange(metrics.totalChats, metrics.previousPeriodComparison.totalChats)}
+                {formatPercentageChange(chatMetrics.totalThreads, chatMetrics.previousPeriodComparison.totalThreads)}
               </span>
             </div>
           </div>
           <p className="text-sm text-[#616161] mt-1">{getPeriodLabel(selectedPeriod)}</p>
         </div>
 
+        {/* Total Messages */}
+        <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-medium text-[#212121] flex items-center">
+                <Users className="h-5 w-5 mr-2 text-[#038a71]" />
+                Total Messages
+                <Info
+                  className="h-4 w-4 ml-2 text-gray-400 cursor-help"
+                  onMouseEnter={(e) => handleTooltipHover("total-messages", e)}
+                  onMouseLeave={handleTooltipLeave}
+                  onMouseMove={(e) => {
+                    if (hoveredTooltip === "total-messages") {
+                      setTooltipPosition({ x: e.clientX, y: e.clientY })
+                    }
+                  }}
+                />
+              </h2>
+              <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{chatMetrics.totalMessages}</p>
+            </div>
+            <div
+              className={`flex items-center text-sm ${getChangeColor(chatMetrics.totalMessages, chatMetrics.previousPeriodComparison.totalMessages)}`}
+            >
+              {getChangeIcon(chatMetrics.totalMessages, chatMetrics.previousPeriodComparison.totalMessages)}
+              <span className="ml-1">
+                {formatPercentageChange(chatMetrics.totalMessages, chatMetrics.previousPeriodComparison.totalMessages)}
+              </span>
+            </div>
+          </div>
+          <p className="text-sm text-[#616161] mt-1">{getPeriodLabel(selectedPeriod)}</p>
+        </div>
+
+        {/* Messages per Thread */}
+        <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-medium text-[#212121] flex items-center">
+                <BarChart3 className="h-5 w-5 mr-2 text-[#038a71]" />
+                Messages/Thread
+                <Info
+                  className="h-4 w-4 ml-2 text-gray-400 cursor-help"
+                  onMouseEnter={(e) => handleTooltipHover("messages-per-thread", e)}
+                  onMouseLeave={handleTooltipLeave}
+                  onMouseMove={(e) => {
+                    if (hoveredTooltip === "messages-per-thread") {
+                      setTooltipPosition({ x: e.clientX, y: e.clientY })
+                    }
+                  }}
+                />
+              </h2>
+              <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">
+                {chatMetrics.messagesPerThread.toFixed(1)}
+              </p>
+            </div>
+            <div
+              className={`flex items-center text-sm ${getChangeColor(chatMetrics.messagesPerThread, chatMetrics.previousPeriodComparison.messagesPerThread)}`}
+            >
+              {getChangeIcon(chatMetrics.messagesPerThread, chatMetrics.previousPeriodComparison.messagesPerThread)}
+              <span className="ml-1">
+                {formatPercentageChange(
+                  chatMetrics.messagesPerThread,
+                  chatMetrics.previousPeriodComparison.messagesPerThread,
+                )}
+              </span>
+            </div>
+          </div>
+          <p className="text-sm text-[#616161] mt-1">Average engagement</p>
+        </div>
+      </div>
+
+      {/* Row 2 - Callback Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8">
+        {/* Total Callbacks */}
         <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-medium text-[#212121] flex items-center">
                 <Phone className="h-5 w-5 mr-2 text-[#038a71]" />
                 Total Callbacks
+                <Info
+                  className="h-4 w-4 ml-2 text-gray-400 cursor-help"
+                  onMouseEnter={(e) => handleTooltipHover("total-callbacks", e)}
+                  onMouseLeave={handleTooltipLeave}
+                  onMouseMove={(e) => {
+                    if (hoveredTooltip === "total-callbacks") {
+                      setTooltipPosition({ x: e.clientX, y: e.clientY })
+                    }
+                  }}
+                />
               </h2>
               <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{metrics.totalCallbacks}</p>
             </div>
@@ -310,10 +517,23 @@ export default function Dashboard() {
           <p className="text-sm text-[#616161] mt-1">{getPeriodLabel(selectedPeriod)}</p>
         </div>
 
+        {/* Callback Rate */}
         <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-medium text-[#212121]">Callback Rate</h2>
+              <h2 className="text-lg font-medium text-[#212121] flex items-center">
+                Callback Rate
+                <Info
+                  className="h-4 w-4 ml-2 text-gray-400 cursor-help"
+                  onMouseEnter={(e) => handleTooltipHover("callback-rate", e)}
+                  onMouseLeave={handleTooltipLeave}
+                  onMouseMove={(e) => {
+                    if (hoveredTooltip === "callback-rate") {
+                      setTooltipPosition({ x: e.clientX, y: e.clientY })
+                    }
+                  }}
+                />
+              </h2>
               <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">
                 {metrics.callbackPercentage.toFixed(1)}%
               </p>
@@ -330,9 +550,10 @@ export default function Dashboard() {
               </span>
             </div>
           </div>
-          <p className="text-sm text-[#616161] mt-1">Threads requesting callbacks</p>
+          <p className="text-sm text-[#616161] mt-1">Conversion rate</p>
         </div>
 
+        {/* Dropped Callbacks */}
         <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
           <div className="flex items-center justify-between">
             <div>
@@ -360,12 +581,12 @@ export default function Dashboard() {
               </span>
             </div>
           </div>
-          <p className="text-sm text-[#616161] mt-1">Requests without callbacks</p>
+          <p className="text-sm text-[#616161] mt-1">Incomplete requests</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {/* Panel #2 - Sentiment Analysis */}
+        {/* Panel #1 - Sentiment Analysis */}
         <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-[#212121]">Sentiment Analysis</h3>
@@ -414,7 +635,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Panel #3 - Response Speed */}
+        {/* Panel #2 - Response Speed */}
         <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-[#212121] flex items-center">
