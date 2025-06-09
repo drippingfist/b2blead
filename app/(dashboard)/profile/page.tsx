@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Save, X, CreditCard, Receipt, Users, Info, User } from "lucide-react"
+import { Loader2, Save, X, User } from "lucide-react"
 import { supabase } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 
@@ -248,97 +248,6 @@ export default function ProfilePage() {
                 className="bg-gray-50 border-[#e0e0e0] text-gray-500"
               />
               <p className="text-xs text-[#616161]">Email address cannot be changed.</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Billing Section */}
-        <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121] mb-4 flex items-center">
-            <CreditCard className="h-5 w-5 mr-2" />
-            Billing Management
-          </h2>
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <Label>Current Plan</Label>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-[#e0e0e0]">
-                <span className="text-sm text-[#212121]">Monthly</span>
-                <Button variant="outline" size="sm">
-                  Change Plan
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="flex items-center">
-                <Receipt className="h-4 w-4 mr-2" />
-                Invoices
-              </Label>
-              <div className="p-3 bg-gray-50 rounded-md border border-[#e0e0e0]">
-                <p className="text-sm text-[#616161]">No invoices available</p>
-                <Button variant="outline" size="sm" className="mt-2">
-                  View All Invoices
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Payment Methods</Label>
-              <div className="p-3 bg-gray-50 rounded-md border border-[#e0e0e0]">
-                <p className="text-sm text-[#616161]">No payment methods added</p>
-                <Button variant="outline" size="sm" className="mt-2">
-                  Add Payment Method
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Referrals Section */}
-        <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121] mb-4 flex items-center">
-            <Users className="h-5 w-5 mr-2" />
-            Referral Program
-          </h2>
-          <div className="space-y-4">
-            <p className="text-sm text-[#212121]">Get one free month for each valid referral.</p>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-              <div className="flex items-start">
-                <Info className="h-4 w-4 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
-                <div className="text-sm text-blue-800">
-                  <p className="font-medium mb-1">How referrals work:</p>
-                  <ul className="list-disc list-inside space-y-1 text-xs">
-                    <li>Share your referral link with friends or colleagues</li>
-                    <li>They must sign up and complete their first month of service</li>
-                    <li>You'll receive one free month added to your account</li>
-                    <li>There's no limit to how many referrals you can make</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-[#e0e0e0]">
-                <div>
-                  <p className="text-sm font-medium text-[#212121]">Your Referral Link</p>
-                  <p className="text-xs text-[#616161]">https://b2blead.ai/ref/your-code</p>
-                </div>
-                <Button variant="outline" size="sm">
-                  Copy Link
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-3 bg-gray-50 rounded-md border border-[#e0e0e0] text-center">
-                  <p className="text-2xl font-bold text-[#038a71]">0</p>
-                  <p className="text-xs text-[#616161]">Successful Referrals</p>
-                </div>
-                <div className="p-3 bg-gray-50 rounded-md border border-[#e0e0e0] text-center">
-                  <p className="text-2xl font-bold text-[#038a71]">0</p>
-                  <p className="text-xs text-[#616161]">Free Months Earned</p>
-                </div>
-              </div>
             </div>
           </div>
         </div>

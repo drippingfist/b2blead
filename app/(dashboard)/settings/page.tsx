@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Save, X, Users, Info, Trash2, UserPlus, Edit } from "lucide-react"
+import { Loader2, Save, X, Users, Trash2, UserPlus, Edit } from "lucide-react"
 import { supabase } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { timezones } from "@/lib/timezones"
@@ -97,6 +97,11 @@ export default function SettingsPage() {
         setLoading(true)
         setError(null)
 
+        // Check localStorage for selected bot first
+        const storedBot = localStorage.getItem("selectedBot")
+        console.log("⚙️ Settings Page: Retrieved bot from localStorage:", storedBot)
+        setSelectedBot(storedBot)
+
         const {
           data: { user },
           error: userError,
@@ -120,7 +125,12 @@ export default function SettingsPage() {
 
         let botUser = null
         if (!botUserError && botUsers && botUsers.length > 0) {
-          botUser = botUsers[0] // Take the first bot
+          // If a specific bot is selected, use that one, otherwise use the first one
+          if (storedBot) {
+            botUser = botUsers.find((bu) => bu.bot_share_name === storedBot) || botUsers[0]
+          } else {
+            botUser = botUsers[0]
+          }
         }
 
         let userTimezone = "Asia/Bangkok"
@@ -160,33 +170,6 @@ export default function SettingsPage() {
     }
 
     loadUserData()
-  }, [])
-
-  useEffect(() => {
-    const handleBotChange = (event: CustomEvent) => {
-      const newSelectedBot = event.detail
-      console.log("🔄 Bot selector changed to:", newSelectedBot)
-      setSelectedBot(newSelectedBot)
-
-      // Reload settings for the new bot
-      if (newSelectedBot) {
-        loadBotSpecificSettings(newSelectedBot)
-      }
-    }
-
-    // Listen for bot selector changes
-    window.addEventListener("botSelected", handleBotChange as EventListener)
-
-    // Also check localStorage for initial bot selection
-    const storedBot = localStorage.getItem("selectedBot")
-    if (storedBot && storedBot !== "null") {
-      setSelectedBot(storedBot)
-      loadBotSpecificSettings(storedBot)
-    }
-
-    return () => {
-      window.removeEventListener("botSelected", handleBotChange as EventListener)
-    }
   }, [])
 
   const loadAvailableBots = async () => {
@@ -251,7 +234,7 @@ export default function SettingsPage() {
         return
       }
 
-      // Get user's bot assignment
+      // Get user's bot assignment - prioritize selected bot
       const { data: botUsers, error: botUserError } = await supabase
         .from("bot_users")
         .select("bot_share_name, role")
@@ -263,12 +246,13 @@ export default function SettingsPage() {
         return
       }
 
-      // Take the first bot user (or you could add logic to select a specific one)
-      const botUser = botUsers[0]
-
-      if (botUserError || !botUser) {
-        console.error("Error loading bot user:", botUserError)
-        return
+      // Find the bot user for the selected bot, or use the first one
+      let botUser = botUsers[0]
+      if (selectedBot) {
+        const specificBotUser = botUsers.find((bu) => bu.bot_share_name === selectedBot)
+        if (specificBotUser) {
+          botUser = specificBotUser
+        }
       }
 
       // Only load bot settings for admins and superadmins (not members)
@@ -296,39 +280,6 @@ export default function SettingsPage() {
       console.error("Error loading bot settings:", err)
     } finally {
       setBotSettingsLoading(false)
-    }
-  }
-
-  const loadBotSpecificSettings = async (botShareName: string) => {
-    try {
-      console.log("🔄 Loading settings for bot:", botShareName)
-
-      // Get the bot details including timezone
-      const { data: bot, error: botError } = await supabase
-        .from("bots")
-        .select("timezone, client_name")
-        .eq("bot_share_name", botShareName)
-        .single()
-
-      if (botError) {
-        console.error("Error loading bot details:", botError)
-        return
-      }
-
-      // Update user data with bot's timezone
-      setUserData((prev) => ({
-        ...prev,
-        timezone: bot.timezone || "Asia/Bangkok",
-      }))
-
-      if (bot?.client_name) {
-        setClientName(bot.client_name)
-      }
-
-      // Reload bot settings for admins
-      await loadBotSettings()
-    } catch (err: any) {
-      console.error("Error loading bot-specific settings:", err)
     }
   }
 
@@ -564,6 +515,18 @@ export default function SettingsPage() {
     }
   }
 
+  // Show loading screen while initial data loads
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#038a71] mx-auto mb-4"></div>
+          <p className="text-[#616161]">Loading settings...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="p-4 md:p-8">
       {clientName && (
@@ -601,6 +564,60 @@ export default function SettingsPage() {
       )}
 
       <div className="w-[60%] space-y-6">
+        {/* Email Settings Section */}
+        <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
+          <h2 className="text-lg font-medium text-[#212121] mb-4">Email Settings</h2>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="clientEmail">Client Email</Label>
+              <Input
+                id="clientEmail"
+                type="email"
+                value={botSettings.client_email}
+                onChange={(e) => setBotSettings((prev) => ({ ...prev, client_email: e.target.value }))}
+                placeholder="Enter client email address"
+                disabled={botSettingsLoading || botSettingsSaving}
+                className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
+              />
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-md font-medium text-[#212121]">Email frequency</h3>
+
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <input type="checkbox" id="daily-summary" className="rounded border-gray-300" />
+                  <label htmlFor="daily-summary" className="text-sm text-[#212121]">
+                    Daily summary
+                  </label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input type="checkbox" id="weekly-report" className="rounded border-gray-300" />
+                  <label htmlFor="weekly-report" className="text-sm text-[#212121]">
+                    Weekly report
+                  </label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input type="checkbox" id="monthly-analytics" className="rounded border-gray-300" />
+                  <label htmlFor="monthly-analytics" className="text-sm text-[#212121]">
+                    Monthly analytics
+                  </label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input type="checkbox" id="urgent-alerts" className="rounded border-gray-300" defaultChecked />
+                  <label htmlFor="urgent-alerts" className="text-sm text-[#212121]">
+                    Urgent alerts
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Timezone Settings */}
         <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
           <h2 className="text-lg font-medium text-[#212121] mb-4">Timezone Settings</h2>
@@ -630,56 +647,6 @@ export default function SettingsPage() {
             </p>
           </div>
         </div>
-
-        {/* Bot Settings Section - Only show for admins */}
-        {botSettings.bot_share_name && (
-          <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-            <h2 className="text-lg font-medium text-[#212121] mb-4 flex items-center">
-              <Info className="h-5 w-5 mr-2" />
-              Bot Settings
-            </h2>
-            <div className="space-y-4">
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-                <p className="text-sm text-blue-800">
-                  <strong>Bot:</strong> {botSettings.bot_share_name}
-                </p>
-                <p className="text-xs text-blue-600 mt-1">You can edit the client email for this bot below.</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="clientEmail">Client Email</Label>
-                <Input
-                  id="clientEmail"
-                  type="email"
-                  value={botSettings.client_email}
-                  onChange={(e) => setBotSettings((prev) => ({ ...prev, client_email: e.target.value }))}
-                  placeholder="Enter client email address"
-                  disabled={botSettingsLoading || botSettingsSaving}
-                  className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
-                />
-                <p className="text-xs text-[#616161]">
-                  This email will be used for client communications and notifications.
-                </p>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Button
-                  onClick={handleSaveBotSettings}
-                  disabled={botSettingsSaving || botSettingsLoading}
-                  className="bg-[#038a71] hover:bg-[#038a71]/90"
-                  size="sm"
-                >
-                  {botSettingsSaving ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4 mr-2" />
-                  )}
-                  Save Bot Settings
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Users Management Section */}
         <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">

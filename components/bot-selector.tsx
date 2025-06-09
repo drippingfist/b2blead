@@ -70,6 +70,21 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
   const currentBot = bots.find((bot) => bot.bot_share_name === selectedBot)
   const displayName = selectedBot === null ? "All Bots" : currentBot?.bot_share_name || "Select Bot"
 
+  const handleBotSelection = (botShareName: string | null) => {
+    console.log("🤖 Bot selector: Selecting bot:", botShareName)
+
+    // Update localStorage immediately
+    if (botShareName) {
+      localStorage.setItem("selectedBot", botShareName)
+    } else {
+      localStorage.removeItem("selectedBot")
+    }
+
+    // FORCE PAGE REFRESH - this is the key part that makes it work like dashboard
+    console.log("🔄 Bot selector: Forcing page refresh...")
+    window.location.reload()
+  }
+
   if (loading) {
     return (
       <div className="w-full px-3 py-2 text-sm border border-[#e0e0e0] rounded-md bg-gray-50 text-[#616161]">
@@ -95,7 +110,7 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
             <button
               onClick={() => {
                 console.log("🤖 Selected: All Bots")
-                onSelectBot(null)
+                handleBotSelection(null)
                 setIsOpen(false)
               }}
               className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-between ${
@@ -112,7 +127,7 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
                 key={bot.id}
                 onClick={() => {
                   console.log("🤖 Selected bot_share_name:", bot.bot_share_name)
-                  onSelectBot(bot.bot_share_name)
+                  handleBotSelection(bot.bot_share_name)
                   setIsOpen(false)
                 }}
                 className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-between ${

@@ -1,28 +1,20 @@
 import { Suspense } from "react"
 import { MessagesPageClient } from "./messages-page-client"
 import { getAccessibleBotsClient } from "@/lib/database"
-import { getRecentThreadsWithMessages } from "@/lib/message-actions"
 
-export default async function MessagesPage({
-  searchParams,
-}: {
-  searchParams: { bot?: string; date?: string }
-}) {
-  const selectedBot = searchParams.bot || null
-  const selectedDate = searchParams.date || null
+export default async function MessagesPage() {
   const bots = await getAccessibleBotsClient()
 
-  // Changed from 10 to 2 threads for initial load
-  const threadsWithMessages = await getRecentThreadsWithMessages(selectedBot, 2, 0, selectedDate)
-
   return (
-    <Suspense fallback={<div>Loading messages...</div>}>
-      <MessagesPageClient
-        threadsWithMessages={threadsWithMessages}
-        bots={bots}
-        selectedBot={selectedBot}
-        selectedDate={selectedDate}
-      />
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#038a71]"></div>
+          <span className="ml-2 text-gray-600">Loading messages...</span>
+        </div>
+      }
+    >
+      <MessagesPageClient bots={bots} />
     </Suspense>
   )
 }

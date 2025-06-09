@@ -23,47 +23,72 @@ export default function CallbacksPage() {
     hasRevenue: false,
   })
   const [loading, setLoading] = useState(true)
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false)
 
-  // Load selected bot from localStorage
+  // Load selected bot from localStorage on initial page load
   useEffect(() => {
     const storedBot = localStorage.getItem("selectedBot")
+    console.log("📋 Callbacks Page: Initial load - stored bot:", storedBot)
+
     if (storedBot && storedBot !== "null") {
       setSelectedBot(storedBot)
+    } else {
+      setSelectedBot(null) // This will show all bots for superadmin
     }
+    setInitialLoadComplete(true)
   }, [])
 
-  // Listen for bot selection changes
+  // Listen for bot selection changes from bot selector
   useEffect(() => {
     const handleBotSelectionChanged = (event: CustomEvent) => {
-      setSelectedBot(event.detail)
+      const newBot = event.detail
+      console.log("📋 Callbacks Page: Bot selection changed to:", newBot)
+      setSelectedBot(newBot)
+
+      // Update localStorage
+      if (newBot) {
+        localStorage.setItem("selectedBot", newBot)
+      } else {
+        localStorage.removeItem("selectedBot")
+      }
     }
 
     window.addEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
     return () => window.removeEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
   }, [])
 
+  // Fetch data whenever selectedBot or selectedPeriod changes, but only after initial load
   useEffect(() => {
+    if (!initialLoadComplete) {
+      console.log("📋 Callbacks Page: Waiting for initial load to complete...")
+      return
+    }
+
     const fetchData = async () => {
       setLoading(true)
       try {
-        console.log("Fetching callbacks data for bot:", selectedBot)
+        console.log("📋 Callbacks Page: Fetching data for bot:", selectedBot, "period:", selectedPeriod)
+
         const [fetchedCallbacks, fetchedStats, columnAnalysis] = await Promise.all([
           getCallbacksClient(100, selectedBot),
           getCallbackStatsClientWithPeriod(selectedBot, selectedPeriod as any),
           analyzeCallbackColumns(selectedBot),
         ])
+
+        console.log("📋 Callbacks Page: Fetched", fetchedCallbacks.length, "callbacks for bot:", selectedBot)
+
         setCallbacks(fetchedCallbacks)
         setStats(fetchedStats)
         setColumnConfig(columnAnalysis)
       } catch (error) {
-        console.error("Error fetching callback data:", error)
+        console.error("❌ Callbacks Page: Error fetching callback data:", error)
       } finally {
         setLoading(false)
       }
     }
 
     fetchData()
-  }, [selectedBot, selectedPeriod])
+  }, [selectedBot, selectedPeriod, initialLoadComplete])
 
   const handlePeriodChange = (period: string) => {
     setSelectedPeriod(period)
@@ -73,6 +98,7 @@ export default function CallbacksPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#038a71]"></div>
+        <span className="ml-2 text-gray-600">Loading callbacks...</span>
       </div>
     )
   }

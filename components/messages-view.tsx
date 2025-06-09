@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { Search, Star, Calendar } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { useRouter, useSearchParams } from "next/navigation"
+import Link from "next/link"
 
 interface MessagesViewProps {
   threadsWithMessages: any[]
@@ -40,6 +41,19 @@ export function MessagesView({
       isMountedRef.current = false
     }
   }, [])
+
+  // Add this useEffect right after the existing useEffect that sets isMountedRef
+  useEffect(() => {
+    // Read bot selection from localStorage on component mount
+    const storedBot = localStorage.getItem("selectedBot")
+    if (storedBot && storedBot !== "null" && storedBot !== selectedBot) {
+      console.log("🔄 Messages: Found different bot in localStorage:", storedBot, "vs current:", selectedBot)
+      // Redirect to refresh with correct bot
+      const params = new URLSearchParams(searchParams.toString())
+      params.set("bot", storedBot)
+      router.push(`/messages?${params.toString()}`)
+    }
+  }, [selectedBot, searchParams, router])
 
   // Auto-scroll to bottom on initial load
   useEffect(() => {
@@ -85,7 +99,7 @@ export function MessagesView({
     }
   }, [threadsWithMessages])
 
-  // Load more threads function - now loads 20 threads at a time
+  // Load more threads function - now loads 10 threads at a time
   const loadMoreThreads = useCallback(async () => {
     if (loading || !hasMore || !cursor) {
       console.log("⏸️ Skipping load more:", { loading, hasMore, cursor: !!cursor })
@@ -99,7 +113,7 @@ export function MessagesView({
       // Build the API URL
       const params = new URLSearchParams({
         cursor: cursor,
-        limit: "20",
+        limit: "10", // Changed to 10 threads at a time
       })
 
       if (selectedBot) {
@@ -146,8 +160,8 @@ export function MessagesView({
         setCursor(newOldestThread.created_at)
         console.log("🎯 Updated cursor to:", newOldestThread.created_at)
 
-        // If we got less than 20, we've reached the end
-        if (newThreads.length < 20) {
+        // If we got less than 10, we've reached the end
+        if (newThreads.length < 10) {
           console.log("🏁 Reached end of data (partial batch)")
           setHasMore(false)
         }
@@ -248,6 +262,12 @@ export function MessagesView({
     return `${formattedOldestDate} - Today`
   }
 
+  // Clear date filter
+  const clearDateFilter = () => {
+    localStorage.removeItem("selectedDate")
+    router.push(`/messages`)
+  }
+
   return (
     <div className="h-full flex flex-col bg-[#f9fafc]">
       {/* Fixed Header */}
@@ -263,19 +283,16 @@ export function MessagesView({
                 month: "long",
                 day: "numeric",
               })}{" "}
-              <button
-                onClick={() => {
-                  const params = new URLSearchParams(searchParams.toString())
-                  params.delete("date")
-                  router.push(`/messages?${params.toString()}`)
-                }}
-                className="text-[#038a71] hover:underline"
-              >
+              <button onClick={clearDateFilter} className="text-[#038a71] hover:underline">
                 Clear filter
               </button>
             </p>
           ) : (
-            <p className="text-[#616161]">View and search all messages for the selected bot.</p>
+            <p className="text-[#616161]">
+              {selectedBot
+                ? `Viewing messages for ${bots.find((b) => b.bot_share_name === selectedBot)?.client_name || selectedBot}`
+                : "View and search all messages for the selected bot."}
+            </p>
           )}
         </div>
 
@@ -317,6 +334,12 @@ export function MessagesView({
           </div>
         )}
 
+        {filteredThreads.length === 0 && !loading && (
+          <div className="text-center py-12">
+            <div className="text-[#616161]">No messages found for {selectedBot || "the selected bot"}.</div>
+          </div>
+        )}
+
         {filteredThreads.map((thread, index) => (
           <div
             key={thread.id}
@@ -344,9 +367,12 @@ export function MessagesView({
             {/* Message Preview */}
             {thread.message_preview && (
               <div className="text-center py-2">
-                <div className="inline-block bg-blue-50 text-blue-800 px-4 py-2 rounded-lg text-sm max-w-md">
+                <Link
+                  href={`/thread/${thread.id}`}
+                  className="inline-block bg-blue-50 text-blue-800 px-4 py-2 rounded-lg text-sm max-w-md hover:bg-blue-100 hover:text-blue-900 transition-colors cursor-pointer"
+                >
                   {thread.message_preview}
-                </div>
+                </Link>
               </div>
             )}
 
@@ -388,7 +414,7 @@ export function MessagesView({
                           ? message.role === "user"
                             ? "bg-white border border-[#e0e0e0] rounded-bl-md"
                             : "bg-[#effdf5] border border-[#e0e0e0] rounded-bl-md"
-                          : "bg-[#424242] text-white rounded-br-md"
+                          : "bg-[#048a71] text-white rounded-br-md"
                       }`}
                     >
                       <p className={`text-sm leading-relaxed break-words ${isUser ? "text-[#212121]" : "text-white"}`}>
