@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import {
   Search,
   ChevronLeft,
@@ -15,6 +16,7 @@ import {
   MoreVertical,
   Info,
   Calendar,
+  MessageSquare,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -57,7 +59,8 @@ export default function CallbacksView({
           callback.user_email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           callback.user_company?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           callback.user_phone?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          callback.user_cb_message?.toLowerCase().includes(searchQuery.toLowerCase()),
+          callback.user_cb_message?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          callback.message_preview?.toLowerCase().includes(searchQuery.toLowerCase()),
       )
     : callbacks
 
@@ -198,6 +201,15 @@ export default function CallbacksView({
         </div>
       </div>
 
+      {/* Debug Info */}
+      {process.env.NODE_ENV === "development" && (
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+          <p className="text-sm text-yellow-800">
+            Debug: Found {callbacks.length} callbacks. Sample data: {JSON.stringify(callbacks[0], null, 2)}
+          </p>
+        </div>
+      )}
+
       {/* Dynamic Desktop Table */}
       <div className="hidden lg:block border border-[#e0e0e0] rounded-md overflow-hidden">
         <table className="w-full">
@@ -218,6 +230,9 @@ export default function CallbacksView({
                 </th>
               )}
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
+                Subject
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                 Message
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
@@ -230,7 +245,7 @@ export default function CallbacksView({
               <>
                 <tr key={`date-${date}`} className="bg-gray-50">
                   <td
-                    colSpan={4 + (columnConfig.hasCompany ? 1 : 0) + (columnConfig.hasCountry ? 1 : 0)}
+                    colSpan={5 + (columnConfig.hasCompany ? 1 : 0) + (columnConfig.hasCountry ? 1 : 0)}
                     className="px-6 py-2 text-sm font-medium text-[#616161]"
                   >
                     {date}
@@ -307,6 +322,23 @@ export default function CallbacksView({
                         </div>
                       </td>
                     )}
+                    <td className="px-6 py-4 max-w-xs">
+                      <div className="text-sm text-[#212121] flex items-center">
+                        <MessageSquare className="h-4 w-4 mr-1 text-[#616161] flex-shrink-0" />
+                        {callback.thread_table_id && callback.message_preview ? (
+                          <Link
+                            href={`/thread/${callback.thread_table_id}`}
+                            className="truncate hover:underline text-blue-600 hover:text-blue-800"
+                          >
+                            {callback.message_preview}
+                          </Link>
+                        ) : callback.message_preview ? (
+                          <span className="truncate">{callback.message_preview}</span>
+                        ) : (
+                          <span className="truncate text-gray-500">No subject available</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-6 py-4 max-w-xs">
                       <div className="text-sm text-[#212121] truncate">
                         {callback.user_cb_message || "No message provided"}
@@ -393,6 +425,25 @@ export default function CallbacksView({
                       </div>
                     )}
                   </div>
+
+                  {callback.message_preview && (
+                    <div className="mb-3">
+                      <p className="text-sm text-[#616161] mb-1">Subject:</p>
+                      <div className="flex items-center">
+                        <MessageSquare className="h-4 w-4 mr-2 text-[#616161]" />
+                        {callback.thread_table_id ? (
+                          <Link
+                            href={`/thread/${callback.thread_table_id}`}
+                            className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            {callback.message_preview}
+                          </Link>
+                        ) : (
+                          <p className="text-sm text-[#212121]">{callback.message_preview}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {callback.user_cb_message && (
                     <div className="mb-3">

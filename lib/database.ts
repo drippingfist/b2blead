@@ -88,6 +88,8 @@ export interface Callback {
   user_cb_message?: string
   sentiment_score?: number
   sentiment_justification?: string
+  message_preview?: string // Add this field
+  thread_table_id?: string // Add this field for the actual thread table ID
 }
 
 // Get ALL bots from database (now respects RLS)
@@ -128,36 +130,92 @@ export async function getThreadsClient(limit = 50, botShareName?: string | null)
   return data || []
 }
 
-// Get callbacks with sentiment scores and justification
+// Get callbacks with sentiment scores, justification, and message_preview from linked thread
 export async function getCallbacksClient(limit = 50, botShareName?: string | null): Promise<Callback[]> {
-  let query = supabase
-    .from("callbacks")
-    .select(`
-      *,
-      threads!inner(sentiment_score, sentiment_justification)
-    `)
-    .order("created_at", { ascending: false })
-    .limit(limit)
+  console.log("🔍 getCallbacksClient: Fetching callbacks with thread data...")
+
+  // First, get the callbacks
+  let callbacksQuery = supabase.from("callbacks").select("*").order("created_at", { ascending: false }).limit(limit)
 
   // If a specific bot is selected, filter by that bot_share_name
   if (botShareName) {
-    query = query.eq("bot_share_name", botShareName)
+    callbacksQuery = callbacksQuery.eq("bot_share_name", botShareName)
   }
 
-  const { data, error } = await query
+  const { data: callbacksData, error: callbacksError } = await callbacksQuery
 
-  if (error) {
-    console.error("Error fetching callbacks:", error)
+  if (callbacksError) {
+    console.error("❌ Error fetching callbacks:", callbacksError)
     return []
   }
 
-  // Transform the data to include sentiment data at the top level
-  const transformedData =
-    data?.map((callback: any) => ({
+  if (!callbacksData || callbacksData.length === 0) {
+    console.log("⚠️ No callback data returned")
+    return []
+  }
+
+  console.log("✅ Fetched", callbacksData.length, "callbacks")
+
+  // Get all unique thread IDs from callbacks
+  const threadIds = [...new Set(callbacksData.map((callback) => callback.id).filter(Boolean))]
+
+  if (threadIds.length === 0) {
+    console.log("⚠️ No thread IDs found in callbacks")
+    return callbacksData.map((callback) => ({
       ...callback,
-      sentiment_score: callback.threads?.sentiment_score || null,
-      sentiment_justification: callback.threads?.sentiment_justification || null,
-    })) || []
+      sentiment_score: null,
+      sentiment_justification: null,
+      message_preview: null,
+      thread_table_id: null,
+    }))
+  }
+
+  console.log("🔍 Looking up threads for IDs:", threadIds)
+
+  // Fetch corresponding threads
+  const { data: threadsData, error: threadsError } = await supabase
+    .from("threads")
+    .select("id, sentiment_score, sentiment_justification, message_preview")
+    .in("id", threadIds)
+
+  if (threadsError) {
+    console.error("❌ Error fetching threads:", threadsError)
+    // Return callbacks without thread data
+    return callbacksData.map((callback) => ({
+      ...callback,
+      sentiment_score: null,
+      sentiment_justification: null,
+      message_preview: null,
+      thread_table_id: null,
+    }))
+  }
+
+  console.log("✅ Fetched", threadsData?.length || 0, "threads")
+  console.log("🔍 Sample thread data:", threadsData?.[0])
+
+  // Create a map of thread data by ID for quick lookup
+  const threadsMap = new Map()
+  threadsData?.forEach((thread) => {
+    threadsMap.set(thread.id, thread)
+  })
+
+  // Merge callback and thread data
+  const transformedData = callbacksData.map((callback: any) => {
+    const threadData = threadsMap.get(callback.id)
+
+    console.log(`🔍 Callback ${callback.id} -> Thread data:`, threadData)
+
+    return {
+      ...callback,
+      sentiment_score: threadData?.sentiment_score || null,
+      sentiment_justification: threadData?.sentiment_justification || null,
+      message_preview: threadData?.message_preview || null,
+      thread_table_id: threadData?.id || null,
+    }
+  })
+
+  console.log("✅ getCallbacksClient: Successfully processed", transformedData?.length || 0, "callbacks")
+  console.log("🔍 Sample transformed callback:", transformedData[0])
 
   return transformedData
 }

@@ -23,6 +23,7 @@ interface BotSettings {
   button_background_colour: string
   button_gif_url: string
   favicon_png: string
+  callback_completed_gif: string
   product_name: string
 }
 
@@ -40,10 +41,12 @@ export default function SuperAdminPage() {
     button_background_colour: "#038a71",
     button_gif_url: "",
     favicon_png: "",
+    callback_completed_gif: "",
     product_name: "",
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [savingSection, setSavingSection] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [userAccess, setUserAccess] = useState<{
@@ -53,7 +56,8 @@ export default function SuperAdminPage() {
   const [imageErrors, setImageErrors] = useState<{
     gif: boolean
     favicon: boolean
-  }>({ gif: false, favicon: false })
+    callback: boolean
+  }>({ gif: false, favicon: false, callback: false })
 
   // Check if user is superadmin
   useEffect(() => {
@@ -120,7 +124,7 @@ export default function SuperAdminPage() {
       setLoading(true)
       setError(null)
       setDebugInfo(null)
-      setImageErrors({ gif: false, favicon: false })
+      setImageErrors({ gif: false, favicon: false, callback: false })
 
       try {
         console.log("Loading bot data for:", selectedBot)
@@ -141,12 +145,13 @@ export default function SuperAdminPage() {
           console.log("Button background colour:", bot.button_background_colour)
           console.log("Button GIF URL:", bot.button_gif_url)
           console.log("Favicon PNG:", bot.favicon_png)
+          console.log("Callback completed GIF:", bot.callback_completed_gif)
 
           // Debug info to display on the page
           setDebugInfo(
-            `Bot: ${selectedBot}, Timezone: ${bot.timezone || "not set"}, Button GIF URL: ${
-              bot.button_gif_url || "not set"
-            }, Favicon PNG: ${bot.favicon_png || "not set"}`,
+            `Bot: ${selectedBot}, Button GIF URL: "${bot.button_gif_url || "empty"}", Favicon PNG: "${
+              bot.favicon_png || "empty"
+            }", Callback GIF: "${bot.callback_completed_gif || "empty"}"`,
           )
 
           setClientName(bot.client_name || "")
@@ -162,6 +167,7 @@ export default function SuperAdminPage() {
             button_background_colour: bot.button_background_colour || "#038a71",
             button_gif_url: bot.button_gif_url || "",
             favicon_png: bot.favicon_png || "",
+            callback_completed_gif: bot.callback_completed_gif || "",
             product_name: bot.product_name || "",
           }
 
@@ -213,11 +219,42 @@ export default function SuperAdminPage() {
     }
   }
 
-  const handleFileUpload = (type: "gif" | "favicon") => {
+  const handleSaveSection = async (section: string, fields: (keyof BotSettings)[]) => {
+    if (!selectedBot) return
+
+    setSavingSection(section)
+    setError(null)
+
+    try {
+      // Create an object with only the fields for this section
+      const sectionData: Partial<BotSettings> = {}
+      fields.forEach((field) => {
+        sectionData[field] = botSettings[field]
+      })
+
+      console.log(`Saving ${section} settings:`, sectionData)
+
+      const { error: updateError } = await supabase.from("bots").update(sectionData).eq("bot_share_name", selectedBot)
+
+      if (updateError) {
+        throw new Error(`Failed to save ${section} settings: ${updateError.message}`)
+      }
+
+      setSuccess(true)
+      setTimeout(() => setSuccess(false), 3000)
+    } catch (error) {
+      console.error(`Error saving ${section} settings:`, error)
+      setError(error instanceof Error ? error.message : `Failed to save ${section} settings`)
+    } finally {
+      setSavingSection(null)
+    }
+  }
+
+  const handleFileUpload = (type: "gif" | "favicon" | "callback") => {
     // Create file input element
     const input = document.createElement("input")
     input.type = "file"
-    input.accept = type === "gif" ? "image/gif" : "image/png,image/webp"
+    input.accept = type === "gif" || type === "callback" ? "image/gif" : "image/png,image/webp"
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0]
       if (file) {
@@ -228,7 +265,7 @@ export default function SuperAdminPage() {
     input.click()
   }
 
-  const handleImageError = (type: "gif" | "favicon") => {
+  const handleImageError = (type: "gif" | "favicon" | "callback") => {
     setImageErrors((prev) => ({ ...prev, [type]: true }))
   }
 
@@ -303,12 +340,12 @@ export default function SuperAdminPage() {
             {saving ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Saving...
+                Saving All...
               </>
             ) : (
               <>
                 <Save className="h-4 w-4 mr-2" />
-                Save Changes
+                Save All Changes
               </>
             )}
           </Button>
@@ -329,9 +366,37 @@ export default function SuperAdminPage() {
         <div className="grid gap-6">
           {/* Basic Settings */}
           <Card>
-            <CardHeader>
-              <CardTitle>Basic Settings</CardTitle>
-              <CardDescription>Configure basic client information</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Basic Settings</CardTitle>
+                <CardDescription>Configure basic client information</CardDescription>
+              </div>
+              <Button
+                onClick={() =>
+                  handleSaveSection("Basic Settings", [
+                    "timezone",
+                    "product_name",
+                    "client_url",
+                    "client_email",
+                    "client_email_name",
+                  ])
+                }
+                disabled={savingSection === "Basic Settings"}
+                variant="outline"
+                size="sm"
+              >
+                {savingSection === "Basic Settings" ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save
+                  </>
+                )}
+              </Button>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -410,9 +475,35 @@ export default function SuperAdminPage() {
 
           {/* AI Configuration */}
           <Card>
-            <CardHeader>
-              <CardTitle>AI Configuration</CardTitle>
-              <CardDescription>Configure AI prompts and behavior</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>AI Configuration</CardTitle>
+                <CardDescription>Configure AI prompts and behavior</CardDescription>
+              </div>
+              <Button
+                onClick={() =>
+                  handleSaveSection("AI Configuration", [
+                    "client_description",
+                    "gpt_assistant_system_prompt",
+                    "sentiment_analysis_prompt",
+                  ])
+                }
+                disabled={savingSection === "AI Configuration"}
+                variant="outline"
+                size="sm"
+              >
+                {savingSection === "AI Configuration" ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save
+                  </>
+                )}
+              </Button>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -452,9 +543,36 @@ export default function SuperAdminPage() {
 
           {/* Visual Settings */}
           <Card>
-            <CardHeader>
-              <CardTitle>Visual Settings</CardTitle>
-              <CardDescription>Configure visual elements and branding</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Visual Settings</CardTitle>
+                <CardDescription>Configure visual elements and branding</CardDescription>
+              </div>
+              <Button
+                onClick={() =>
+                  handleSaveSection("Visual Settings", [
+                    "button_background_colour",
+                    "button_gif_url",
+                    "favicon_png",
+                    "callback_completed_gif",
+                  ])
+                }
+                disabled={savingSection === "Visual Settings"}
+                variant="outline"
+                size="sm"
+              >
+                {savingSection === "Visual Settings" ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save
+                  </>
+                )}
+              </Button>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -480,32 +598,34 @@ export default function SuperAdminPage() {
                 <Label>Button GIF</Label>
                 <div className="space-y-2">
                   <div className="border rounded-md p-2 bg-gray-50">
-                    <div className="text-sm text-gray-600 mb-2">Current GIF:</div>
-                    {isValidUrl(botSettings.button_gif_url) && !imageErrors.gif ? (
-                      <img
-                        src={botSettings.button_gif_url || "/placeholder.svg"}
-                        alt="Button GIF"
-                        className="object-contain border rounded"
-                        style={{ width: "96px", height: "96px" }}
-                        onError={() => handleImageError("gif")}
-                      />
-                    ) : (
-                      <div
-                        className="border rounded bg-gray-100 flex items-center justify-center"
-                        style={{ width: "96px", height: "96px" }}
-                      >
-                        <div className="text-center text-gray-500">
-                          <ImageIcon className="h-8 w-8 mx-auto mb-1" />
-                          <div className="text-xs">
-                            {imageErrors.gif
-                              ? "Failed to load"
-                              : botSettings.button_gif_url
-                                ? "Invalid URL"
-                                : "No image"}
+                    <div className="text-sm text-gray-600 mb-2 text-center">Current GIF:</div>
+                    <div className="flex justify-center">
+                      {isValidUrl(botSettings.button_gif_url) && !imageErrors.gif ? (
+                        <img
+                          src={botSettings.button_gif_url || "/placeholder.svg"}
+                          alt="Button GIF"
+                          className="object-contain border rounded"
+                          style={{ width: "96px", height: "96px" }}
+                          onError={() => handleImageError("gif")}
+                        />
+                      ) : (
+                        <div
+                          className="border rounded bg-gray-100 flex items-center justify-center"
+                          style={{ width: "96px", height: "96px" }}
+                        >
+                          <div className="text-center text-gray-500">
+                            <ImageIcon className="h-8 w-8 mx-auto mb-1" />
+                            <div className="text-xs">
+                              {imageErrors.gif
+                                ? "Failed to load"
+                                : botSettings.button_gif_url
+                                  ? "Invalid URL"
+                                  : "No image"}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Input
@@ -526,23 +646,25 @@ export default function SuperAdminPage() {
                 <Label>Favicon</Label>
                 <div className="space-y-2">
                   <div className="border rounded-md p-2 bg-gray-50">
-                    <div className="text-sm text-gray-600 mb-2">Current Favicon:</div>
-                    {isValidUrl(botSettings.favicon_png) && !imageErrors.favicon ? (
-                      <img
-                        src={botSettings.favicon_png || "/placeholder.svg"}
-                        alt="Favicon"
-                        className="object-contain border rounded"
-                        style={{ width: "32px", height: "32px" }}
-                        onError={() => handleImageError("favicon")}
-                      />
-                    ) : (
-                      <div
-                        className="border rounded bg-gray-100 flex items-center justify-center"
-                        style={{ width: "32px", height: "32px" }}
-                      >
-                        <ImageIcon className="h-4 w-4 text-gray-500" />
-                      </div>
-                    )}
+                    <div className="text-sm text-gray-600 mb-2 text-center">Current Favicon:</div>
+                    <div className="flex justify-center">
+                      {isValidUrl(botSettings.favicon_png) && !imageErrors.favicon ? (
+                        <img
+                          src={botSettings.favicon_png || "/placeholder.svg"}
+                          alt="Favicon"
+                          className="object-contain border rounded"
+                          style={{ width: "32px", height: "32px" }}
+                          onError={() => handleImageError("favicon")}
+                        />
+                      ) : (
+                        <div
+                          className="border rounded bg-gray-100 flex items-center justify-center"
+                          style={{ width: "32px", height: "32px" }}
+                        >
+                          <ImageIcon className="h-4 w-4 text-gray-500" />
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Input
@@ -554,6 +676,54 @@ export default function SuperAdminPage() {
                     <Button type="button" variant="outline" onClick={() => handleFileUpload("favicon")}>
                       <Upload className="h-4 w-4 mr-2" />
                       Upload New Favicon
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label>Callback Completed GIF</Label>
+                <div className="space-y-2">
+                  <div className="border rounded-md p-2 bg-gray-50">
+                    <div className="text-sm text-gray-600 mb-2 text-center">Current Callback GIF:</div>
+                    <div className="flex justify-center">
+                      {isValidUrl(botSettings.callback_completed_gif) && !imageErrors.callback ? (
+                        <img
+                          src={botSettings.callback_completed_gif || "/placeholder.svg"}
+                          alt="Callback Completed GIF"
+                          className="object-contain border rounded"
+                          style={{ width: "96px", height: "96px" }}
+                          onError={() => handleImageError("callback")}
+                        />
+                      ) : (
+                        <div
+                          className="border rounded bg-gray-100 flex items-center justify-center"
+                          style={{ width: "96px", height: "96px" }}
+                        >
+                          <div className="text-center text-gray-500">
+                            <ImageIcon className="h-8 w-8 mx-auto mb-1" />
+                            <div className="text-xs">
+                              {imageErrors.callback
+                                ? "Failed to load"
+                                : botSettings.callback_completed_gif
+                                  ? "Invalid URL"
+                                  : "No image"}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      value={botSettings.callback_completed_gif}
+                      onChange={(e) => handleInputChange("callback_completed_gif", e.target.value)}
+                      placeholder="Enter callback completed GIF URL"
+                      className="flex-1"
+                    />
+                    <Button type="button" variant="outline" onClick={() => handleFileUpload("callback")}>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload New GIF
                     </Button>
                   </div>
                 </div>
