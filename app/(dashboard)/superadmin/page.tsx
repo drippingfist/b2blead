@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/lib/supabase/client"
 import { getUserBotAccess } from "@/lib/database"
 import { timezones } from "@/lib/timezones"
-import { Upload, Save, Loader2 } from "lucide-react"
+import { Upload, Save, Loader2, ImageIcon } from "lucide-react"
 
 interface BotSettings {
   timezone: string
@@ -50,6 +50,10 @@ export default function SuperAdminPage() {
     isSuperAdmin: boolean
   }>({ isSuperAdmin: false })
   const [debugInfo, setDebugInfo] = useState<string | null>(null)
+  const [imageErrors, setImageErrors] = useState<{
+    gif: boolean
+    favicon: boolean
+  }>({ gif: false, favicon: false })
 
   // Check if user is superadmin
   useEffect(() => {
@@ -116,6 +120,7 @@ export default function SuperAdminPage() {
       setLoading(true)
       setError(null)
       setDebugInfo(null)
+      setImageErrors({ gif: false, favicon: false })
 
       try {
         console.log("Loading bot data for:", selectedBot)
@@ -138,7 +143,8 @@ export default function SuperAdminPage() {
           setDebugInfo(`Bot: ${selectedBot}, Timezone in DB: ${bot.timezone || "not set"}`)
 
           setClientName(bot.client_name || "")
-          setBotSettings({
+
+          const newSettings = {
             timezone: bot.timezone || "",
             client_description: bot.client_description || "",
             client_url: bot.client_url || "",
@@ -150,12 +156,10 @@ export default function SuperAdminPage() {
             button_gif: bot.button_gif || "",
             favicon_png: bot.favicon_png || "",
             product_name: bot.product_name || "",
-          })
+          }
 
-          // Log the state after setting
-          setTimeout(() => {
-            console.log("Bot settings state after update:", botSettings)
-          }, 100)
+          setBotSettings(newSettings)
+          console.log("Setting bot settings to:", newSettings)
         }
       } catch (error) {
         console.error("Error loading bot data:", error)
@@ -167,11 +171,6 @@ export default function SuperAdminPage() {
 
     loadBotData()
   }, [selectedBot, userAccess.isSuperAdmin])
-
-  // Debug effect to log when botSettings changes
-  useEffect(() => {
-    console.log("botSettings updated:", botSettings)
-  }, [botSettings])
 
   const handleInputChange = (field: keyof BotSettings, value: string) => {
     console.log(`Changing ${field} to:`, value)
@@ -220,6 +219,19 @@ export default function SuperAdminPage() {
       }
     }
     input.click()
+  }
+
+  const handleImageError = (type: "gif" | "favicon") => {
+    setImageErrors((prev) => ({ ...prev, [type]: true }))
+  }
+
+  const isValidUrl = (url: string) => {
+    try {
+      new URL(url)
+      return true
+    } catch {
+      return false
+    }
   }
 
   // Show access denied if not superadmin
@@ -303,6 +315,10 @@ export default function SuperAdminPage() {
         {debugInfo && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
             <p className="text-blue-800 font-mono text-sm">Debug: {debugInfo}</p>
+            <p className="text-blue-800 font-mono text-sm">
+              Timezone exists in options: {timezones.some((tz) => tz.value === botSettings.timezone) ? "Yes" : "No"}
+            </p>
+            <p className="text-blue-800 font-mono text-sm">Available timezones count: {timezones.length}</p>
           </div>
         )}
 
@@ -318,9 +334,9 @@ export default function SuperAdminPage() {
                 <div>
                   <Label htmlFor="timezone">Timezone</Label>
                   <Select
+                    key={`timezone-${selectedBot}`}
                     value={botSettings.timezone}
                     onValueChange={(value) => handleInputChange("timezone", value)}
-                    defaultValue={botSettings.timezone}
                   >
                     <SelectTrigger id="timezone-trigger">
                       <SelectValue placeholder="Select timezone" />
@@ -334,7 +350,10 @@ export default function SuperAdminPage() {
                     </SelectContent>
                   </Select>
                   <div className="text-xs text-gray-500 mt-1">
-                    Current timezone value: {botSettings.timezone || "not set"}
+                    Current timezone value: "{botSettings.timezone || "not set"}"
+                    {botSettings.timezone && !timezones.some((tz) => tz.value === botSettings.timezone) && (
+                      <span className="text-red-500 ml-2">(not found in options)</span>
+                    )}
                   </div>
                 </div>
 
@@ -459,16 +478,21 @@ export default function SuperAdminPage() {
                   {botSettings.button_gif && (
                     <div className="border rounded-md p-2 bg-gray-50">
                       <div className="text-sm text-gray-600 mb-2">Current GIF:</div>
-                      <img
-                        src={botSettings.button_gif || "/placeholder.svg"}
-                        alt="Button GIF"
-                        className="max-w-xs max-h-32 object-contain border rounded"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement
-                          target.src = "/placeholder.svg?height=100&width=200&text=GIF+Failed+to+Load"
-                          target.className = "max-w-xs max-h-32 object-contain border rounded opacity-50"
-                        }}
-                      />
+                      {isValidUrl(botSettings.button_gif) && !imageErrors.gif ? (
+                        <img
+                          src={botSettings.button_gif || "/placeholder.svg"}
+                          alt="Button GIF"
+                          className="max-w-xs max-h-32 object-contain border rounded"
+                          onError={() => handleImageError("gif")}
+                        />
+                      ) : (
+                        <div className="max-w-xs max-h-32 border rounded bg-gray-100 flex items-center justify-center p-4">
+                          <div className="text-center text-gray-500">
+                            <ImageIcon className="h-8 w-8 mx-auto mb-2" />
+                            <div className="text-sm">{imageErrors.gif ? "Failed to load image" : "Invalid URL"}</div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                   <div className="flex items-center space-x-2">
@@ -492,16 +516,18 @@ export default function SuperAdminPage() {
                   {botSettings.favicon_png && (
                     <div className="border rounded-md p-2 bg-gray-50">
                       <div className="text-sm text-gray-600 mb-2">Current Favicon:</div>
-                      <img
-                        src={botSettings.favicon_png || "/placeholder.svg"}
-                        alt="Favicon"
-                        className="w-8 h-8 object-contain border rounded"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement
-                          target.src = "/placeholder.svg?height=32&width=32&text=Favicon+Error"
-                          target.className = "w-8 h-8 object-contain border rounded opacity-50"
-                        }}
-                      />
+                      {isValidUrl(botSettings.favicon_png) && !imageErrors.favicon ? (
+                        <img
+                          src={botSettings.favicon_png || "/placeholder.svg"}
+                          alt="Favicon"
+                          className="w-8 h-8 object-contain border rounded"
+                          onError={() => handleImageError("favicon")}
+                        />
+                      ) : (
+                        <div className="w-8 h-8 border rounded bg-gray-100 flex items-center justify-center">
+                          <ImageIcon className="h-4 w-4 text-gray-500" />
+                        </div>
+                      )}
                     </div>
                   )}
                   <div className="flex items-center space-x-2">
