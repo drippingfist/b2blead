@@ -20,8 +20,8 @@ interface BotSettings {
   sentiment_analysis_prompt: string
   client_email_name: string
   gpt_assistant_system_prompt: string
-  button_background_color: string
-  button_gif: string
+  button_background_colour: string
+  button_gif_url: string
   favicon_png: string
   product_name: string
 }
@@ -37,8 +37,8 @@ export default function SuperAdminPage() {
     sentiment_analysis_prompt: "",
     client_email_name: "",
     gpt_assistant_system_prompt: "",
-    button_background_color: "#038a71",
-    button_gif: "",
+    button_background_colour: "#038a71",
+    button_gif_url: "",
     favicon_png: "",
     product_name: "",
   })
@@ -138,9 +138,16 @@ export default function SuperAdminPage() {
         if (bot) {
           console.log("Bot data loaded:", bot)
           console.log("Timezone from database:", bot.timezone)
+          console.log("Button background colour:", bot.button_background_colour)
+          console.log("Button GIF URL:", bot.button_gif_url)
+          console.log("Favicon PNG:", bot.favicon_png)
 
           // Debug info to display on the page
-          setDebugInfo(`Bot: ${selectedBot}, Timezone in DB: ${bot.timezone || "not set"}`)
+          setDebugInfo(
+            `Bot: ${selectedBot}, Timezone: ${bot.timezone || "not set"}, Button GIF URL: ${
+              bot.button_gif_url || "not set"
+            }, Favicon PNG: ${bot.favicon_png || "not set"}`,
+          )
 
           setClientName(bot.client_name || "")
 
@@ -152,8 +159,8 @@ export default function SuperAdminPage() {
             sentiment_analysis_prompt: bot.sentiment_analysis_prompt || "",
             client_email_name: bot.client_email_name || "",
             gpt_assistant_system_prompt: bot.gpt_assistant_system_prompt || "",
-            button_background_color: bot.button_background_color || "#038a71",
-            button_gif: bot.button_gif || "",
+            button_background_colour: bot.button_background_colour || "#038a71",
+            button_gif_url: bot.button_gif_url || "",
             favicon_png: bot.favicon_png || "",
             product_name: bot.product_name || "",
           }
@@ -226,6 +233,7 @@ export default function SuperAdminPage() {
   }
 
   const isValidUrl = (url: string) => {
+    if (!url) return false
     try {
       new URL(url)
       return true
@@ -314,11 +322,7 @@ export default function SuperAdminPage() {
 
         {debugInfo && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
-            <p className="text-blue-800 font-mono text-sm">Debug: {debugInfo}</p>
-            <p className="text-blue-800 font-mono text-sm">
-              Timezone exists in options: {timezones.some((tz) => tz.value === botSettings.timezone) ? "Yes" : "No"}
-            </p>
-            <p className="text-blue-800 font-mono text-sm">Available timezones count: {timezones.length}</p>
+            <p className="text-blue-800 font-mono text-sm">{debugInfo}</p>
           </div>
         )}
 
@@ -454,18 +458,18 @@ export default function SuperAdminPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="button_background_color">Button Background Color</Label>
+                <Label htmlFor="button_background_colour">Button Background Color</Label>
                 <div className="flex items-center space-x-2">
                   <Input
-                    id="button_background_color"
+                    id="button_background_colour"
                     type="color"
-                    value={botSettings.button_background_color}
-                    onChange={(e) => handleInputChange("button_background_color", e.target.value)}
+                    value={botSettings.button_background_colour}
+                    onChange={(e) => handleInputChange("button_background_colour", e.target.value)}
                     className="w-20 h-10"
                   />
                   <Input
-                    value={botSettings.button_background_color}
-                    onChange={(e) => handleInputChange("button_background_color", e.target.value)}
+                    value={botSettings.button_background_colour}
+                    onChange={(e) => handleInputChange("button_background_colour", e.target.value)}
                     placeholder="#038a71"
                     className="flex-1"
                   />
@@ -475,30 +479,38 @@ export default function SuperAdminPage() {
               <div>
                 <Label>Button GIF</Label>
                 <div className="space-y-2">
-                  {botSettings.button_gif && (
-                    <div className="border rounded-md p-2 bg-gray-50">
-                      <div className="text-sm text-gray-600 mb-2">Current GIF:</div>
-                      {isValidUrl(botSettings.button_gif) && !imageErrors.gif ? (
-                        <img
-                          src={botSettings.button_gif || "/placeholder.svg"}
-                          alt="Button GIF"
-                          className="max-w-xs max-h-32 object-contain border rounded"
-                          onError={() => handleImageError("gif")}
-                        />
-                      ) : (
-                        <div className="max-w-xs max-h-32 border rounded bg-gray-100 flex items-center justify-center p-4">
-                          <div className="text-center text-gray-500">
-                            <ImageIcon className="h-8 w-8 mx-auto mb-2" />
-                            <div className="text-sm">{imageErrors.gif ? "Failed to load image" : "Invalid URL"}</div>
+                  <div className="border rounded-md p-2 bg-gray-50">
+                    <div className="text-sm text-gray-600 mb-2">Current GIF:</div>
+                    {isValidUrl(botSettings.button_gif_url) && !imageErrors.gif ? (
+                      <img
+                        src={botSettings.button_gif_url || "/placeholder.svg"}
+                        alt="Button GIF"
+                        className="object-contain border rounded"
+                        style={{ width: "96px", height: "96px" }}
+                        onError={() => handleImageError("gif")}
+                      />
+                    ) : (
+                      <div
+                        className="border rounded bg-gray-100 flex items-center justify-center"
+                        style={{ width: "96px", height: "96px" }}
+                      >
+                        <div className="text-center text-gray-500">
+                          <ImageIcon className="h-8 w-8 mx-auto mb-1" />
+                          <div className="text-xs">
+                            {imageErrors.gif
+                              ? "Failed to load"
+                              : botSettings.button_gif_url
+                                ? "Invalid URL"
+                                : "No image"}
                           </div>
                         </div>
-                      )}
-                    </div>
-                  )}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex items-center space-x-2">
                     <Input
-                      value={botSettings.button_gif}
-                      onChange={(e) => handleInputChange("button_gif", e.target.value)}
+                      value={botSettings.button_gif_url}
+                      onChange={(e) => handleInputChange("button_gif_url", e.target.value)}
                       placeholder="Enter GIF URL"
                       className="flex-1"
                     />
@@ -513,23 +525,25 @@ export default function SuperAdminPage() {
               <div>
                 <Label>Favicon</Label>
                 <div className="space-y-2">
-                  {botSettings.favicon_png && (
-                    <div className="border rounded-md p-2 bg-gray-50">
-                      <div className="text-sm text-gray-600 mb-2">Current Favicon:</div>
-                      {isValidUrl(botSettings.favicon_png) && !imageErrors.favicon ? (
-                        <img
-                          src={botSettings.favicon_png || "/placeholder.svg"}
-                          alt="Favicon"
-                          className="w-8 h-8 object-contain border rounded"
-                          onError={() => handleImageError("favicon")}
-                        />
-                      ) : (
-                        <div className="w-8 h-8 border rounded bg-gray-100 flex items-center justify-center">
-                          <ImageIcon className="h-4 w-4 text-gray-500" />
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <div className="border rounded-md p-2 bg-gray-50">
+                    <div className="text-sm text-gray-600 mb-2">Current Favicon:</div>
+                    {isValidUrl(botSettings.favicon_png) && !imageErrors.favicon ? (
+                      <img
+                        src={botSettings.favicon_png || "/placeholder.svg"}
+                        alt="Favicon"
+                        className="object-contain border rounded"
+                        style={{ width: "32px", height: "32px" }}
+                        onError={() => handleImageError("favicon")}
+                      />
+                    ) : (
+                      <div
+                        className="border rounded bg-gray-100 flex items-center justify-center"
+                        style={{ width: "32px", height: "32px" }}
+                      >
+                        <ImageIcon className="h-4 w-4 text-gray-500" />
+                      </div>
+                    )}
+                  </div>
                   <div className="flex items-center space-x-2">
                     <Input
                       value={botSettings.favicon_png}
