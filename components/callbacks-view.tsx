@@ -48,12 +48,11 @@ export default function CallbacksView({
   onPeriodChange,
   selectedPeriod,
 }: CallbacksViewProps) {
-  const [callbacks, setCallbacks] = useState<Callback[]>(initialCallbacks)
   const [searchQuery, setSearchQuery] = useState("")
 
   // Filter callbacks based on search query
   const filteredCallbacks = searchQuery
-    ? callbacks.filter(
+    ? initialCallbacks.filter(
         (callback) =>
           callback.user_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           callback.user_email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -62,7 +61,7 @@ export default function CallbacksView({
           callback.user_cb_message?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           callback.message_preview?.toLowerCase().includes(searchQuery.toLowerCase()),
       )
-    : callbacks
+    : initialCallbacks
 
   // Group callbacks by date
   const groupedCallbacks = filteredCallbacks.reduce((groups: { [key: string]: Callback[] }, callback) => {
@@ -205,7 +204,8 @@ export default function CallbacksView({
       {process.env.NODE_ENV === "development" && (
         <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
           <p className="text-sm text-yellow-800">
-            Debug: Found {callbacks.length} callbacks. Sample data: {JSON.stringify(callbacks[0], null, 2)}
+            Debug: Found {initialCallbacks.length} callbacks. Sample data:{" "}
+            {JSON.stringify(initialCallbacks[0], null, 2)}
           </p>
         </div>
       )}
@@ -477,7 +477,7 @@ export default function CallbacksView({
         ))}
       </div>
 
-      {filteredCallbacks.length === 0 && (
+      {initialCallbacks.length === 0 && (
         <div className="text-center py-12">
           <Phone className="h-12 w-12 text-[#616161] mx-auto mb-4" />
           <p className="text-[#616161]">No callback requests found.</p>
