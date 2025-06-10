@@ -76,13 +76,23 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
     // Update localStorage immediately
     if (botShareName) {
       localStorage.setItem("selectedBot", botShareName)
+      console.log("💾 Saved to localStorage:", botShareName)
     } else {
       localStorage.removeItem("selectedBot")
+      console.log("💾 Removed from localStorage")
     }
 
-    // FORCE PAGE REFRESH - this is the key part that makes it work like dashboard
-    console.log("🔄 Bot selector: Forcing page refresh...")
-    window.location.reload()
+    // Call the onSelectBot prop if provided
+    if (onSelectBot) {
+      onSelectBot(botShareName)
+    }
+
+    // BRUTE FORCE APPROACH: Create a form and submit it to force a full page refresh
+    const form = document.createElement("form")
+    form.method = "GET"
+    form.action = window.location.href
+    document.body.appendChild(form)
+    form.submit()
   }
 
   if (loading) {
