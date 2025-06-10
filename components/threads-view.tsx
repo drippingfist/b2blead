@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import type { ThreadWithMessageCount } from "@/types"
+import type { Thread } from "@/types"
 import type { Bot } from "@/types"
 import ThreadItem from "./thread-item"
 import { useSearchParams, useRouter } from "next/navigation"
@@ -9,10 +9,10 @@ import type { DateFilter } from "@/types"
 import { Dropdown } from "./dropdown"
 
 interface ThreadsViewProps {
-  initialThreads: ThreadWithMessageCount[]
-  selectedBot: string | null
-  onRefresh: () => void
-  bots: Bot[]
+  initialThreads: Thread[]
+  selectedBot?: string | null
+  onRefresh?: () => void
+  bots?: Bot[]
   dateFilter?: DateFilter
   onDateFilterChange?: (filter: DateFilter) => void
 }
@@ -21,18 +21,18 @@ export default function ThreadsView({
   initialThreads,
   selectedBot,
   onRefresh,
-  bots,
+  bots = [],
   dateFilter: externalDateFilter,
   onDateFilterChange,
 }: ThreadsViewProps) {
-  const [threadsWithMessageCount, setThreadsWithMessageCount] = useState<ThreadWithMessageCount[]>(initialThreads)
+  const [threads, setThreads] = useState<Thread[]>(initialThreads)
   const [dateFilter, setDateFilter] = useState<DateFilter>(externalDateFilter || "last30days")
   const [dateDropdownOpen, setDateDropdownOpen] = useState(false)
   const searchParams = useSearchParams()
   const router = useRouter()
 
   useEffect(() => {
-    setThreadsWithMessageCount(initialThreads)
+    setThreads(initialThreads)
   }, [initialThreads])
 
   const dateFilterOptions = [
@@ -66,7 +66,7 @@ export default function ThreadsView({
     router.push(`/?${params.toString()}`)
   }
 
-  const dateFilteredThreads = threadsWithMessageCount
+  const dateFilteredThreads = threads // Use threads directly since filtering is done server-side
 
   return (
     <div className="flex flex-col h-full">
@@ -85,13 +85,11 @@ export default function ThreadsView({
                 key={option.value}
                 className="block px-4 py-2 text-gray-800 hover:bg-gray-200 w-full text-left"
                 onClick={() => {
-                  setDateFilter(option.value)
+                  const newFilter = option.value
+                  setDateFilter(newFilter)
                   setDateDropdownOpen(false)
                   if (onDateFilterChange) {
-                    onDateFilterChange(option.value)
-                  } else {
-                    // Fallback to event dispatch for backward compatibility
-                    window.dispatchEvent(new CustomEvent("dateFilterChanged", { detail: option.value }))
+                    onDateFilterChange(newFilter)
                   }
                 }}
               >

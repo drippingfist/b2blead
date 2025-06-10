@@ -6,13 +6,15 @@ import { getBots } from "@/lib/actions/bot.actions"
 import ThreadsView from "@/components/ThreadsView"
 import type { Bot } from "@/types"
 
-type DateFilter = "last7days" | "last30days" | "last90days" | "all"
+type DateFilter = "today" | "last7days" | "last30days" | "last90days" | "alltime"
 
 const Page = () => {
   const [threads, setThreads] = useState([])
   const [bots, setBots] = useState<Bot[]>([])
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
   const [dateFilter, setDateFilter] = useState<DateFilter>("last30days")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchBots = useCallback(async () => {
     const bots = await getBots()
@@ -20,11 +22,22 @@ const Page = () => {
   }, [])
 
   const fetchThreads = useCallback(
-    async (botId: string | null) => {
-      const threads = await getThreadsSimple(500, botId, dateFilter) // Increased limit and added dateFilter
-      setThreads(threads)
+    async (filter: DateFilter = dateFilter) => {
+      setLoading(true)
+      setError(null)
+      try {
+        console.log("🧵 PAGE: Fetching threads for bot_share_name:", selectedBot, "with filter:", filter)
+        const threadsData = await getThreadsSimple(100, selectedBot, filter)
+        console.log(`🧵 PAGE: Fetched ${threadsData.length} threads`)
+        setThreads(threadsData)
+      } catch (error: any) {
+        console.error("❌ PAGE: Error fetching threads:", error)
+        setError(error.message)
+      } finally {
+        setLoading(false)
+      }
     },
-    [dateFilter],
+    [selectedBot, setThreads, setLoading, setError],
   )
 
   useEffect(() => {
@@ -33,32 +46,37 @@ const Page = () => {
 
   useEffect(() => {
     if (selectedBot) {
-      fetchThreads(selectedBot)
+      fetchThreads()
     } else {
-      fetchThreads(null)
+      fetchThreads()
     }
   }, [selectedBot, fetchThreads])
+
+  useEffect(() => {
+    fetchThreads()
+  }, [dateFilter, fetchThreads])
 
   const handleBotSelect = (botId: string | null) => {
     setSelectedBot(botId)
   }
 
   const handleRefresh = async () => {
-    if (selectedBot) {
-      await fetchThreads(selectedBot)
-    } else {
-      await fetchThreads(null)
-    }
+    fetchThreads()
+  }
+
+  const handleDateFilterChange = (newFilter: DateFilter) => {
+    setDateFilter(newFilter)
+    fetchThreads(newFilter)
   }
 
   return (
     <ThreadsView
       initialThreads={threads}
       selectedBot={selectedBot}
-      onRefresh={handleRefresh}
+      onRefresh={() => fetchThreads()}
       bots={bots}
       dateFilter={dateFilter}
-      onDateFilterChange={setDateFilter}
+      onDateFilterChange={handleDateFilterChange}
     />
   )
 }

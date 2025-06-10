@@ -15,7 +15,7 @@ export type DateFilter = "alltime" | "today" | "last7days" | "last30days" | "las
 export async function getThreadsSimple(
   limit = 50,
   botShareName?: string | null,
-  dateFilter: DateFilter = "last30days",
+  dateFilter: "today" | "last7days" | "last30days" | "last90days" | "alltime" = "last30days",
 ): Promise<Thread[]> {
   // Add date filtering logic before the existing query
   let query = supabase.from("threads").select(`
@@ -23,7 +23,7 @@ export async function getThreadsSimple(
     count:messages(count)
   `)
 
-  // Apply date filter
+  // Apply date filter to the query
   if (dateFilter !== "alltime") {
     const now = new Date()
     let cutoffDate: Date
@@ -41,8 +41,11 @@ export async function getThreadsSimple(
       case "last90days":
         cutoffDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
         break
+      default:
+        cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
     }
 
+    console.log("🗓️ Applying date filter:", dateFilter, "cutoff:", cutoffDate.toISOString())
     query = query.gte("created_at", cutoffDate.toISOString())
   }
 
