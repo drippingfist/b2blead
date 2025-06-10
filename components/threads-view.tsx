@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect, useRef } from "react"
 import {
   Search,
@@ -431,8 +430,7 @@ export default function ThreadsView({
       <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 space-y-4 md:space-y-0">
         <div className="mb-6">
           <p className="text-[#616161]">
-            {selectedBot ? `Showing threads for ${selectedBotName}` : "Showing all threads"} (
-            {totalThreads} total)
+            {selectedBot ? `Showing threads for ${selectedBotName}` : "Showing all threads"} ({totalThreads} total)
             <span className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded">Times in {timezoneAbbr}</span>
           </p>
         </div>
@@ -505,15 +503,15 @@ export default function ThreadsView({
               {startItem} - {endItem} of {totalThreads}
             </div>
             <div className="flex items-center space-x-2">
-              <button 
-                className={`p-1 rounded-md ${canGoBack ? 'hover:bg-gray-100 text-[#616161]' : 'text-gray-300 cursor-not-allowed'}`}
+              <button
+                className={`p-1 rounded-md ${canGoBack ? "hover:bg-gray-100 text-[#616161]" : "text-gray-300 cursor-not-allowed"}`}
                 onClick={handlePrevPage}
                 disabled={!canGoBack}
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
-              <button 
-                className={`p-1 rounded-md ${canGoForward ? 'hover:bg-gray-100 text-[#616161]' : 'text-gray-300 cursor-not-allowed'}`}
+              <button
+                className={`p-1 rounded-md ${canGoForward ? "hover:bg-gray-100 text-[#616161]" : "text-gray-300 cursor-not-allowed"}`}
                 onClick={handleNextPage}
                 disabled={!canGoForward}
               >
@@ -530,15 +528,15 @@ export default function ThreadsView({
           {startItem} - {endItem} of {totalThreads}
         </div>
         <div className="flex items-center space-x-2">
-          <button 
-            className={`p-1 rounded-md ${canGoBack ? 'hover:bg-gray-100 text-[#616161]' : 'text-gray-300 cursor-not-allowed'}`}
+          <button
+            className={`p-1 rounded-md ${canGoBack ? "hover:bg-gray-100 text-[#616161]" : "text-gray-300 cursor-not-allowed"}`}
             onClick={handlePrevPage}
             disabled={!canGoBack}
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
-          <button 
-            className={`p-1 rounded-md ${canGoForward ? 'hover:bg-gray-100 text-[#616161]' : 'text-gray-300 cursor-not-allowed'}`}
+          <button
+            className={`p-1 rounded-md ${canGoForward ? "hover:bg-gray-100 text-[#616161]" : "text-gray-300 cursor-not-allowed"}`}
             onClick={handleNextPage}
             disabled={!canGoForward}
           >
@@ -862,4 +860,38 @@ export default function ThreadsView({
 
                       <div className="flex items-center justify-between text-sm">
                         <div className="flex items-center space-x-4">
-                          <span className="text-[#616\
+                          <span className="text-[#616161]">
+                            <MessageSquare className="h-4 w-4 inline mr-1" />
+                            {thread.count || 0}
+                          </span>
+                          <span className="text-[#616161]">
+                            <Clock className="h-4 w-4 inline mr-1" />
+                            {formatDuration(thread.duration)}
+                          </span>
+                          <span className="text-[#616161]">
+                            <Timer className="h-4 w-4 inline mr-1" />
+                            {formatMeanResponseTime(thread.mean_response_time)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="bg-white border border-[#e0e0e0] rounded-md p-8 text-center">
+            <MessageSquare className="h-12 w-12 text-[#616161] mx-auto mb-4" />
+            <p className="text-[#616161] mb-2">No chats found.</p>
+            <p className="text-sm text-[#616161]">
+              {selectedBot
+                ? `No chat threads found for ${selectedBotName} in the selected time period.`
+                : `No chat threads found for any of your accessible bots in the selected time period.`}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
