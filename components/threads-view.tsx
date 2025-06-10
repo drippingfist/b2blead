@@ -47,7 +47,7 @@ interface ThreadWithMessageCount extends Thread {
   } | null
 }
 
-type DateFilter = "today" | "last7days" | "last30days" | "alltime"
+type DateFilter = "today" | "last7days" | "last30days" | "last90days" | "alltime"
 
 export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bots = [] }: ThreadsViewProps) {
   const [threads, setThreads] = useState<ThreadWithMessageCount[]>([])
@@ -69,6 +69,7 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
     { value: "today" as DateFilter, label: "Today" },
     { value: "last7days" as DateFilter, label: "Last 7 days" },
     { value: "last30days" as DateFilter, label: "Last 30 days" },
+    { value: "last90days" as DateFilter, label: "Last 90 days" },
     { value: "alltime" as DateFilter, label: "All Time" },
   ]
 
@@ -99,6 +100,9 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
         break
       case "last30days":
         cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+        break
+      case "last90days":
+        cutoffDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
         break
       default:
         return threads
