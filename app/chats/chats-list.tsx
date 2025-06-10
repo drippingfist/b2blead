@@ -36,6 +36,7 @@ export default function ChatsList({ selectedBot, isSuperAdmin = false, onRefresh
   const [selectedThreads, setSelectedThreads] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
   const [botTimezone, setBotTimezone] = useState<string>("UTC")
+  const [activeFilter, setActiveFilter] = useState<"none" | "callbacks" | "dropped-callbacks">("none")
 
   useEffect(() => {
     loadThreads()
@@ -132,6 +133,16 @@ export default function ChatsList({ selectedBot, isSuperAdmin = false, onRefresh
 
   const timezoneAbbr = getTimezoneAbbreviation(botTimezone)
 
+  // Apply active filter
+  const filteredThreads = threads.filter((thread) => {
+    if (activeFilter === "callbacks") {
+      return thread.callbacks // Only threads with callback records
+    } else if (activeFilter === "dropped-callbacks") {
+      return thread.cb_requested && !thread.callbacks // Threads requesting callbacks but no callback record
+    }
+    return true // No filter applied
+  })
+
   return (
     <div className="space-y-4">
       {/* Superadmin Controls */}
@@ -168,7 +179,9 @@ export default function ChatsList({ selectedBot, isSuperAdmin = false, onRefresh
 
       {threads.length > 0 && (
         <p className="text-sm text-[#616161] px-4">
-          {threads.length} thread{threads.length !== 1 ? "s" : ""} • Times in {timezoneAbbr}
+          {filteredThreads.length} thread{filteredThreads.length !== 1 ? "s" : ""} • Times in {timezoneAbbr}
+          {activeFilter === "callbacks" && <span className="text-green-600"> • with callbacks</span>}
+          {activeFilter === "dropped-callbacks" && <span className="text-green-600"> • with dropped callbacks</span>}
         </p>
       )}
 
@@ -179,7 +192,7 @@ export default function ChatsList({ selectedBot, isSuperAdmin = false, onRefresh
         </div>
       ) : (
         <div className="space-y-4">
-          {threads.map((thread) => (
+          {filteredThreads.map((thread) => (
             <div key={thread.id} className="border border-[#e0e0e0] rounded-lg overflow-hidden bg-white">
               {/* Thread Header */}
               <div className="p-4">
