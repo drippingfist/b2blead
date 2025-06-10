@@ -39,6 +39,7 @@ export default function ThreadsView({
     { label: "Last 24 Hours", value: "last24hours" },
     { label: "Last 7 Days", value: "last7days" },
     { label: "Last 30 Days", value: "last30days" },
+    { label: "Last 90 Days", value: "last90days" },
     { label: "All Time", value: "allTime" },
   ]
 
