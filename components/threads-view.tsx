@@ -34,7 +34,9 @@ interface ThreadsViewProps {
   initialThreads: Thread[]
   selectedBot?: string | null
   onRefresh?: () => void
-  bots?: Bot[] // Add bots prop to get timezone info
+  bots?: Bot[]
+  dateFilter?: DateFilter
+  onDateFilterChange?: (filter: DateFilter) => void
 }
 
 interface ThreadWithMessageCount extends Thread {
@@ -49,7 +51,14 @@ interface ThreadWithMessageCount extends Thread {
 
 type DateFilter = "today" | "last7days" | "last30days" | "last90days" | "alltime"
 
-export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bots = [] }: ThreadsViewProps) {
+export default function ThreadsView({
+  initialThreads,
+  selectedBot,
+  onRefresh,
+  bots = [],
+  dateFilter: externalDateFilter,
+  onDateFilterChange,
+}: ThreadsViewProps) {
   const [threads, setThreads] = useState<ThreadWithMessageCount[]>([])
   const [threadIdEnabled, setThreadIdEnabled] = useState(false) // Hidden by default
   const [searchQuery, setSearchQuery] = useState("")
@@ -61,7 +70,7 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
   const [starringSentiment, setStarringSentiment] = useState<string | null>(null)
   const [sortColumn, setSortColumn] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
-  const [dateFilter, setDateFilter] = useState<DateFilter>("last30days")
+  const [dateFilter, setDateFilter] = useState<DateFilter>(externalDateFilter || "last30days")
   const [dateDropdownOpen, setDateDropdownOpen] = useState(false)
   const dateDropdownRef = useRef<HTMLDivElement>(null)
 
@@ -189,7 +198,9 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
   const timezoneAbbr = getTimezoneAbbreviation(displayTimezone)
 
   // Apply date filter, then sorting, then grouping
-  const dateFilteredThreads = filterThreadsByDate(threads, dateFilter)
+  // Remove or comment out the filterThreadsByDate function call
+  // const dateFilteredThreads = filterThreadsByDate(threads, dateFilter)
+  const dateFilteredThreads = threads // Use threads directly since filtering is done server-side
   const sortedThreads = sortThreads(dateFilteredThreads)
   const groupedThreads = sortedThreads.reduce((groups: { [key: string]: ThreadWithMessageCount[] }, thread) => {
     const date = formatDateOnlyInTimezone(thread.created_at, displayTimezone)
@@ -471,8 +482,12 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
                   <button
                     key={option.value}
                     onClick={() => {
-                      setDateFilter(option.value)
+                      const newFilter = option.value
+                      setDateFilter(newFilter)
                       setDateDropdownOpen(false)
+                      if (onDateFilterChange) {
+                        onDateFilterChange(newFilter)
+                      }
                     }}
                     className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-between ${
                       dateFilter === option.value ? "bg-[#038a71]/10 text-[#038a71]" : "text-[#212121]"

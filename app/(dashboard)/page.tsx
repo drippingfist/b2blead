@@ -7,6 +7,8 @@ import { getAccessibleBotsClient, getUserBotAccess } from "@/lib/database"
 import type { Thread } from "@/lib/simple-database"
 import type { Bot } from "@/lib/database"
 
+type DateFilter = "today" | "last7days" | "last30days" | "last90days" | "alltime"
+
 export default function ChatsPage() {
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
   const [threads, setThreads] = useState<Thread[]>([])
@@ -19,6 +21,7 @@ export default function ChatsPage() {
     accessibleBots: string[]
     isSuperAdmin: boolean
   }>({ role: null, accessibleBots: [], isSuperAdmin: false })
+  const [dateFilter, setDateFilter] = useState<DateFilter>("last30days")
 
   // Load selected bot from localStorage
   useEffect(() => {
@@ -71,12 +74,12 @@ export default function ChatsPage() {
     }
   }
 
-  const fetchThreads = async () => {
+  const fetchThreads = async (filter: DateFilter = dateFilter) => {
     setLoading(true)
     setError(null)
     try {
-      console.log("🧵 PAGE: Fetching threads for bot_share_name:", selectedBot)
-      const threadsData = await getThreadsSimple(100, selectedBot)
+      console.log("🧵 PAGE: Fetching threads for bot_share_name:", selectedBot, "with filter:", filter)
+      const threadsData = await getThreadsSimple(100, selectedBot, filter)
       console.log(`🧵 PAGE: Fetched ${threadsData.length} threads`)
       setThreads(threadsData)
     } catch (error: any) {
@@ -97,6 +100,19 @@ export default function ChatsPage() {
       fetchThreads()
     }
   }, [selectedBot, userAccess.role])
+
+  useEffect(() => {
+    const handleDateFilterChanged = (event: CustomEvent) => {
+      const newFilter = event.detail
+      setDateFilter(newFilter)
+      if (userAccess.role) {
+        fetchThreads(newFilter)
+      }
+    }
+
+    window.addEventListener("dateFilterChanged", handleDateFilterChanged as EventListener)
+    return () => window.removeEventListener("dateFilterChanged", handleDateFilterChanged as EventListener)
+  }, [userAccess.role, selectedBot])
 
   // Get timezone for the selected bot or default for superadmin
   const getSelectedBotTimezone = (): string => {
@@ -164,7 +180,17 @@ export default function ChatsPage() {
         </div>
       </div>
 
-      <ThreadsView initialThreads={threads} selectedBot={selectedBot} onRefresh={fetchThreads} bots={bots} />
+      <ThreadsView
+        initialThreads={threads}
+        selectedBot={selectedBot}
+        onRefresh={fetchThreads}
+        bots={bots}
+        dateFilter={dateFilter}
+        onDateFilterChange={(filter) => {
+          setDateFilter(filter)
+          fetchThreads(filter)
+        }}
+      />
     </div>
   )
 }
