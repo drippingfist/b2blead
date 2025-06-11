@@ -2,14 +2,12 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import {
   Search,
   SlidersHorizontal,
   ChevronDown,
   ChevronUp,
-  ChevronLeft,
-  ChevronRight,
   Info,
   Star,
   MoreVertical,
@@ -38,6 +36,8 @@ interface ThreadsViewProps {
   bots?: Bot[] // Add bots prop to get timezone info
   totalCount?: number // Add totalCount prop
   selectedTimePeriod?: string // Add selectedTimePeriod prop
+  onLoadMore?: () => void
+  hasMore: boolean
 }
 
 interface ThreadWithMessageCount extends Thread {
@@ -59,6 +59,8 @@ export default function ThreadsView({
   bots = [], // Add default value to prevent undefined
   totalCount = 0, // Add default value to prevent undefined
   selectedTimePeriod = "last30days", // Add default value to prevent undefined
+  onLoadMore,
+  hasMore,
 }: ThreadsViewProps) {
   // Debug logging
   console.log("[ThreadsView] Props received:", {
@@ -83,6 +85,8 @@ export default function ThreadsView({
   const [dateFilter, setDateFilter] = useState<DateFilter>("last30days")
   const [dateDropdownOpen, setDateDropdownOpen] = useState(false)
   const dateDropdownRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
 
   // Safely access TIME_PERIODS with fallback
   const dateFilterOptions = TIME_PERIODS
@@ -461,6 +465,37 @@ export default function ThreadsView({
     return period?.label || "Last 30 days"
   }
 
+  const loadMore = useCallback(async () => {
+    if (isLoadingMore || !hasMore || !onLoadMore) return
+    setIsLoadingMore(true)
+    try {
+      await onLoadMore()
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [isLoadingMore, hasMore, onLoadMore])
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
+          loadMore()
+        }
+      },
+      { threshold: 0.1 },
+    )
+
+    if (scrollContainerRef.current) {
+      observer.observe(scrollContainerRef.current.lastElementChild as Element)
+    }
+
+    return () => {
+      if (scrollContainerRef.current) {
+        observer.unobserve(scrollContainerRef.current.lastElementChild as Element)
+      }
+    }
+  }, [hasMore, isLoadingMore, loadMore])
+
   return (
     <div className="p-4 md:p-8 pt-0 relative">
       {/* Tooltip */}
@@ -544,29 +579,6 @@ export default function ThreadsView({
               </div>
             )}
           </div>
-
-          <div className="hidden sm:flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <button className="p-1 rounded-md hover:bg-gray-100">
-                <ChevronLeft className="h-5 w-5 text-[#616161]" />
-              </button>
-              <button className="p-1 rounded-md hover:bg-gray-100">
-                <ChevronRight className="h-5 w-5 text-[#616161]" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile pagination */}
-      <div className="sm:hidden flex items-center justify-end mb-4">
-        <div className="flex items-center space-x-2">
-          <button className="p-1 rounded-md hover:bg-gray-100">
-            <ChevronLeft className="h-5 w-5 text-[#616161]" />
-          </button>
-          <button className="p-1 rounded-md hover:bg-gray-100">
-            <ChevronRight className="h-5 w-5 text-[#616161]" />
-          </button>
         </div>
       </div>
 
@@ -644,7 +656,7 @@ export default function ThreadsView({
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody ref={scrollContainerRef}>
             {Object.entries(groupedThreads).length > 0 ? (
               Object.entries(groupedThreads).map(([date, dateThreads]) => (
                 <>
@@ -787,7 +799,7 @@ export default function ThreadsView({
       </div>
 
       {/* Mobile Cards */}
-      <div className="md:hidden space-y-4">
+      <div className="md:hidden space-y-4" ref={scrollContainerRef}>
         {Object.entries(groupedThreads).length > 0 ? (
           Object.entries(groupedThreads).map(([date, dateThreads]) => (
             <div key={`mobile-date-${date}`}>
@@ -916,6 +928,13 @@ export default function ThreadsView({
       {filteredThreads.length === 0 && searchQuery && (
         <div className="text-center py-12">
           <p className="text-[#616161]">No conversations found matching your search in the selected time period.</p>
+        </div>
+      )}
+
+      {isLoadingMore && (
+        <div className="flex items-center justify-center py-4">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#038a71]"></div>
+          <span className="ml-2 text-[#616161]">Loading more threads...</span>
         </div>
       )}
     </div>
