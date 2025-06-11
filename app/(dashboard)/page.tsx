@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { getThreadsSimple } from "@/lib/simple-database"
 import { getBots } from "@/lib/database"
-import ThreadsView from "@/components/ThreadsView"
+import ThreadsView from "@/components/threads-view"
 import type { Bot } from "@/lib/database"
 
 type DateFilter = "today" | "last7days" | "last30days" | "last90days" | "alltime"
