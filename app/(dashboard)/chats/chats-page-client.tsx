@@ -490,7 +490,7 @@ export default function ChatsPageClient({ bots }: ChatsPageClientProps) {
   }, {})
 
   return (
-    <div className="p-4 md:p-8 pt-0 relative">
+    <div className="p-4 md:p-6 pt-0 relative">
       {/* Tooltip */}
       {hoveredSentiment && (
         <div
@@ -505,7 +505,7 @@ export default function ChatsPageClient({ bots }: ChatsPageClientProps) {
       )}
 
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold text-[#212121] mb-2">Chats</h1>
         <p className="text-[#616161]">
           {selectedBot
