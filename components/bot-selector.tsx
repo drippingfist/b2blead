@@ -30,8 +30,8 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
 
         const { data, error, count } = await supabase
           .from("bots")
-          .select("id, bot_share_name", { count: "exact" })
-          .order("bot_share_name", { ascending: true })
+          .select("id, bot_share_name, client_name", { count: "exact" })
+          .order("client_name", { ascending: true })
 
         console.log("📊 Total bots found:", count)
         console.log("📊 Bots data:", data)
@@ -69,7 +69,7 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
 
   // Find the currently selected bot
   const currentBot = bots.find((bot) => bot.bot_share_name === selectedBot)
-  const displayName = selectedBot === null ? "All Bots" : currentBot?.bot_share_name || "Select Bot"
+  const displayName = selectedBot === null ? "All Bots" : currentBot?.client_name || "Select Bot"
 
   const handleBotSelection = (botShareName: string | null) => {
     console.log("🤖 Bot selector: Selecting bot:", botShareName)
@@ -131,6 +131,22 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
     )
   }
 
+  // If only one bot, show simple display instead of dropdown
+  if (bots.length === 1) {
+    const singleBot = bots[0]
+    return (
+      <div className="space-y-2">
+        <div className="w-full px-3 py-2 text-sm font-medium bg-gray-50 border border-[#e0e0e0] rounded-md text-[#212121]">
+          {singleBot.client_name}
+        </div>
+        <div className="text-xs text-gray-500">
+          <div>Found: 1 bot</div>
+          <div>Selected: {singleBot.client_name}</div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-2">
       <div className="relative" ref={dropdownRef}>
@@ -172,7 +188,7 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
                   bot.bot_share_name === selectedBot ? "bg-[#038a71]/10 text-[#038a71]" : "text-[#212121]"
                 }`}
               >
-                <span className="truncate">{bot.bot_share_name}</span>
+                <span className="truncate">{bot.client_name}</span>
                 {bot.bot_share_name === selectedBot && <Check className="h-4 w-4 text-[#038a71]" />}
               </button>
             ))}

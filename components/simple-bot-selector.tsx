@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase/client"
 interface Bot {
   id: string
   bot_share_name: string
+  client_name: string
 }
 
 interface SimpleBotSelectorProps {
@@ -36,8 +37,8 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
           // Super admins can see all bots
           const { data, error } = await supabase
             .from("bots")
-            .select("id, bot_share_name")
-            .order("bot_share_name", { ascending: true })
+            .select("id, bot_share_name, client_name")
+            .order("client_name", { ascending: true })
 
           if (error) throw error
           botsData = data || []
@@ -45,9 +46,9 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
           // Regular users only see their accessible bots
           const { data, error } = await supabase
             .from("bots")
-            .select("id, bot_share_name")
+            .select("id, bot_share_name, client_name")
             .in("bot_share_name", accessibleBots)
-            .order("bot_share_name", { ascending: true })
+            .order("client_name", { ascending: true })
 
           if (error) throw error
           botsData = data || []
@@ -130,7 +131,7 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
 
   // Find the currently selected bot
   const currentBot = bots.find((bot) => bot.bot_share_name === selectedBot)
-  const displayName = selectedBot === null ? "All Bots" : currentBot?.bot_share_name || "Select Bot"
+  const displayName = selectedBot === null ? "All Bots" : currentBot?.client_name || "Select Bot"
 
   if (loading) {
     return (
@@ -138,6 +139,18 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
         className={`w-full px-3 py-2 text-sm border border-[#e0e0e0] rounded-md bg-gray-50 text-[#616161] ${className}`}
       >
         Loading...
+      </div>
+    )
+  }
+
+  // If only one bot, show simple display instead of dropdown
+  if (bots.length === 1) {
+    const singleBot = bots[0]
+    return (
+      <div
+        className={`w-full px-3 py-2 text-sm font-medium bg-gray-50 border border-[#e0e0e0] rounded-md text-[#212121] ${className}`}
+      >
+        {singleBot.client_name}
       </div>
     )
   }
@@ -180,7 +193,7 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
                 bot.bot_share_name === selectedBot ? "bg-[#038a71]/10 text-[#038a71]" : "text-[#212121]"
               }`}
             >
-              <span className="truncate">{bot.bot_share_name}</span>
+              <span className="truncate">{bot.client_name}</span>
               {bot.bot_share_name === selectedBot && <Check className="h-4 w-4 text-[#038a71]" />}
             </button>
           ))}
