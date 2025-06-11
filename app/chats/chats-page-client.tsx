@@ -4,11 +4,6 @@ import { useState, useEffect, useRef } from "react"
 import { Calendar, ChevronDown, Check, RefreshCw, List } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase/client"
-import type { Bot } from "@/lib/database"
-
-interface ChatsPageClientProps {
-  bots: Bot[]
-}
 
 type TimePeriod = "today" | "last7days" | "last30days" | "last90days" | "alltime"
 type DisplayLimit = 50 | 100 | 500
@@ -27,9 +22,8 @@ const DISPLAY_LIMIT_OPTIONS = [
   { value: 500 as DisplayLimit, label: "500 rows" },
 ]
 
-export default function ChatsPageClient({ bots }: ChatsPageClientProps) {
+export default function ChatsPageClient() {
   const [loading, setLoading] = useState(false)
-  const [selectedBot, setSelectedBot] = useState<string>("amata")
   const [currentTimePeriod, setCurrentTimePeriod] = useState<TimePeriod>("last7days")
   const [displayLimit, setDisplayLimit] = useState<DisplayLimit>(50)
   const [timePeriodDropdownOpen, setTimePeriodDropdownOpen] = useState(false)
@@ -78,17 +72,16 @@ export default function ChatsPageClient({ bots }: ChatsPageClientProps) {
     }
   }
 
-  // Function to get thread count based on time period and bot selection
-  const getThreadCount = async (period: TimePeriod, botFilter: string, limit: DisplayLimit = displayLimit) => {
+  // Function to get thread count
+  const getThreadCount = async (period: TimePeriod) => {
     setLoading(true)
-    console.log("🔄 Getting thread count for period:", period, "bot:", botFilter, "limit:", limit)
+    console.log("🔄 Getting thread count for period:", period)
 
     try {
-      // Build the base query for count
       let baseQuery = supabase.from("threads").select("*", { count: "exact" }).gt("count", 0)
 
-      // Apply bot filter
-      baseQuery = baseQuery.eq("bot_share_name", botFilter)
+      // Filter for AMATA bot
+      baseQuery = baseQuery.eq("bot_share_name", "amata")
 
       // Apply time period filter
       const dateFilter = getDateFilterForPeriod(period)
@@ -96,7 +89,6 @@ export default function ChatsPageClient({ bots }: ChatsPageClientProps) {
         baseQuery = baseQuery.gte("created_at", dateFilter)
       }
 
-      // Get the total count
       const { count: totalCount, error: countError } = await baseQuery
 
       if (countError) {
@@ -118,24 +110,23 @@ export default function ChatsPageClient({ bots }: ChatsPageClientProps) {
   const handleTimePeriodChange = async (period: TimePeriod) => {
     setCurrentTimePeriod(period)
     setTimePeriodDropdownOpen(false)
-    await getThreadCount(period, selectedBot, displayLimit)
+    await getThreadCount(period)
   }
 
   // Handle display limit change
-  const handleDisplayLimitChange = async (limit: DisplayLimit) => {
+  const handleDisplayLimitChange = (limit: DisplayLimit) => {
     setDisplayLimit(limit)
     setLimitDropdownOpen(false)
-    await getThreadCount(currentTimePeriod, selectedBot, limit)
   }
 
   // Handle refresh
   const handleRefresh = async () => {
-    await getThreadCount(currentTimePeriod, selectedBot, displayLimit)
+    await getThreadCount(currentTimePeriod)
   }
 
-  // Initialize with current settings on mount
+  // Initialize on mount
   useEffect(() => {
-    getThreadCount(currentTimePeriod, selectedBot, displayLimit)
+    getThreadCount(currentTimePeriod)
   }, [])
 
   // Get current time period label
@@ -151,8 +142,8 @@ export default function ChatsPageClient({ bots }: ChatsPageClientProps) {
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Debug Information Box */}
-      <div className="mb-6 p-6 bg-blue-50 border border-blue-200 rounded-md">
-        <h3 className="text-lg font-semibold text-blue-800 mb-4">
+      <div className="mb-8 p-6 bg-blue-50 border border-blue-200 rounded-lg">
+        <h3 className="text-xl font-semibold text-blue-800">
           Showing threads for AMATA from {getCurrentTimePeriodLabel()} ({totalThreadCount} total) Times in GMT+7
         </h3>
       </div>
