@@ -35,6 +35,7 @@ interface ThreadsViewProps {
   selectedBot?: string | null
   onRefresh?: () => void
   bots?: Bot[] // Add bots prop to get timezone info
+  totalCount?: number // Add totalCount prop
 }
 
 interface ThreadWithMessageCount extends Thread {
@@ -49,7 +50,13 @@ interface ThreadWithMessageCount extends Thread {
 
 type DateFilter = "today" | "last7days" | "last30days" | "alltime"
 
-export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bots = [] }: ThreadsViewProps) {
+export default function ThreadsView({
+  initialThreads,
+  selectedBot,
+  onRefresh,
+  bots = [],
+  totalCount,
+}: ThreadsViewProps) {
   const [threads, setThreads] = useState<ThreadWithMessageCount[]>([])
   const [threadIdEnabled, setThreadIdEnabled] = useState(false) // Hidden by default
   const [searchQuery, setSearchQuery] = useState("")
@@ -105,6 +112,17 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
     }
 
     return threads.filter((thread) => new Date(thread.created_at) >= cutoffDate)
+  }
+
+  // Calculate the count based on the selected date filter
+  const getFilteredCount = (): number => {
+    if (dateFilter === "alltime") {
+      return totalCount || threads.length
+    }
+
+    // For other date filters, count the filtered threads
+    const filteredThreads = filterThreadsByDate(threads, dateFilter)
+    return filteredThreads.length
   }
 
   const handleSort = (column: string) => {
@@ -417,8 +435,8 @@ export default function ThreadsView({ initialThreads, selectedBot, onRefresh, bo
       <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 space-y-4 md:space-y-0">
         <div className="mb-6">
           <p className="text-[#616161]">
-            {selectedBot ? `Showing threads for ${selectedBotName}` : "Showing all threads"} (
-            {dateFilteredThreads.length} total)
+            {selectedBot ? `Showing threads for ${selectedBotName}` : "Showing all threads"} ({getFilteredCount()}{" "}
+            total)
             <span className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded">Times in {timezoneAbbr}</span>
           </p>
         </div>

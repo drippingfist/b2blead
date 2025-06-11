@@ -71,22 +71,32 @@ export default async function ChatsPage() {
   const botShareNames = userBots.map((bot) => bot.bot_share_name)
   console.log("🔍 CHATS DEBUG: Accessible bot share names:", botShareNames)
 
-  // Get threads for these bots
+  // Get total count of threads for these bots (without limit)
+  const { count: totalThreadsCount, error: countError } = await supabase
+    .from("threads")
+    .select("*", { count: "exact", head: true })
+    .in("bot_share_name", botShareNames)
+    .gt("count", 0)
+
+  console.log("🔍 CHATS DEBUG: total threads count:", totalThreadsCount)
+  console.log("🔍 CHATS DEBUG: count query error:", countError)
+
+  // Get threads for these bots (with limit for display)
   const { data: threads, error } = await supabase
     .from("threads")
     .select(`
-      id,
-      created_at,
-      bot_share_name,
-      thread_id,
-      updated_at,
-      duration,
-      message_preview,
-      sentiment_score,
-      cb_requested,
-      count,
-      bots(client_name)
-    `)
+    id,
+    created_at,
+    bot_share_name,
+    thread_id,
+    updated_at,
+    duration,
+    message_preview,
+    sentiment_score,
+    cb_requested,
+    count,
+    bots(client_name)
+  `)
     .in("bot_share_name", botShareNames)
     .gt("count", 0)
     .order("updated_at", { ascending: false })
@@ -118,7 +128,7 @@ export default async function ChatsPage() {
         <br />
         SuperAdmin Data: {JSON.stringify(superAdminCheck)}
       </div>
-      <ChatsPageClient threads={threads || []} isSuperAdmin={isSuperAdmin} />
+      <ChatsPageClient threads={threads || []} isSuperAdmin={isSuperAdmin} totalCount={totalThreadsCount || 0} />
     </div>
   )
 }

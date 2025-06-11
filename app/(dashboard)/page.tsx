@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import ThreadsView from "@/components/threads-view"
-import { getThreadsSimple } from "@/lib/simple-database"
+import { getThreadsSimple, getThreadsCount } from "@/lib/simple-database"
 import { getAccessibleBotsClient, getUserBotAccess } from "@/lib/database"
 import type { Thread } from "@/lib/simple-database"
 import type { Bot } from "@/lib/database"
@@ -14,6 +14,7 @@ export default function ChatsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [botsLoaded, setBotsLoaded] = useState(false)
+  const [totalCount, setTotalCount] = useState<number>(0)
   const [userAccess, setUserAccess] = useState<{
     role: "superadmin" | "admin" | "member" | null
     accessibleBots: string[]
@@ -76,9 +77,18 @@ export default function ChatsPage() {
     setError(null)
     try {
       console.log("🧵 PAGE: Fetching threads for bot_share_name:", selectedBot)
-      const threadsData = await getThreadsSimple(100, selectedBot)
+
+      // Fetch both threads and total count
+      const [threadsData, totalCountData] = await Promise.all([
+        getThreadsSimple(50, selectedBot), // Get 50 threads for display
+        getThreadsCount(selectedBot), // Get total count
+      ])
+
       console.log(`🧵 PAGE: Fetched ${threadsData.length} threads`)
+      console.log(`🔢 PAGE: Total count: ${totalCountData}`)
+
       setThreads(threadsData)
+      setTotalCount(totalCountData)
     } catch (error: any) {
       console.error("❌ PAGE: Error fetching threads:", error)
       setError(error.message)
@@ -164,7 +174,13 @@ export default function ChatsPage() {
         </div>
       </div>
 
-      <ThreadsView initialThreads={threads} selectedBot={selectedBot} onRefresh={fetchThreads} bots={bots} />
+      <ThreadsView
+        initialThreads={threads}
+        selectedBot={selectedBot}
+        onRefresh={fetchThreads}
+        bots={bots}
+        totalCount={totalCount}
+      />
     </div>
   )
 }

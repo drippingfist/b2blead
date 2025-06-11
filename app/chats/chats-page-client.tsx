@@ -22,14 +22,22 @@ interface Thread {
 interface ChatsPageClientProps {
   threads: Thread[]
   isSuperAdmin: boolean
+  totalCount: number
 }
 
-export default function ChatsPageClient({ threads, isSuperAdmin }: ChatsPageClientProps) {
+export default function ChatsPageClient({ threads, isSuperAdmin, totalCount }: ChatsPageClientProps) {
   const router = useRouter()
 
   const handleThreadsDeleted = () => {
     router.refresh()
   }
 
-  return <ChatsList threads={threads} isSuperAdmin={isSuperAdmin} onThreadsDeleted={handleThreadsDeleted} />
+  return (
+    <ChatsList
+      threads={threads}
+      isSuperAdmin={isSuperAdmin}
+      totalCount={totalCount}
+      onThreadsDeleted={handleThreadsDeleted}
+    />
+  )
 }

@@ -63,9 +63,14 @@ export interface Callback {
   user_cb_message?: string
 }
 
-// Get threads - filter by bot_share_name if provided
-export async function getThreadsSimple(limit = 50, botShareName?: string | null): Promise<Thread[]> {
+// Get threads - filter by bot_share_name and date range if provided
+export async function getThreadsSimple(
+  limit = 50, 
+  botShareName?: string | null, 
+  dateRange?: { start: Date; end: Date } | null
+): Promise<Thread[]> {
   console.log("🧵 Fetching threads for bot_share_name:", botShareName || "ALL")
+  console.log("🧵 Date range:", dateRange)
 
   // Get user's accessible bots
   const {
@@ -149,6 +154,14 @@ export async function getThreadsSimple(limit = 50, botShareName?: string | null)
     query = query.in("bot_share_name", accessibleBots)
   }
 
+  // Apply date range filter if provided
+  if (dateRange) {
+    console.log("📅 Applying date range filter:", dateRange.start, "to", dateRange.end)
+    query = query
+      .gte("created_at", dateRange.start.toISOString())
+      .lte("created_at", dateRange.end.toISOString())
+  }
+
   const { data, error } = await query
 
   if (error) {
@@ -158,6 +171,95 @@ export async function getThreadsSimple(limit = 50, botShareName?: string | null)
 
   console.log("✅ Successfully fetched", data?.length || 0, "threads")
   return data || []
+}
+
+// Get count of threads - filter by bot_share_name and date range if provided
+export async function getThreadsCount(
+  botShareName?: string | null, 
+  dateRange?: { start: Date; end: Date } | null
+): Promise<number> {
+  console.log("🔢 Getting thread count for bot_share_name:", botShareName || "ALL")
+  console.log("🔢 Date range:", dateRange)
+
+  // Get user's accessible bots
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user?.id) {
+    console.log("❌ No authenticated user")
+    return 0
+  }
+
+  // Get user's bot access using FK relationship
+  const { data: botUsers, error: accessError } = await supabase
+    .from("bot_users")
+    .select("role, bot_share_name")
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+
+  if (accessError || !botUsers || botUsers.length === 0) {
+    console.log("❌ No bot access for user:", accessError?.message || "No records found")
+    return 0
+  }
+
+  // Check if user is superadmin
+  const isSuperAdmin = botUsers.some((bu) => bu.role === "superadmin")
+
+  let accessibleBots: string[] = []
+
+  if (isSuperAdmin) {
+    // Superadmin can see all bots
+    const { data: allBots } = await supabase.from("bots").select("bot_share_name").not("bot_share_name", "is", null)
+    accessibleBots = allBots?.map((b) => b.bot_share_name).filter(Boolean) || []
+  } else {
+    // Regular admin/member - get their specific bot assignments
+    accessibleBots = botUsers
+      .filter((bu) => bu.bot_share_name)
+      .map((bu) => bu.bot_share_name)
+      .filter(Boolean)
+  }
+
+  if (accessibleBots.length === 0) {
+    console.log("❌ No accessible bots found")
+    return 0
+  }
+
+  let query = supabase
+    .from("threads")
+    .select("*", { count: "exact", head: true })
+    .gt("count", 0)
+
+  // If a specific bot is selected, filter by that bot (if user has access)
+  if (botShareName) {
+    if (accessibleBots.includes(botShareName)) {
+      query = query.eq("bot_share_name", botShareName)
+    } else {
+      console.log("❌ User doesn't have access to bot:", botShareName)
+      return 0
+    }
+  } else {
+    // No specific bot selected, filter by all accessible bots
+    query = query.in("bot_share_name", accessibleBots)
+  }
+
+  // Apply date range filter if provided
+  if (dateRange) {
+    console.log("📅 Applying date range filter to count:", dateRange.start, "to", dateRange.end)
+    query = query
+      .gte("created_at", dateRange.start.toISOString())
+      .lte("created_at", dateRange.end.toISOString())
+  }
+
+  const { count, error } = await query
+
+  if (error) {
+    console.error("❌ Error getting thread count:", error)
+    return 0
+  }
+
+  console.log("✅ Thread count:", count)
+  return count || 0
 }
 
 // Get messages for a thread
