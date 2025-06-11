@@ -30,12 +30,15 @@ export default function ForgotPasswordForm() {
 
       const data = await response.json()
 
-      if (response.ok) {
+      // The API always returns 200 status code for security reasons
+      // So we check for success property in the response data
+      if (data.success) {
         setIsSuccess(true)
       } else {
         setError(data.error || "An error occurred")
       }
     } catch (error) {
+      console.error("Password reset request error:", error)
       setError("An error occurred. Please try again.")
     } finally {
       setIsLoading(false)
