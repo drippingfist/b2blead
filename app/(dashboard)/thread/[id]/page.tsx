@@ -23,8 +23,8 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
 
       // If bot selection changes and we have thread data, check if thread belongs to new bot
       if (thread && thread.bot_share_name !== newBotSelection) {
-        console.log("🔄 Thread Detail: Thread belongs to different bot, redirecting to chats")
-        router.push("/")
+        console.log("🔄 Thread Detail: Thread belongs to different bot, redirecting to callbacks")
+        router.push("/callbacks")
       }
 
       setSelectedBot(newBotSelection)
@@ -72,7 +72,7 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
       const currentSelectedBot = localStorage.getItem("selectedBot")
       if (currentSelectedBot && currentSelectedBot !== "null" && threadData.bot_share_name !== currentSelectedBot) {
         console.log("🔄 Thread Detail: Thread doesn't belong to selected bot, redirecting")
-        router.push("/")
+        router.push("/callbacks")
         return
       }
 
@@ -154,9 +154,9 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
       {/* Left Panel - Thread Information */}
       <div className="w-1/3 border-r border-[#e0e0e0] bg-white overflow-y-auto">
         <div className="p-6">
-          <Link href="/" className="flex items-center text-[#616161] hover:text-[#212121] mb-6">
+          <Link href="/callbacks" className="flex items-center text-[#616161] hover:text-[#212121] mb-6">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to chats
+            Back to callbacks
           </Link>
 
           <h1 className="text-xl font-semibold text-[#212121] mb-6">Thread Details</h1>
