@@ -4,10 +4,9 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Save, X, User } from "lucide-react"
+import { Loader2, Save, X, User } from "lucide-react"
 import { supabase } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
-import Loading from "@/components/loading"
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -154,7 +153,11 @@ export default function ProfilePage() {
 
   if (loading) {
     console.log("Profile page is loading...")
-    return <Loading message="Loading profile..." />
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-[#038a71]" />
+      </div>
+    )
   }
 
   if (!hasAccess) {
@@ -191,7 +194,7 @@ export default function ProfilePage() {
             disabled={saving || loading}
             className="bg-[#038a71] hover:bg-[#038a71]/90 flex items-center"
           >
-            {saving ? <Loading size="sm" className="mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+            {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
             Save Changes
           </Button>
         </div>

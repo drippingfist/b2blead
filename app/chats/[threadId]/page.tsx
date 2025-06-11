@@ -2,43 +2,18 @@
 
 import { getMessagesByThreadId } from "@/lib/database"
 import { supabase } from "@/lib/supabase/client"
-import { notFound, useRouter } from "next/navigation"
+import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Clock, MessageSquare, Phone, Timer, Star } from "lucide-react"
 import { useState, useEffect } from "react"
+import { formatTimeInTimezone, getTimezoneAbbreviation } from "@/lib/timezone-utils"
 
 export default function ThreadDetailPage({ params }: { params: { id: string } }) {
   const threadId = params.id
   const [messages, setMessages] = useState<any[]>([])
   const [thread, setThread] = useState<any>(null)
+  const [botTimezone, setBotTimezone] = useState<string>("UTC")
   const [loading, setLoading] = useState(true)
-  const [selectedBot, setSelectedBot] = useState<string | null>(null)
-  const router = useRouter()
-
-  // Listen for bot selection changes
-  useEffect(() => {
-    const handleBotSelectionChanged = (event: CustomEvent) => {
-      const newBotSelection = event.detail
-      console.log("🔄 Thread Detail: Bot selection changed to:", newBotSelection)
-
-      // If bot selection changes and we have thread data, check if thread belongs to new bot
-      if (thread && thread.bot_share_name !== newBotSelection) {
-        console.log("🔄 Thread Detail: Thread belongs to different bot, redirecting to chats")
-        router.push("/")
-      }
-
-      setSelectedBot(newBotSelection)
-    }
-
-    // Get initial bot selection from localStorage
-    const storedBot = localStorage.getItem("selectedBot")
-    if (storedBot && storedBot !== "null") {
-      setSelectedBot(storedBot)
-    }
-
-    window.addEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
-    return () => window.removeEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
-  }, [thread, router])
 
   useEffect(() => {
     async function loadData() {
@@ -65,26 +40,29 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
         notFound()
       }
 
-      console.log("🔍 ThreadDetailPage: Thread data:", threadData)
       setThread(threadData)
 
-      // Check if thread belongs to currently selected bot
-      const currentSelectedBot = localStorage.getItem("selectedBot")
-      if (currentSelectedBot && currentSelectedBot !== "null" && threadData.bot_share_name !== currentSelectedBot) {
-        console.log("🔄 Thread Detail: Thread doesn't belong to selected bot, redirecting")
-        router.push("/")
-        return
+      // Get bot timezone
+      if (threadData.bot_share_name) {
+        const { data: bot, error: botError } = await supabase
+          .from("bots")
+          .select("timezone")
+          .eq("bot_share_name", threadData.bot_share_name)
+          .single()
+
+        if (!botError && bot?.timezone) {
+          setBotTimezone(bot.timezone)
+        }
       }
 
       // Get messages using the thread ID
       const messagesData = await getMessagesByThreadId(threadData.id)
-      console.log("🔍 ThreadDetailPage: Messages data:", messagesData)
       setMessages(messagesData)
       setLoading(false)
     }
 
     loadData()
-  }, [threadId, router])
+  }, [threadId])
 
   const handleStarMessage = async (messageId: string) => {
     try {
@@ -149,6 +127,8 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
     return <div>Loading...</div>
   }
 
+  const timezoneAbbr = getTimezoneAbbreviation(botTimezone)
+
   return (
     <div className="flex h-screen bg-[#fdfdfd]">
       {/* Left Panel - Thread Information */}
@@ -161,119 +141,105 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
 
           <h1 className="text-xl font-semibold text-[#212121] mb-6">Thread Details</h1>
 
-          {/* Show bot mismatch warning if applicable */}
-          {selectedBot && thread && thread.bot_share_name !== selectedBot && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-6">
-              <p className="text-sm text-yellow-800">
-                ⚠️ This thread belongs to a different bot ({thread.bot_share_name}) than currently selected (
-                {selectedBot})
-              </p>
-            </div>
-          )}
+          {/* Thread Information */}
+          <div className="space-y-6">
+            {/* Callback Basic Info - Always show if callbacks exists */}
+            {thread?.callbacks && (
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h3 className="text-sm font-medium text-[#616161] uppercase tracking-wider mb-3 flex items-center">
+                  <Phone className="h-4 w-4 mr-1" />
+                  Callback
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Created At */}
+                  <div>
+                    <p className="text-xs text-[#616161] font-medium">Created At</p>
+                    <p className="text-sm text-[#212121]">
+                      {formatTimeInTimezone(thread.callbacks.created_at, botTimezone)} {timezoneAbbr}
+                    </p>
+                  </div>
 
-          {/* Callback Basic Info - Always show if callbacks exists */}
-          {thread?.callbacks && (
-            <div className="bg-blue-100 p-4 rounded-lg mb-6">
-              <h3 className="text-sm font-medium text-[#616161] uppercase tracking-wider mb-3 flex items-center">
-                <Phone className="h-4 w-4 mr-1" />
-                Callback
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* Created At */}
-                <div>
-                  <p className="text-xs text-[#616161] font-medium">Created At</p>
-                  <p className="text-sm text-[#212121]">
-                    {new Date(thread.callbacks.created_at).toLocaleString("en-US", {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      second: "2-digit",
-                    })}
-                  </p>
+                  {/* Name */}
+                  {(thread.callbacks.user_name ||
+                    thread.callbacks.user_first_name ||
+                    thread.callbacks.user_surname) && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Name</p>
+                      <p className="text-sm text-[#212121]">
+                        {thread.callbacks.user_name ||
+                          `${thread.callbacks.user_first_name || ""} ${thread.callbacks.user_surname || ""}`.trim()}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Email */}
+                  {thread.callbacks.user_email && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Email</p>
+                      <p className="text-sm text-[#212121]">{thread.callbacks.user_email}</p>
+                    </div>
+                  )}
+
+                  {/* Phone */}
+                  {thread.callbacks.user_phone && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Phone</p>
+                      <p className="text-sm text-[#212121]">{formatPhoneNumber(thread.callbacks.user_phone)}</p>
+                    </div>
+                  )}
+
+                  {/* Company */}
+                  {thread.callbacks.user_company && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Company</p>
+                      <p className="text-sm text-[#212121]">{thread.callbacks.user_company}</p>
+                    </div>
+                  )}
+
+                  {/* Country */}
+                  {thread.callbacks.user_country && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Country</p>
+                      <p className="text-sm text-[#212121]">{thread.callbacks.user_country}</p>
+                    </div>
+                  )}
+
+                  {/* Website */}
+                  {thread.callbacks.user_url && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Website</p>
+                      <a
+                        href={thread.callbacks.user_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-[#038a71] hover:underline break-all"
+                      >
+                        {thread.callbacks.user_url}
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Revenue */}
+                  {thread.callbacks.user_revenue && (
+                    <div>
+                      <p className="text-xs text-[#616161] font-medium">Revenue</p>
+                      <p className="text-sm text-[#212121]">{thread.callbacks.user_revenue}</p>
+                    </div>
+                  )}
                 </div>
 
-                {/* Name */}
-                {(thread.callbacks.user_name || thread.callbacks.user_first_name || thread.callbacks.user_surname) && (
-                  <div>
-                    <p className="text-xs text-[#616161] font-medium">Name</p>
-                    <p className="text-sm text-[#212121]">
-                      {thread.callbacks.user_name ||
-                        `${thread.callbacks.user_first_name || ""} ${thread.callbacks.user_surname || ""}`.trim()}
+                {/* Message - full width if present */}
+                {thread.callbacks.user_cb_message && (
+                  <div className="mt-4 pt-3 border-t border-blue-200">
+                    <p className="text-xs text-[#616161] font-medium mb-1">Message</p>
+                    <p className="text-sm text-[#212121] bg-white p-3 rounded border leading-relaxed">
+                      {thread.callbacks.user_cb_message}
                     </p>
                   </div>
                 )}
-
-                {/* Email */}
-                {thread.callbacks.user_email && (
-                  <div>
-                    <p className="text-xs text-[#616161] font-medium">Email</p>
-                    <p className="text-sm text-[#212121]">{thread.callbacks.user_email}</p>
-                  </div>
-                )}
-
-                {/* Phone */}
-                {thread.callbacks.user_phone && (
-                  <div>
-                    <p className="text-xs text-[#616161] font-medium">Phone</p>
-                    <p className="text-sm text-[#212121]">{formatPhoneNumber(thread.callbacks.user_phone)}</p>
-                  </div>
-                )}
-
-                {/* Company */}
-                {thread.callbacks.user_company && (
-                  <div>
-                    <p className="text-xs text-[#616161] font-medium">Company</p>
-                    <p className="text-sm text-[#212121]">{thread.callbacks.user_company}</p>
-                  </div>
-                )}
-
-                {/* Country */}
-                {thread.callbacks.user_country && (
-                  <div>
-                    <p className="text-xs text-[#616161] font-medium">Country</p>
-                    <p className="text-sm text-[#212121]">{thread.callbacks.user_country}</p>
-                  </div>
-                )}
-
-                {/* Website */}
-                {thread.callbacks.user_url && (
-                  <div>
-                    <p className="text-xs text-[#616161] font-medium">Website</p>
-                    <a
-                      href={thread.callbacks.user_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-[#038a71] hover:underline break-all"
-                    >
-                      {thread.callbacks.user_url}
-                    </a>
-                  </div>
-                )}
-
-                {/* Revenue */}
-                {thread.callbacks.user_revenue && (
-                  <div>
-                    <p className="text-xs text-[#616161] font-medium">Revenue</p>
-                    <p className="text-sm text-[#212121]">{thread.callbacks.user_revenue}</p>
-                  </div>
-                )}
               </div>
+            )}
 
-              {/* Message - full width if present */}
-              {thread.callbacks.user_cb_message && (
-                <div className="mt-4 pt-3 border-t border-blue-200">
-                  <p className="text-xs text-[#616161] font-medium mb-1">Message</p>
-                  <p className="text-sm text-[#212121] bg-white p-3 rounded border leading-relaxed">
-                    {thread.callbacks.user_cb_message}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="space-y-6">
             <div className="bg-gray-50 p-4 rounded-lg">
               <h3 className="text-sm font-medium text-[#616161] uppercase tracking-wider mb-3">Thread Info</h3>
               <div className="space-y-3">
@@ -282,20 +248,9 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
                   <p className="text-sm font-mono text-[#212121]">{thread?.id}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-[#616161]">Bot</p>
-                  <p className="text-sm text-[#212121]">{thread?.bot_share_name}</p>
-                </div>
-                <div>
                   <p className="text-xs text-[#616161]">Created At</p>
                   <p className="text-sm text-[#212121]">
-                    {new Date(thread?.created_at).toLocaleString("en-US", {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      second: "2-digit",
-                    })}
+                    {formatTimeInTimezone(thread?.created_at, botTimezone)} {timezoneAbbr}
                   </p>
                 </div>
               </div>
@@ -466,38 +421,21 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
       {/* Right Panel - Chat Messages */}
       <div className="flex-1 flex flex-col bg-gray-50">
         <div className="bg-white border-b border-[#e0e0e0] p-4">
-          <h2 className="text-lg font-medium text-[#212121]">{thread?.message_preview || "Chat Transcript"}</h2>
-          <p className="text-sm text-[#616161]">{messages.length} messages</p>
+          <h2 className="text-lg font-medium text-[#212121]">Chat Transcript</h2>
+          <p className="text-sm text-[#616161]">
+            {messages.length} messages • Times in {timezoneAbbr}
+          </p>
         </div>
 
         <div className="flex-1 overflow-y-auto px-[10%] py-4 space-y-4">
           {messages.map((message, index) => {
-            const isUserMessage =
-              message.role === "user" || message.role === "menu_button" || message.role === "suggested_button"
-            const isButtonMessage = message.role === "menu_button" || message.role === "suggested_button"
-
-            // Determine message content based on role
-            let messageContent = ""
-            if (message.role === "user") {
-              messageContent = message.user_message || message.content || "No content"
-            } else if (message.role === "menu_button") {
-              messageContent = message.content || "No content"
-            } else if (message.role === "suggested_button") {
-              messageContent = message.suggested_message || message.content || "No content"
-            } else if (message.role === "bot") {
-              messageContent = message.content || message.bot_message || "No content"
-            } else {
-              messageContent = message.content || "No content"
-            }
-
-            let roleLabel = "AI"
-            if (message.role === "user") {
-              roleLabel = "User"
-            } else if (message.role === "menu_button") {
-              roleLabel = "Menu Button"
-            } else if (message.role === "suggested_button") {
-              roleLabel = "Suggested Button"
-            }
+            const isUserMessage = message.role === "user" || message.role === "suggested_button"
+            const messageContent =
+              message.content ||
+              message.user_message ||
+              message.suggested_message ||
+              message.bot_message ||
+              "No content"
 
             return (
               <div key={message.id} className={`flex ${isUserMessage ? "justify-start" : "justify-end"} mb-8 group`}>
@@ -518,10 +456,17 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
                 <div
                   className={`flex flex-col ${isUserMessage ? "items-start" : "items-end"} max-w-[60%] min-w-[120px]`}
                 >
+                  {/* Preset message label above bubble */}
+                  {message.role === "suggested_button" && (
+                    <div className="mb-1 px-2">
+                      <span className="text-xs text-green-600 font-medium">Preset message</span>
+                    </div>
+                  )}
+
                   <div
                     className={`relative w-full ${
                       isUserMessage
-                        ? isButtonMessage
+                        ? message.role === "suggested_button"
                           ? "bg-green-50 border border-green-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm"
                           : "bg-white border border-[#e0e0e0] rounded-2xl rounded-bl-md px-4 py-3 shadow-sm"
                         : "bg-[#038a71] text-white rounded-2xl rounded-br-md px-4 py-3 shadow-sm"
@@ -529,24 +474,21 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
                   >
                     <p
                       className={`text-sm leading-relaxed break-words ${
-                        isUserMessage ? (isButtonMessage ? "text-green-800" : "text-[#212121]") : "text-white"
+                        isUserMessage
+                          ? message.role === "suggested_button"
+                            ? "text-green-800"
+                            : "text-[#212121]"
+                          : "text-white"
                       }`}
                     >
                       {messageContent}
                     </p>
                   </div>
 
-                  <div className="flex justify-between w-full mt-1 px-1">
-                    <span className="text-xs text-[#616161]">{roleLabel}</span>
-                    <span className="text-xs text-[#616161]">
-                      {new Date(message.created_at).toLocaleTimeString("en-US", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                        hour12: false,
-                      })}
-                    </span>
-                  </div>
+                  {/* Time outside the bubble */}
+                  <p className={`text-xs mt-1 px-2 ${isUserMessage ? "text-[#616161]" : "text-[#616161]"}`}>
+                    {formatTimeInTimezone(message.created_at, botTimezone)}
+                  </p>
                 </div>
 
                 {/* Star button for bot messages - positioned on the right */}

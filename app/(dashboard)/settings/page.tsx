@@ -19,7 +19,6 @@ import {
   getInvitableBots,
 } from "@/lib/user-actions"
 import { DeleteUserModal } from "@/components/delete-user-modal"
-import Loading from "@/components/loading"
 
 interface UserData {
   id: string
@@ -91,7 +90,6 @@ export default function SettingsPage() {
   const [botSettingsSaving, setBotSettingsSaving] = useState(false)
   const [clientName, setClientName] = useState<string>("")
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
-  const [editingEmail, setEditingEmail] = useState(false)
 
   useEffect(() => {
     async function loadUserData() {
@@ -99,15 +97,11 @@ export default function SettingsPage() {
         setLoading(true)
         setError(null)
 
-        console.log("⚙️ Settings Page: Starting data load...")
-        const startTime = Date.now()
-
         // Check localStorage for selected bot first
         const storedBot = localStorage.getItem("selectedBot")
         console.log("⚙️ Settings Page: Retrieved bot from localStorage:", storedBot)
         setSelectedBot(storedBot)
 
-        // Get current user
         const {
           data: { user },
           error: userError,
@@ -117,86 +111,44 @@ export default function SettingsPage() {
           throw new Error(userError?.message || "Failed to load user data")
         }
 
-        console.log("⚙️ Settings Page: Got user, starting parallel queries...")
+        const { data: profile, error: profileError } = await supabase
+          .from("user_profiles")
+          .select("first_name, surname")
+          .eq("id", user.id)
+          .single()
 
-        // Run all queries in parallel for faster loading
-        const [profileResult, botUsersResult, availableBotsResult, usersResult, invitationsResult] =
-          await Promise.allSettled([
-            // Get user profile
-            supabase
-              .from("user_profiles")
-              .select("first_name, surname")
-              .eq("id", user.id)
-              .single(),
+        // Get user's bot access to determine timezone
+        const { data: botUsers, error: botUserError } = await supabase
+          .from("bot_users")
+          .select("bot_share_name")
+          .eq("user_id", user.id)
 
-            // Get user's bot access
-            supabase
-              .from("bot_users")
-              .select("bot_share_name, role")
-              .eq("user_id", user.id)
-              .eq("is_active", true),
-
-            // Get available bots
-            getInvitableBots(),
-
-            // Get users
-            getUsers(storedBot),
-
-            // Get invitations
-            getInvitations(),
-          ])
-
-        // Process profile result
-        let profile = null
-        if (profileResult.status === "fulfilled" && !profileResult.value.error) {
-          profile = profileResult.value.data
-        }
-
-        // Process bot users result
-        let botUsers = []
-        if (botUsersResult.status === "fulfilled" && !botUsersResult.value.error) {
-          botUsers = botUsersResult.value.data || []
-        }
-
-        // Find the appropriate bot user
         let botUser = null
-        if (botUsers.length > 0) {
+        if (!botUserError && botUsers && botUsers.length > 0) {
+          // If a specific bot is selected, use that one, otherwise use the first one
           if (storedBot) {
-            botUser = botUsers.find((bu: any) => bu.bot_share_name === storedBot) || botUsers[0]
+            botUser = botUsers.find((bu) => bu.bot_share_name === storedBot) || botUsers[0]
           } else {
             botUser = botUsers[0]
           }
         }
 
-        // Get bot details and set initial state
         let userTimezone = "Asia/Bangkok"
-        let clientNameValue = ""
-        let botSettingsValue = { bot_share_name: "", client_email: "" }
-
         if (botUser?.bot_share_name) {
-          console.log("⚙️ Settings Page: Loading bot details for:", botUser.bot_share_name)
-
-          const { data: bot, error: botError } = await supabase
+          const { data: bot } = await supabase
             .from("bots")
-            .select("timezone, client_name, client_email")
+            .select("timezone, client_name")
             .eq("bot_share_name", botUser.bot_share_name)
             .single()
 
-          if (!botError && bot) {
-            userTimezone = bot.timezone || "Asia/Bangkok"
-            clientNameValue = bot.client_name || ""
-
-            // Only load bot settings for admins and superadmins
-            if (botUser.role === "admin" || botUser.role === "superadmin") {
-              botSettingsValue = {
-                bot_share_name: botUser.bot_share_name,
-                client_email: bot.client_email || "",
-              }
-            }
+          if (bot?.timezone) {
+            userTimezone = bot.timezone
+          }
+          if (bot?.client_name) {
+            setClientName(bot.client_name)
           }
         }
 
-        // Set all state at once
         setUserData({
           id: user.id,
           email: user.email || "",
@@ -205,26 +157,10 @@ export default function SettingsPage() {
           timezone: userTimezone,
         })
 
-        setClientName(clientNameValue)
-        setBotSettings(botSettingsValue)
-
-        // Process available bots result
-        if (availableBotsResult.status === "fulfilled" && availableBotsResult.value.success) {
-          setAvailableBots(availableBotsResult.value.bots || [])
-        }
-
-        // Process users result
-        if (usersResult.status === "fulfilled" && usersResult.value.success) {
-          setUsers(usersResult.value.users.filter((user: any) => user.role !== "superadmin"))
-        }
-
-        // Process invitations result
-        if (invitationsResult.status === "fulfilled" && invitationsResult.value.success) {
-          setInvitedUsers(invitationsResult.value.invitations || [])
-        }
-
-        const endTime = Date.now()
-        console.log(`⚙️ Settings Page: Data load completed in ${endTime - startTime}ms`)
+        await loadAvailableBots()
+        await loadUsers()
+        await loadInvitations()
+        await loadBotSettings()
       } catch (err: any) {
         console.error("Error loading user data:", err)
         setError(err.message || "Failed to load user data")
@@ -234,29 +170,31 @@ export default function SettingsPage() {
     }
 
     loadUserData()
+  }, [])
 
-    // Listen for bot selection changes
-    const handleBotChange = (event: CustomEvent) => {
-      const newBot = event.detail
-      console.log("⚙️ Settings Page: Bot changed to:", newBot)
-      setSelectedBot(newBot)
-      // Reload data with new bot
-      loadUserData()
+  const loadAvailableBots = async () => {
+    try {
+      const result = await getInvitableBots()
+
+      if (result.success) {
+        setAvailableBots(result.bots || [])
+      } else {
+        console.error("Error loading invitable bots:", result.error)
+        setError(result.error || "Failed to load available bots")
+      }
+    } catch (err: any) {
+      console.error("Error loading bots:", err)
+      setError("Failed to load available bots")
     }
-
-    window.addEventListener("botChanged", handleBotChange as EventListener)
-
-    return () => {
-      window.removeEventListener("botChanged", handleBotChange as EventListener)
-    }
-  }, []) // Remove selectedBot dependency to prevent infinite loops
+  }
 
   const loadUsers = async () => {
     try {
       setUsersLoading(true)
-      const result = await getUsers(selectedBot)
+      const result = await getUsers()
 
       if (result.success) {
+        setUsers(result.users)
         setUsers(result.users.filter((user) => user.role !== "superadmin"))
       } else {
         setError(result.error || "Failed to load users")
@@ -283,6 +221,68 @@ export default function SettingsPage() {
     }
   }
 
+  const loadBotSettings = async () => {
+    try {
+      setBotSettingsLoading(true)
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+
+      if (userError || !user?.id) {
+        return
+      }
+
+      // Get user's bot assignment - prioritize selected bot
+      const { data: botUsers, error: botUserError } = await supabase
+        .from("bot_users")
+        .select("bot_share_name, role")
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+
+      if (botUserError || !botUsers || botUsers.length === 0) {
+        console.error("Error loading bot users:", botUserError)
+        return
+      }
+
+      // Find the bot user for the selected bot, or use the first one
+      let botUser = botUsers[0]
+      if (selectedBot) {
+        const specificBotUser = botUsers.find((bu) => bu.bot_share_name === selectedBot)
+        if (specificBotUser) {
+          botUser = specificBotUser
+        }
+      }
+
+      // Only load bot settings for admins and superadmins (not members)
+      if (botUser.role !== "admin" && botUser.role !== "superadmin") {
+        return
+      }
+
+      // Get the bot details
+      const { data: bot, error: botError } = await supabase
+        .from("bots")
+        .select("bot_share_name, client_email")
+        .eq("bot_share_name", botUser.bot_share_name)
+        .single()
+
+      if (botError) {
+        console.error("Error loading bot settings:", botError)
+        return
+      }
+
+      setBotSettings({
+        bot_share_name: bot.bot_share_name || "",
+        client_email: bot.client_email || "",
+      })
+    } catch (err: any) {
+      console.error("Error loading bot settings:", err)
+    } finally {
+      setBotSettingsLoading(false)
+    }
+  }
+
   const handleSaveBotSettings = async () => {
     try {
       setBotSettingsSaving(true)
@@ -297,7 +297,6 @@ export default function SettingsPage() {
         throw new Error(updateError.message)
       }
 
-      setEditingEmail(false)
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     } catch (err: any) {
@@ -356,7 +355,7 @@ export default function SettingsPage() {
           throw new Error(botUpdateError.message)
         }
       } else {
-        // Fallback: update timezone for all bots the user has access to
+        // Fallback: update timezone for all bots the user has access to (for backward compatibility)
         const { data: userBots, error: userBotsError } = await supabase
           .from("bot_users")
           .select("bot_share_name")
@@ -420,8 +419,9 @@ export default function SettingsPage() {
         return
       }
 
-      const selectedBotData = availableBots.find((bot) => bot.bot_share_name === newUser.bot_share_name)
-      if (!selectedBotData) {
+      // Additional validation: check if the selected bot is in available bots
+      const selectedBot = availableBots.find((bot) => bot.bot_share_name === newUser.bot_share_name)
+      if (!selectedBot) {
         setError("Invalid bot selection. Please choose from the available bots.")
         return
       }
@@ -435,6 +435,7 @@ export default function SettingsPage() {
       })
 
       if (result.success) {
+        // Reset form and reload data
         setNewUser({
           email: "",
           first_name: "",
@@ -444,10 +445,13 @@ export default function SettingsPage() {
           bot_share_name: "",
         })
         setAddingUser(false)
-        setSuccess(true)
-        setTimeout(() => setSuccess(false), 5000)
 
-        await Promise.all([loadUsers(), loadInvitations()])
+        // Show success message
+        setSuccess(true)
+        setTimeout(() => setSuccess(false), 5000) // Clear success message after 5 seconds
+
+        await loadUsers()
+        await loadInvitations()
       } else {
         setError(result.error || "Failed to add user")
       }
@@ -513,7 +517,14 @@ export default function SettingsPage() {
 
   // Show loading screen while initial data loads
   if (loading) {
-    return <Loading message="Loading settings..." />
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#038a71] mx-auto mb-4"></div>
+          <p className="text-[#616161]">Loading settings...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -560,63 +571,15 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="clientEmail">Client Email</Label>
-              <div className="flex items-center space-x-2">
-                <Input
-                  id="clientEmail"
-                  type="email"
-                  value={botSettings.client_email}
-                  onChange={(e) => setBotSettings((prev) => ({ ...prev, client_email: e.target.value }))}
-                  placeholder="Enter client email address"
-                  disabled={botSettingsLoading || botSettingsSaving || !editingEmail}
-                  className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] flex-1"
-                />
-                {!editingEmail ? (
-                  <Button
-                    onClick={() => setEditingEmail(true)}
-                    variant="outline"
-                    size="sm"
-                    disabled={botSettingsLoading}
-                    className="px-3"
-                  >
-                    Edit
-                  </Button>
-                ) : (
-                  <div className="flex space-x-1">
-                    <Button
-                      onClick={handleSaveBotSettings}
-                      disabled={botSettingsSaving}
-                      size="sm"
-                      className="bg-[#038a71] hover:bg-[#038a71]/90 px-3"
-                    >
-                      {botSettingsSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        setEditingEmail(false)
-                        // Reset to original value by reloading bot settings
-                        if (selectedBot) {
-                          supabase
-                            .from("bots")
-                            .select("client_email")
-                            .eq("bot_share_name", selectedBot)
-                            .single()
-                            .then(({ data }) => {
-                              if (data) {
-                                setBotSettings((prev) => ({ ...prev, client_email: data.client_email || "" }))
-                              }
-                            })
-                        }
-                      }}
-                      variant="outline"
-                      size="sm"
-                      disabled={botSettingsSaving}
-                      className="px-3"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                )}
-              </div>
+              <Input
+                id="clientEmail"
+                type="email"
+                value={botSettings.client_email}
+                onChange={(e) => setBotSettings((prev) => ({ ...prev, client_email: e.target.value }))}
+                placeholder="Enter client email address"
+                disabled={botSettingsLoading || botSettingsSaving}
+                className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
+              />
             </div>
 
             <div className="space-y-3">
@@ -818,7 +781,10 @@ export default function SettingsPage() {
                             </div>
                             <div className="space-y-1">
                               <Label className="text-xs">Role</Label>
-                              <Select value={user.role} onChange={(value) => handleUserEdit(user.id, "role", value)}>
+                              <Select
+                                value={user.role}
+                                onValueChange={(value) => handleUserEdit(user.id, "role", value)}
+                              >
                                 <SelectTrigger className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8">
                                   <SelectValue />
                                 </SelectTrigger>
@@ -843,7 +809,7 @@ export default function SettingsPage() {
                           </div>
                         ) : (
                           <div className="flex items-center justify-between">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
                               <div>
                                 <p className="text-sm font-medium text-[#212121]">
                                   {user.first_name} {user.surname}
@@ -853,6 +819,10 @@ export default function SettingsPage() {
                               <div>
                                 <p className="text-xs text-[#616161] uppercase tracking-wider">Role</p>
                                 <p className="text-sm text-[#212121] capitalize">{user.role}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-[#616161] uppercase tracking-wider">Bot Access</p>
+                                <p className="text-sm text-[#212121]">{user.bot_share_name}</p>
                               </div>
                             </div>
                             <div className="flex items-center space-x-2 ml-4">
@@ -884,7 +854,7 @@ export default function SettingsPage() {
                     {invitedUsers.map((invitation) => (
                       <div key={invitation.id} className="p-4 border border-[#e0e0e0] rounded-lg bg-yellow-50">
                         <div className="flex items-center justify-between">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
                             <div>
                               <p className="text-sm font-medium text-[#212121]">
                                 {invitation.first_name} {invitation.surname}
@@ -897,6 +867,10 @@ export default function SettingsPage() {
                             <div>
                               <p className="text-xs text-[#616161] uppercase tracking-wider">Role</p>
                               <p className="text-sm text-[#212121] capitalize">{invitation.role}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-[#616161] uppercase tracking-wider">Bot Access</p>
+                              <p className="text-sm text-[#212121]">{invitation.bot_share_name}</p>
                             </div>
                             <div>
                               <p className="text-xs text-[#616161] uppercase tracking-wider">Invited</p>

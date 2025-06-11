@@ -1,14 +1,15 @@
 import type React from "react"
-import { GeistSans } from "geist/font/sans"
-import { ThemeProvider } from "@/components/theme-provider"
+import type { Metadata } from "next"
+import { Inter } from "next/font/google"
 import "./globals.css"
 
-const defaultUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"
+const inter = Inter({
+  subsets: ["latin"],
+})
 
-export const metadata = {
-  metadataBase: new URL(defaultUrl),
-  title: "B2B Lead Management",
-  description: "Manage your B2B leads and conversations efficiently",
+export const metadata: Metadata = {
+  title: "b2bLEAD.ai - More leads, less hassle",
+  description: "B2B Lead generation and management platform",
     generator: 'v0.dev'
 }
 
@@ -18,38 +19,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={GeistSans.className} suppressHydrationWarnings>
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              // Global error suppression for Supabase auth network errors
-              window.addEventListener('unhandledrejection', function(event) {
-                const error = event.reason;
-                if (error?.message?.includes('Failed to fetch') && 
-                    (error?.stack?.includes('supabase') || error?.stack?.includes('auth-js'))) {
-                  console.warn('🔄 Supabase auth network error suppressed:', error.message);
-                  event.preventDefault();
-                }
-              });
-              
-              window.addEventListener('error', function(event) {
-                const error = event.error;
-                if (error?.message?.includes('Failed to fetch') && 
-                    (error?.stack?.includes('supabase') || error?.stack?.includes('auth-js'))) {
-                  console.warn('🔄 Supabase auth error suppressed:', error.message);
-                  event.preventDefault();
-                }
-              });
-            `,
-          }}
-        />
-      </head>
-      <body className="bg-background text-foreground">
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-          {children}
-        </ThemeProvider>
-      </body>
+    <html lang="en">
+      <body className={`${inter.className} bg-[#fdfdfd]`}>{children}</body>
     </html>
   )
 }

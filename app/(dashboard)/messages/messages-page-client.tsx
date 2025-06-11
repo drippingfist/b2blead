@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { MessagesView } from "@/components/messages-view"
 import { getRecentThreadsWithMessages } from "@/lib/message-actions"
 import { useRouter } from "next/navigation"
-import Loading from "@/components/loading"
 
 interface Bot {
   bot_share_name: string
@@ -135,7 +134,12 @@ export function MessagesPageClient({
   }, [selectedBot, selectedDate, botSelectionReady])
 
   if (loading || !botSelectionReady) {
-    return <Loading message="Loading messages..." />
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#038a71]"></div>
+        <span className="ml-2 text-gray-600">Loading messages...</span>
+      </div>
+    )
   }
 
   return (

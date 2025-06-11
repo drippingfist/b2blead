@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import { getCallbacksClient, getCallbackStatsClientWithPeriod, analyzeCallbackColumns } from "@/lib/database"
 import CallbacksView from "@/components/callbacks-view"
-import Loading from "@/components/loading"
 
 export default function CallbacksPage() {
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
@@ -96,7 +95,12 @@ export default function CallbacksPage() {
   }
 
   if (loading) {
-    return <Loading message="Loading callbacks..." />
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#038a71]"></div>
+        <span className="ml-2 text-gray-600">Loading callbacks...</span>
+      </div>
+    )
   }
 
   return (

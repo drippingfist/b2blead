@@ -3,7 +3,19 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
-import { LayoutDashboard, MessageSquare, Mail, PhoneCall, Settings, LogOut, X, Shield, User, Crown } from "lucide-react"
+import {
+  LayoutDashboard,
+  MessageSquare,
+  Mail,
+  PhoneCall,
+  MessageSquarePlus,
+  Settings,
+  LogOut,
+  X,
+  Shield,
+  User,
+  Crown,
+} from "lucide-react"
 import { signOut } from "@/lib/actions"
 import { supabase } from "@/lib/supabase/client"
 import SimpleBotSelector from "@/components/simple-bot-selector"
@@ -122,9 +134,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   // Filter navigation based on user role
   const allNavigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { name: "Chats", href: "/chats", icon: MessageSquare }, // Updated to point to /chats
+    { name: "Chats", href: "/", icon: MessageSquare },
     { name: "Messages", href: "/messages", icon: Mail },
     { name: "Callbacks", href: "/callbacks", icon: PhoneCall },
+    { name: "Improve Answers", href: "/improvements", icon: MessageSquarePlus, adminOnly: true },
     {
       name: "Settings",
       href: "/settings",
@@ -245,7 +258,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             const isActive =
               pathname === item.href ||
               (item.href !== "/" && pathname.startsWith(item.href)) ||
-              (item.href === "/chats" && pathname.startsWith("/thread/")) // Updated for chats page
+              (item.href === "/" && (pathname === "/" || pathname.startsWith("/thread/")))
 
             return (
               <Link
