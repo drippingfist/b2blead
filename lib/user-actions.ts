@@ -196,7 +196,7 @@ export async function inviteUser(userData: {
 }
 
 // Get users that the current admin can manage
-export async function getUsers() {
+export async function getUsers(selectedBot?: string | null) {
   try {
     const cookieStore = cookies()
     const supabase = createServerActionClient({ cookies: () => cookieStore })
@@ -212,13 +212,13 @@ export async function getUsers() {
       return { success: false, error: "User not authenticated", users: [] }
     }
 
-    console.log("🔍 Getting users for admin:", user.id)
+    console.log("🔍 Getting users for admin:", user.id, "Selected bot:", selectedBot)
 
     // Get current user's bot assignments to determine their access level
     const { data: currentUserBots, error: currentUserBotsError } = await supabase
       .from("bot_users")
       .select("bot_share_name, role")
-      .eq("user_id", user.id) // Changed from 'id' to 'user_id'
+      .eq("user_id", user.id)
       .eq("is_active", true)
 
     if (currentUserBotsError) {
@@ -235,10 +235,14 @@ export async function getUsers() {
     console.log("🔍 Current user bot access:", currentUserBotNames, "Is superadmin:", isSuperAdmin)
 
     // Step 1: Get users invited by the current admin
-    const { data: invitedUsers, error: invitedUsersError } = await supabase
-      .from("user_invitations")
-      .select("email")
-      .eq("invited_by", user.id)
+    let invitedUsersQuery = supabase.from("user_invitations").select("email").eq("invited_by", user.id)
+
+    // Filter by selected bot if provided
+    if (selectedBot) {
+      invitedUsersQuery = invitedUsersQuery.eq("bot_share_name", selectedBot)
+    }
+
+    const { data: invitedUsers, error: invitedUsersError } = await invitedUsersQuery
 
     if (invitedUsersError) {
       throw invitedUsersError
@@ -261,7 +265,14 @@ export async function getUsers() {
       throw profilesError
     }
 
-    const { data: botUsers, error: botUsersError } = await supabase.from("bot_users").select("*")
+    let botUsersQuery = supabase.from("bot_users").select("*")
+
+    // Filter by selected bot if provided
+    if (selectedBot) {
+      botUsersQuery = botUsersQuery.eq("bot_share_name", selectedBot)
+    }
+
+    const { data: botUsers, error: botUsersError } = await botUsersQuery
 
     if (botUsersError) {
       throw botUsersError
@@ -275,7 +286,7 @@ export async function getUsers() {
 
     const botUsersMap = new Map()
     botUsers?.forEach((botUser) => {
-      botUsersMap.set(botUser.user_id, botUser) // Changed from 'id' to 'user_id'
+      botUsersMap.set(botUser.user_id, botUser)
     })
 
     // Step 5: Filter and transform users based on access rules
@@ -299,6 +310,11 @@ export async function getUsers() {
         // Check if user should be visible based on access rules
         const userEmail = authUser.email
         const userBotShareName = profile?.bot_share_name || botUser?.bot_share_name
+
+        // If filtering by selected bot, only show users with that bot access
+        if (selectedBot && userBotShareName !== selectedBot) {
+          return false
+        }
 
         // Rule 1: Show users invited by the current admin
         if (invitedEmails.includes(userEmail)) {

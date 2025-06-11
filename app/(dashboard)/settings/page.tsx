@@ -170,7 +170,22 @@ export default function SettingsPage() {
     }
 
     loadUserData()
-  }, [])
+
+    // Listen for bot selection changes
+    const handleBotChange = (event: CustomEvent) => {
+      const newBot = event.detail
+      console.log("⚙️ Settings Page: Bot changed to:", newBot)
+      setSelectedBot(newBot)
+      // Reload data with new bot
+      loadUserData()
+    }
+
+    window.addEventListener("botChanged", handleBotChange as EventListener)
+
+    return () => {
+      window.removeEventListener("botChanged", handleBotChange as EventListener)
+    }
+  }, [selectedBot]) // Add selectedBot as dependency
 
   const loadAvailableBots = async () => {
     try {
@@ -191,10 +206,9 @@ export default function SettingsPage() {
   const loadUsers = async () => {
     try {
       setUsersLoading(true)
-      const result = await getUsers()
+      const result = await getUsers(selectedBot) // Pass selected bot
 
       if (result.success) {
-        setUsers(result.users)
         setUsers(result.users.filter((user) => user.role !== "superadmin"))
       } else {
         setError(result.error || "Failed to load users")
@@ -576,7 +590,7 @@ export default function SettingsPage() {
                 type="email"
                 value={botSettings.client_email}
                 onChange={(e) => setBotSettings((prev) => ({ ...prev, client_email: e.target.value }))}
-                placeholder="Enter client email address"
+                placeholder={botSettings.client_email || "Enter client email address"}
                 disabled={botSettingsLoading || botSettingsSaving}
                 className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
               />
