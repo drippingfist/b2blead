@@ -56,10 +56,19 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
 
         setBots(botsData)
 
-        // Auto-select the single bot if there's only one
-        if (botsData.length === 1 && !selectedBot) {
-          console.log("🤖 Auto-selecting the only available bot:", botsData[0].bot_share_name)
-          handleBotSelection(botsData[0].bot_share_name)
+        // Auto-select the single bot if there's only one and nothing is selected
+        if (botsData.length === 1) {
+          const storedBot = localStorage.getItem("selectedBot")
+          if (!storedBot || storedBot === "null") {
+            console.log("🤖 Auto-selecting the only available bot:", botsData[0].bot_share_name)
+            localStorage.setItem("selectedBot", botsData[0].bot_share_name)
+            // Dispatch event without page refresh
+            window.dispatchEvent(new CustomEvent("botSelectionChanged", { detail: botsData[0].bot_share_name }))
+            // Call the onSelectBot prop if provided
+            if (onSelectBot) {
+              onSelectBot(botsData[0].bot_share_name)
+            }
+          }
         }
       } catch (error: any) {
         console.error("Failed to load bots:", error)
@@ -70,7 +79,7 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
     }
 
     loadBots()
-  }, [selectedBot])
+  }, [onSelectBot])
 
   // Close dropdown when clicking outside
   useEffect(() => {
