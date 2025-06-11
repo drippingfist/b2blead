@@ -6,6 +6,7 @@ import { getThreadsSimple, getThreadsCount } from "@/lib/simple-database"
 import { getAccessibleBotsClient, getUserBotAccess } from "@/lib/database"
 import type { Thread } from "@/lib/simple-database"
 import type { Bot } from "@/lib/database"
+import Loading from "@/components/loading"
 
 export default function ChatsPage() {
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
@@ -124,11 +125,7 @@ export default function ChatsPage() {
 
   // Show loading state
   if (!botsLoaded || (userAccess.role && loading && threads.length === 0)) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#038a71]"></div>
-      </div>
-    )
+    return <Loading />
   }
 
   // Show access denied if no role
