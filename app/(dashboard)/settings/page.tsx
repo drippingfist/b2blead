@@ -98,11 +98,15 @@ export default function SettingsPage() {
         setLoading(true)
         setError(null)
 
+        console.log("⚙️ Settings Page: Starting data load...")
+        const startTime = Date.now()
+
         // Check localStorage for selected bot first
         const storedBot = localStorage.getItem("selectedBot")
         console.log("⚙️ Settings Page: Retrieved bot from localStorage:", storedBot)
         setSelectedBot(storedBot)
 
+        // Get current user
         const {
           data: { user },
           error: userError,
@@ -112,44 +116,86 @@ export default function SettingsPage() {
           throw new Error(userError?.message || "Failed to load user data")
         }
 
-        const { data: profile, error: profileError } = await supabase
-          .from("user_profiles")
-          .select("first_name, surname")
-          .eq("id", user.id)
-          .single()
+        console.log("⚙️ Settings Page: Got user, starting parallel queries...")
 
-        // Get user's bot access to determine timezone
-        const { data: botUsers, error: botUserError } = await supabase
-          .from("bot_users")
-          .select("bot_share_name")
-          .eq("user_id", user.id)
+        // Run all queries in parallel for faster loading
+        const [profileResult, botUsersResult, availableBotsResult, usersResult, invitationsResult] =
+          await Promise.allSettled([
+            // Get user profile
+            supabase
+              .from("user_profiles")
+              .select("first_name, surname")
+              .eq("id", user.id)
+              .single(),
 
+            // Get user's bot access
+            supabase
+              .from("bot_users")
+              .select("bot_share_name, role")
+              .eq("user_id", user.id)
+              .eq("is_active", true),
+
+            // Get available bots
+            getInvitableBots(),
+
+            // Get users
+            getUsers(storedBot),
+
+            // Get invitations
+            getInvitations(),
+          ])
+
+        // Process profile result
+        let profile = null
+        if (profileResult.status === "fulfilled" && !profileResult.value.error) {
+          profile = profileResult.value.data
+        }
+
+        // Process bot users result
+        let botUsers = []
+        if (botUsersResult.status === "fulfilled" && !botUsersResult.value.error) {
+          botUsers = botUsersResult.value.data || []
+        }
+
+        // Find the appropriate bot user
         let botUser = null
-        if (!botUserError && botUsers && botUsers.length > 0) {
-          // If a specific bot is selected, use that one, otherwise use the first one
+        if (botUsers.length > 0) {
           if (storedBot) {
-            botUser = botUsers.find((bu) => bu.bot_share_name === storedBot) || botUsers[0]
+            botUser = botUsers.find((bu: any) => bu.bot_share_name === storedBot) || botUsers[0]
           } else {
             botUser = botUsers[0]
           }
         }
 
+        // Get bot details and set initial state
         let userTimezone = "Asia/Bangkok"
+        let clientNameValue = ""
+        let botSettingsValue = { bot_share_name: "", client_email: "" }
+
         if (botUser?.bot_share_name) {
-          const { data: bot } = await supabase
+          console.log("⚙️ Settings Page: Loading bot details for:", botUser.bot_share_name)
+
+          const { data: bot, error: botError } = await supabase
             .from("bots")
-            .select("timezone, client_name")
+            .select("timezone, client_name, client_email")
             .eq("bot_share_name", botUser.bot_share_name)
             .single()
 
-          if (bot?.timezone) {
-            userTimezone = bot.timezone
-          }
-          if (bot?.client_name) {
-            setClientName(bot.client_name)
+          if (!botError && bot) {
+            userTimezone = bot.timezone || "Asia/Bangkok"
+            clientNameValue = bot.client_name || ""
+
+            // Only load bot settings for admins and superadmins
+            if (botUser.role === "admin" || botUser.role === "superadmin") {
+              botSettingsValue = {
+                bot_share_name: botUser.bot_share_name,
+                client_email: bot.client_email || "",
+              }
+            }
           }
         }
 
+        // Set all state at once
         setUserData({
           id: user.id,
           email: user.email || "",
@@ -158,10 +204,26 @@ export default function SettingsPage() {
           timezone: userTimezone,
         })
 
-        await loadAvailableBots()
-        await loadUsers()
-        await loadInvitations()
-        await loadBotSettings()
+        setClientName(clientNameValue)
+        setBotSettings(botSettingsValue)
+
+        // Process available bots result
+        if (availableBotsResult.status === "fulfilled" && availableBotsResult.value.success) {
+          setAvailableBots(availableBotsResult.value.bots || [])
+        }
+
+        // Process users result
+        if (usersResult.status === "fulfilled" && usersResult.value.success) {
+          setUsers(usersResult.value.users.filter((user: any) => user.role !== "superadmin"))
+        }
+
+        // Process invitations result
+        if (invitationsResult.status === "fulfilled" && invitationsResult.value.success) {
+          setInvitedUsers(invitationsResult.value.invitations || [])
+        }
+
+        const endTime = Date.now()
+        console.log(`⚙️ Settings Page: Data load completed in ${endTime - startTime}ms`)
       } catch (err: any) {
         console.error("Error loading user data:", err)
         setError(err.message || "Failed to load user data")
@@ -186,28 +248,12 @@ export default function SettingsPage() {
     return () => {
       window.removeEventListener("botChanged", handleBotChange as EventListener)
     }
-  }, [selectedBot]) // Add selectedBot as dependency
-
-  const loadAvailableBots = async () => {
-    try {
-      const result = await getInvitableBots()
-
-      if (result.success) {
-        setAvailableBots(result.bots || [])
-      } else {
-        console.error("Error loading invitable bots:", result.error)
-        setError(result.error || "Failed to load available bots")
-      }
-    } catch (err: any) {
-      console.error("Error loading bots:", err)
-      setError("Failed to load available bots")
-    }
-  }
+  }, []) // Remove selectedBot dependency to prevent infinite loops
 
   const loadUsers = async () => {
     try {
       setUsersLoading(true)
-      const result = await getUsers(selectedBot) // Pass selected bot
+      const result = await getUsers(selectedBot)
 
       if (result.success) {
         setUsers(result.users.filter((user) => user.role !== "superadmin"))
@@ -236,68 +282,6 @@ export default function SettingsPage() {
     }
   }
 
-  const loadBotSettings = async () => {
-    try {
-      setBotSettingsLoading(true)
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
-
-      if (userError || !user?.id) {
-        return
-      }
-
-      // Get user's bot assignment - prioritize selected bot
-      const { data: botUsers, error: botUserError } = await supabase
-        .from("bot_users")
-        .select("bot_share_name, role")
-        .eq("user_id", user.id)
-        .eq("is_active", true)
-
-      if (botUserError || !botUsers || botUsers.length === 0) {
-        console.error("Error loading bot users:", botUserError)
-        return
-      }
-
-      // Find the bot user for the selected bot, or use the first one
-      let botUser = botUsers[0]
-      if (selectedBot) {
-        const specificBotUser = botUsers.find((bu) => bu.bot_share_name === selectedBot)
-        if (specificBotUser) {
-          botUser = specificBotUser
-        }
-      }
-
-      // Only load bot settings for admins and superadmins (not members)
-      if (botUser.role !== "admin" && botUser.role !== "superadmin") {
-        return
-      }
-
-      // Get the bot details
-      const { data: bot, error: botError } = await supabase
-        .from("bots")
-        .select("bot_share_name, client_email")
-        .eq("bot_share_name", botUser.bot_share_name)
-        .single()
-
-      if (botError) {
-        console.error("Error loading bot settings:", botError)
-        return
-      }
-
-      setBotSettings({
-        bot_share_name: bot.bot_share_name || "",
-        client_email: bot.client_email || "",
-      })
-    } catch (err: any) {
-      console.error("Error loading bot settings:", err)
-    } finally {
-      setBotSettingsLoading(false)
-    }
-  }
-
   const handleSaveBotSettings = async () => {
     try {
       setBotSettingsSaving(true)
@@ -312,7 +296,7 @@ export default function SettingsPage() {
         throw new Error(updateError.message)
       }
 
-      setEditingEmail(false) // Close edit mode on success
+      setEditingEmail(false)
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     } catch (err: any) {
@@ -371,7 +355,7 @@ export default function SettingsPage() {
           throw new Error(botUpdateError.message)
         }
       } else {
-        // Fallback: update timezone for all bots the user has access to (for backward compatibility)
+        // Fallback: update timezone for all bots the user has access to
         const { data: userBots, error: userBotsError } = await supabase
           .from("bot_users")
           .select("bot_share_name")
@@ -435,9 +419,8 @@ export default function SettingsPage() {
         return
       }
 
-      // Additional validation: check if the selected bot is in available bots
-      const selectedBot = availableBots.find((bot) => bot.bot_share_name === newUser.bot_share_name)
-      if (!selectedBot) {
+      const selectedBotData = availableBots.find((bot) => bot.bot_share_name === newUser.bot_share_name)
+      if (!selectedBotData) {
         setError("Invalid bot selection. Please choose from the available bots.")
         return
       }
@@ -451,7 +434,6 @@ export default function SettingsPage() {
       })
 
       if (result.success) {
-        // Reset form and reload data
         setNewUser({
           email: "",
           first_name: "",
@@ -461,13 +443,10 @@ export default function SettingsPage() {
           bot_share_name: "",
         })
         setAddingUser(false)
-
-        // Show success message
         setSuccess(true)
-        setTimeout(() => setSuccess(false), 5000) // Clear success message after 5 seconds
+        setTimeout(() => setSuccess(false), 5000)
 
-        await loadUsers()
-        await loadInvitations()
+        await Promise.all([loadUsers(), loadInvitations()])
       } else {
         setError(result.error || "Failed to add user")
       }
@@ -620,8 +599,19 @@ export default function SettingsPage() {
                     <Button
                       onClick={() => {
                         setEditingEmail(false)
-                        // Reset to original value
-                        loadBotSettings()
+                        // Reset to original value by reloading bot settings
+                        if (selectedBot) {
+                          supabase
+                            .from("bots")
+                            .select("client_email")
+                            .eq("bot_share_name", selectedBot)
+                            .single()
+                            .then(({ data }) => {
+                              if (data) {
+                                setBotSettings((prev) => ({ ...prev, client_email: data.client_email || "" }))
+                              }
+                            })
+                        }
                       }}
                       variant="outline"
                       size="sm"
