@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -49,6 +51,8 @@ export default function ChatsPageClient() {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const [userTableSize, setUserTableSize] = useState<number>(30)
+  const [hoveredSentiment, setHoveredSentiment] = useState<string | null>(null)
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
   const itemsPerPage = 100
 
   // Listen for bot selection changes
@@ -169,7 +173,61 @@ export default function ChatsPageClient() {
             break
         }
 
-        // Build base query
+        // Build base query for counting
+        let countQuery = supabase
+          .from("threads")
+          .select("id", { count: "exact", head: true })
+          .eq("bot_share_name", selectedBot)
+          .gt("count", 0)
+
+        // Apply date filter to count query
+        if (startDate) {
+          countQuery = countQuery.gte("created_at", startDate)
+        }
+
+        // Apply filter to count query
+        if (filter === "callbacks") {
+          // Count threads with callback records - need to use a different approach
+          const { data: callbackThreads } = await supabase
+            .from("callbacks")
+            .select("id")
+            .eq("bot_share_name", selectedBot)
+
+          if (callbackThreads && callbackThreads.length > 0) {
+            const callbackIds = callbackThreads.map((c) => c.id)
+            countQuery = countQuery.in("id", callbackIds)
+          } else {
+            setTotalCount(0)
+            setThreads([])
+            setLoading(false)
+            return
+          }
+        } else if (filter === "dropped_callbacks") {
+          countQuery = countQuery.eq("callback", true)
+          // We'll filter out those with callbacks in the main query
+        } else if (filter === "user_messages") {
+          // Get thread IDs that have user messages
+          const { data: userMessageThreads } = await supabase
+            .from("messages")
+            .select("thread_id")
+            .eq("role", "user")
+            .eq("bot_share_name", selectedBot)
+
+          if (userMessageThreads && userMessageThreads.length > 0) {
+            const threadIds = [...new Set(userMessageThreads.map((m) => m.thread_id).filter(Boolean))]
+            countQuery = countQuery.in("id", threadIds)
+          } else {
+            setTotalCount(0)
+            setThreads([])
+            setLoading(false)
+            return
+          }
+        }
+
+        // Get total count
+        const { count } = await countQuery
+
+        // Build main query for data
         let query = supabase
           .from("threads")
           .select(`
@@ -209,18 +267,12 @@ export default function ChatsPageClient() {
             const threadIds = [...new Set(userMessageThreads.map((m) => m.thread_id).filter(Boolean))]
             query = query.in("id", threadIds)
           } else {
-            // No user messages found, return empty result
-            setThreads([])
             setTotalCount(0)
+            setThreads([])
             setLoading(false)
             return
           }
         }
-
-        // Get total count first
-        const countQuery = query
-        const { count } = await countQuery.select("*", { count: "exact", head: true })
-        setTotalCount(count || 0)
 
         // Get paginated data
         const offset = (currentPage - 1) * itemsPerPage
@@ -229,8 +281,10 @@ export default function ChatsPageClient() {
         if (error) {
           console.error("Error fetching threads:", error)
           setThreads([])
+          setTotalCount(0)
         } else {
           setThreads(threadsData || [])
+          setTotalCount(count || 0)
         }
       } catch (error) {
         console.error("Error loading threads:", error)
@@ -272,6 +326,17 @@ export default function ChatsPageClient() {
     }
   }
 
+  const handleSentimentHover = (threadId: string, justification: string | null, event: React.MouseEvent) => {
+    if (justification) {
+      setHoveredSentiment(threadId)
+      setTooltipPosition({ x: event.clientX, y: event.clientY })
+    }
+  }
+
+  const handleSentimentLeave = () => {
+    setHoveredSentiment(null)
+  }
+
   const getSentimentEmoji = (score?: number) => {
     if (!score) return "😐"
     switch (score) {
@@ -305,29 +370,32 @@ export default function ChatsPageClient() {
     return `${(time / 1000).toFixed(2)}s`
   }
 
-  const formatDate = (dateString: string) => {
+  const formatDateTime = (dateString: string) => {
     const date = new Date(dateString)
-    const today = new Date()
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
-
-    if (date.toDateString() === today.toDateString()) {
-      return date.toLocaleTimeString("en-US", {
+    return {
+      date: date.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }),
+      time: date.toLocaleTimeString("en-GB", {
         hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",
         hour12: false,
-      })
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return "Yesterday"
-    } else {
-      return date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "2-digit",
-        year: "numeric",
-      })
+      }),
     }
   }
+
+  // Group threads by date for display
+  const groupedThreads = threads.reduce((groups: { [key: string]: Thread[] }, thread) => {
+    const { date } = formatDateTime(thread.created_at)
+    if (!groups[date]) {
+      groups[date] = []
+    }
+    groups[date].push(thread)
+    return groups
+  }, {})
 
   const getTimePeriodLabel = () => {
     switch (timePeriod) {
@@ -378,7 +446,20 @@ export default function ChatsPageClient() {
   }
 
   return (
-    <div className="p-4 md:p-6">
+    <div className="p-4 md:p-6 relative">
+      {/* Tooltip */}
+      {hoveredSentiment && (
+        <div
+          className="fixed z-50 bg-gray-900 text-white text-base rounded-lg px-4 py-3 max-w-sm shadow-lg pointer-events-none transition-opacity duration-150"
+          style={{
+            left: tooltipPosition.x + 10,
+            top: tooltipPosition.y - 10,
+          }}
+        >
+          {threads.find((t) => t.id === hoveredSentiment)?.sentiment_justification}
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
@@ -444,7 +525,7 @@ export default function ChatsPageClient() {
         {botData && (
           <p className="text-sm text-[#616161]">
             Showing threads on <span className="font-medium">{botData.client_name}</span> in {getTimePeriodLabel()}
-            {getFilterLabel()}
+            {getFilterLabel()} ({totalCount} threads)
           </p>
         )}
       </div>
@@ -486,13 +567,13 @@ export default function ChatsPageClient() {
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <span className="text-sm text-[#616161]">
-                  Page {currentPage} of {totalPages}
+                  Page {currentPage} of {Math.max(1, totalPages)}
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
+                  disabled={currentPage === totalPages || totalPages === 0}
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -532,89 +613,106 @@ export default function ChatsPageClient() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-[#e0e0e0]">
-                {threads.map((thread) => (
-                  <tr key={thread.id} className="hover:bg-gray-50">
-                    {/* Date */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                      {formatDate(thread.created_at)}
-                    </td>
+                {Object.entries(groupedThreads).map(([date, dateThreads]) => (
+                  <>
+                    {/* Date Header Row */}
+                    <tr key={`date-${date}`} className="bg-gray-50">
+                      <td colSpan={8} className="px-6 py-2 text-sm font-medium text-[#616161]">
+                        {date}
+                      </td>
+                    </tr>
+                    {/* Thread Rows */}
+                    {dateThreads.map((thread) => (
+                      <tr key={thread.id} className="hover:bg-gray-50">
+                        {/* Time */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
+                          {formatDateTime(thread.created_at).time}
+                        </td>
 
-                    {/* Callback */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                      {thread.callbacks ? (
-                        <div>
-                          <div className="font-medium">
-                            {thread.callbacks.user_name ||
-                              `${thread.callbacks.user_first_name || ""} ${thread.callbacks.user_surname || ""}`.trim() ||
-                              "Unknown"}
-                          </div>
-                          {thread.callbacks.user_email && (
-                            <div className="text-[#616161] text-xs">{thread.callbacks.user_email}</div>
+                        {/* Callback */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
+                          {thread.callbacks ? (
+                            <div>
+                              <div className="font-medium">
+                                {thread.callbacks.user_name ||
+                                  `${thread.callbacks.user_first_name || ""} ${thread.callbacks.user_surname || ""}`.trim() ||
+                                  "Unknown"}
+                              </div>
+                              {thread.callbacks.user_email && (
+                                <div className="text-[#616161] text-xs">{thread.callbacks.user_email}</div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[#616161]">-</span>
                           )}
-                        </div>
-                      ) : (
-                        <span className="text-[#616161]">-</span>
-                      )}
-                    </td>
+                        </td>
 
-                    {/* Sentiment */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {thread.sentiment_score ? (
-                        <div
-                          className="flex items-center gap-2 cursor-help"
-                          title={thread.sentiment_justification || "No justification available"}
-                        >
-                          <span className="text-lg">{getSentimentEmoji(thread.sentiment_score)}</span>
-                          <span className="text-[#212121]">{thread.sentiment_score}</span>
-                        </div>
-                      ) : (
-                        <span className="text-[#616161]">-</span>
-                      )}
-                    </td>
+                        {/* Sentiment */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {thread.sentiment_score ? (
+                            <div
+                              className="flex items-center gap-2 cursor-pointer"
+                              onMouseEnter={(e) => handleSentimentHover(thread.id, thread.sentiment_justification, e)}
+                              onMouseLeave={handleSentimentLeave}
+                              onMouseMove={(e) => {
+                                if (hoveredSentiment === thread.id) {
+                                  setTooltipPosition({ x: e.clientX, y: e.clientY })
+                                }
+                              }}
+                            >
+                              <span className="text-lg">{getSentimentEmoji(thread.sentiment_score)}</span>
+                              <span className="text-[#212121]">{thread.sentiment_score}</span>
+                            </div>
+                          ) : (
+                            <span className="text-[#616161]">-</span>
+                          )}
+                        </td>
 
-                    {/* Message Preview */}
-                    <td className="px-6 py-4 text-sm">
-                      <Link
-                        href={`/thread/${thread.id}`}
-                        className="text-[#038a71] hover:underline max-w-xs truncate block"
-                      >
-                        {thread.message_preview || "No preview available"}
-                      </Link>
-                    </td>
+                        {/* Message Preview */}
+                        <td className="px-6 py-4 text-sm">
+                          <Link
+                            href={`/thread/${thread.id}`}
+                            className="text-[#212121] hover:underline hover:text-[#038a71] max-w-xs truncate block transition-colors"
+                          >
+                            {thread.message_preview || "No preview available"}
+                          </Link>
+                        </td>
 
-                    {/* Messages Count */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                      <div className="flex items-center gap-1">
-                        <MessageSquare className="h-4 w-4 text-[#616161]" />
-                        {thread.count || 0}
-                      </div>
-                    </td>
+                        {/* Messages Count */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
+                          <div className="flex items-center gap-1">
+                            <MessageSquare className="h-4 w-4 text-[#616161]" />
+                            {thread.count || 0}
+                          </div>
+                        </td>
 
-                    {/* Duration */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-4 w-4 text-[#616161]" />
-                        {formatDuration(thread.duration)}
-                      </div>
-                    </td>
+                        {/* Duration */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-4 w-4 text-[#616161]" />
+                            {formatDuration(thread.duration)}
+                          </div>
+                        </td>
 
-                    {/* Avg Response Time */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                      {formatResponseTime(thread.mean_response_time)}
-                    </td>
+                        {/* Avg Response Time */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
+                          {formatResponseTime(thread.mean_response_time)}
+                        </td>
 
-                    {/* Actions */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <button
-                        onClick={() => handleStarToggle(thread.id)}
-                        className="text-[#616161] hover:text-[#212121] transition-colors"
-                      >
-                        <Star
-                          className={`h-4 w-4 ${thread.starred ? "fill-yellow-400 text-yellow-400" : "text-[#616161]"}`}
-                        />
-                      </button>
-                    </td>
-                  </tr>
+                        {/* Actions */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <button
+                            onClick={() => handleStarToggle(thread.id)}
+                            className="text-[#616161] hover:text-[#212121] transition-colors"
+                          >
+                            <Star
+                              className={`h-4 w-4 ${thread.starred ? "fill-yellow-400 text-yellow-400" : "text-[#616161]"}`}
+                            />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </>
                 ))}
               </tbody>
             </table>
