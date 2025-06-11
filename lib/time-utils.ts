@@ -8,22 +8,20 @@ export const TIME_PERIODS: TimePeriod[] = [
   { value: "today", label: "Today" },
   { value: "last7days", label: "Last 7 Days" },
   { value: "last30days", label: "Last 30 Days" },
-  // Add more periods if needed, e.g., "thisMonth", "lastMonth"
 ]
 
 /**
  * Calculates start and end date ISO strings for a given time period value.
  * Uses 'created_at' field of threads for filtering.
- * @param periodValue - The string value of the time period (e.g., "today", "last7days").
- * @returns An object with startDate and endDate ISO strings, or undefined if "all".
  */
 export function calculateDateRangeForQuery(periodValue: string): { startDate?: string; endDate?: string } {
+  console.log("🕐 calculateDateRangeForQuery called with:", periodValue)
+
   const now = new Date()
+  console.log("🕐 Current time:", now.toISOString())
+
   let startDate: Date | undefined
   let endDate: Date | undefined
-
-  console.log("🕐 Calculating date range for period:", periodValue)
-  console.log("🕐 Current time:", now.toISOString())
 
   switch (periodValue) {
     case "today":
@@ -54,5 +52,8 @@ export function calculateDateRangeForQuery(periodValue: string): { startDate?: s
   }
 
   console.log("📅 Calculated date range:", result)
+  console.log("📅 Start date:", result.startDate)
+  console.log("📅 End date:", result.endDate)
+
   return result
 }

@@ -2,8 +2,8 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import ChatsList from "./chats-list"
 import { ChatsHeader } from "./chats-header"
+import ChatsList from "./chats-list"
 
 interface Thread {
   id: string
@@ -11,11 +11,13 @@ interface Thread {
   bot_share_name?: string
   thread_id?: string
   updated_at: string
-  duration?: string | null
+  duration?: string
   message_preview?: string
   sentiment_score?: number
+  sentiment_justification?: string
   cb_requested?: boolean
   count?: number
+  mean_response_time?: number
   starred?: boolean
   callbacks?: any
   bots?: {
@@ -52,6 +54,7 @@ export default function ChatsPageClient({
   const [currentBotNameToDisplay, setCurrentBotNameToDisplay] = useState<string | null>(initialBotDisplayName)
 
   const handleTimePeriodChange = (newTimePeriod: string) => {
+    console.log("🕐 ChatsPageClient: Time period changed to:", newTimePeriod)
     setSelectedTimePeriod(newTimePeriod)
   }
 
@@ -62,6 +65,21 @@ export default function ChatsPageClient({
   return (
     <>
       <ChatsHeader selectedTimePeriod={selectedTimePeriod} onTimePeriodChange={handleTimePeriodChange} />
+
+      <div className="mb-4 p-4 bg-gray-100 rounded text-xs">
+        <strong>Debug Info:</strong>
+        <br />
+        Selected Time Period: {selectedTimePeriod}
+        <br />
+        Initial Bot: {initialSelectedBot || "All Bots"}
+        <br />
+        Bot Display Name: {currentBotNameToDisplay}
+        <br />
+        Accessible Bots: {accessibleBotShareNames.length}
+        <br />
+        SuperAdmin: {isSuperAdmin.toString()}
+      </div>
+
       <ChatsList
         key={`${initialSelectedBot || "all"}-${selectedTimePeriod}`}
         selectedBot={initialSelectedBot}

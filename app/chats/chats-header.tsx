@@ -1,8 +1,8 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
+import { Search, Filter } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { Search, Filter, Download } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { TIME_PERIODS } from "@/lib/time-utils"
 
 interface ChatsHeaderProps {
@@ -12,15 +12,12 @@ interface ChatsHeaderProps {
 
 export function ChatsHeader({ selectedTimePeriod, onTimePeriodChange }: ChatsHeaderProps) {
   return (
-    <div className="flex flex-col gap-4 mb-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Chats</h1>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
-        </div>
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Chats</h1>
+        <p className="text-muted-foreground">
+          View all your chat threads with customers. You have superadmin access to all bots.
+        </p>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -32,7 +29,10 @@ export function ChatsHeader({ selectedTimePeriod, onTimePeriodChange }: ChatsHea
         {/* Time Period Selector */}
         <select
           value={selectedTimePeriod}
-          onChange={(e) => onTimePeriodChange(e.target.value)}
+          onChange={(e) => {
+            console.log("🕐 ChatsHeader: Time period selector changed to:", e.target.value)
+            onTimePeriodChange(e.target.value)
+          }}
           className="h-10 border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 rounded-md sm:w-auto"
           aria-label="Select time period"
         >

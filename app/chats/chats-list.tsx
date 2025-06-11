@@ -68,16 +68,17 @@ export default function ChatsList({
 
   // The core loadData function
   const loadData = useCallback(async () => {
+    console.log("🔄 ChatsList: loadData called")
+    console.log("🔄 ChatsList: selectedTimePeriod:", selectedTimePeriod)
+    console.log("🔄 ChatsList: selectedBot:", selectedBot)
+
     setLoading(true)
     try {
       const { startDate, endDate } = calculateDateRangeForQuery(selectedTimePeriod)
-
-      // After calculating date range, add this logging:
-      console.log("🕐 Time period:", selectedTimePeriod)
-      console.log("📅 Date range:", { startDate, endDate })
-      console.log("🎯 Target bots:", selectedBot ? [selectedBot] : accessibleBotShareNames)
+      console.log("🔄 ChatsList: Date range calculated:", { startDate, endDate })
 
       const targetBots = selectedBot ? [selectedBot] : accessibleBotShareNames
+      console.log("🔄 ChatsList: Target bots:", targetBots)
 
       // Handle case where non-superadmin has no bots
       if (!isSuperAdmin && targetBots.length === 0) {
@@ -107,11 +108,22 @@ export default function ChatsList({
         threadsQuery = threadsQuery.in("bot_share_name", targetBots)
       }
 
-      if (startDate) threadsQuery = threadsQuery.gte("created_at", startDate)
-      if (endDate) threadsQuery = threadsQuery.lte("created_at", endDate)
+      if (startDate) {
+        console.log("🔄 ChatsList: Applying startDate filter:", startDate)
+        threadsQuery = threadsQuery.gte("created_at", startDate)
+      }
+      if (endDate) {
+        console.log("🔄 ChatsList: Applying endDate filter:", endDate)
+        threadsQuery = threadsQuery.lte("created_at", endDate)
+      }
 
+      console.log("🔄 ChatsList: Executing threads query...")
       const { data: threadsData, error: threadsError } = await threadsQuery
-      if (threadsError) throw threadsError
+      if (threadsError) {
+        console.error("❌ ChatsList: Threads query error:", threadsError)
+        throw threadsError
+      }
+      console.log("✅ ChatsList: Threads fetched:", threadsData?.length || 0)
       setThreads(threadsData || [])
 
       // 2. Fetch Actual Total Count
@@ -121,23 +133,22 @@ export default function ChatsList({
         countQuery = countQuery.in("bot_share_name", targetBots)
       }
       if (startDate) {
-        console.log("📅 Applying startDate filter:", startDate)
+        console.log("🔄 ChatsList: Applying startDate filter to count:", startDate)
         countQuery = countQuery.gte("created_at", startDate)
       }
       if (endDate) {
-        console.log("📅 Applying endDate filter:", endDate)
+        console.log("🔄 ChatsList: Applying endDate filter to count:", endDate)
         countQuery = countQuery.lte("created_at", endDate)
       }
 
-      console.log("🔍 About to execute count query...")
+      console.log("🔄 ChatsList: Executing count query...")
       const { count, error: countError } = await countQuery
 
       if (countError) {
-        console.error("❌ Error fetching actual total count:", countError)
-        console.error("❌ Count query details:", { targetBots, startDate, endDate })
+        console.error("❌ ChatsList: Count query error:", countError)
         setActualTotalThreads(threadsData?.length || 0)
       } else {
-        console.log("✅ Count query successful:", count)
+        console.log("✅ ChatsList: Count fetched:", count)
         setActualTotalThreads(count || 0)
       }
 
@@ -167,7 +178,7 @@ export default function ChatsList({
       setCurrentTimezoneAbbr(getTimezoneAbbreviation(currentViewBotTimezone))
       setCurrentBotNameToDisplay(currentViewBotDisplayName)
     } catch (error) {
-      console.error("Error loading threads data:", error)
+      console.error("❌ ChatsList: Error loading threads data:", error)
       setThreads([])
       setActualTotalThreads(0)
     } finally {
@@ -184,6 +195,7 @@ export default function ChatsList({
   ])
 
   useEffect(() => {
+    console.log("🔄 ChatsList: useEffect triggered, calling loadData")
     loadData()
   }, [loadData])
 
@@ -311,7 +323,7 @@ export default function ChatsList({
       {threads.length === 0 ? (
         <div className="text-center py-8">
           <MessageSquare className="h-12 w-12 text-[#616161] mx-auto mb-4" />
-          <p className="text-[#616161]">No chats found</p>
+          <p className="text-[#616161]">No chats found for the selected time period</p>
         </div>
       ) : (
         <div className="space-y-4">
