@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase/client"
 interface Bot {
   id: string
   client_name: string
+  bot_share_name: string
 }
 
 interface BotSelectorProps {
@@ -87,12 +88,27 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
       onSelectBot(botShareName)
     }
 
-    // BRUTE FORCE APPROACH: Create a form and submit it to force a full page refresh
-    const form = document.createElement("form")
-    form.method = "GET"
-    form.action = window.location.href
-    document.body.appendChild(form)
-    form.submit()
+    // GUARANTEED FORCE REFRESH - Multiple approaches for maximum reliability
+    console.log("🔄 FORCING PAGE REFRESH...")
+
+    // Approach 1: window.location.reload()
+    window.location.reload()
+
+    // Approach 2: Form submission (backup if reload is prevented)
+    // This will only execute if reload is somehow prevented
+    setTimeout(() => {
+      try {
+        const form = document.createElement("form")
+        form.method = "GET"
+        form.action = window.location.href
+        document.body.appendChild(form)
+        form.submit()
+        console.log("🔄 Form submission refresh triggered")
+      } catch (e) {
+        console.error("Form submission failed, trying direct location assign")
+        window.location.href = window.location.href
+      }
+    }, 100)
   }
 
   if (loading) {
