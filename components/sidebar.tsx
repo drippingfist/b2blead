@@ -234,7 +234,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="p-6">
           <div className="flex flex-col space-y-4">
             <div className="flex items-center justify-between">
-              <Link href="/dashboard" className="flex items-center" onClick={handleLinkClick}>
+              <Link href="/" className="flex items-center" onClick={handleLinkClick}>
                 <img src="/logo.svg" alt="b2bLEAD.ai" className="h-12 w-auto" />
               </Link>
               {/* Close button for mobile */}
@@ -258,7 +258,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             const isActive =
               pathname === item.href ||
               (item.href !== "/" && pathname.startsWith(item.href)) ||
-              (item.href === "/chats" && pathname.startsWith("/thread/"))
+              (item.href === "/chats" && pathname.startsWith("/thread/")) // Updated for chats page
 
             return (
               <Link
