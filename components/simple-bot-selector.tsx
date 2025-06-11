@@ -94,7 +94,7 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
   }, [])
 
   const handleBotSelection = (botShareName: string | null) => {
-    // Store current sidebar state before refresh
+    // Store current sidebar state
     const sidebarElement = document.getElementById("mobile-sidebar")
     const isSidebarOpen = sidebarElement && !sidebarElement.classList.contains("-translate-x-full")
 
@@ -120,28 +120,6 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
 
     // Dispatch custom event for other components
     window.dispatchEvent(new CustomEvent("botSelectionChanged", { detail: botShareName }))
-
-    // GUARANTEED FORCE REFRESH - Multiple approaches for maximum reliability
-    console.log("🔄 FORCING PAGE REFRESH...")
-
-    // Approach 1: window.location.reload()
-    window.location.reload()
-
-    // Approach 2: Form submission (backup if reload is prevented)
-    // This will only execute if reload is somehow prevented
-    setTimeout(() => {
-      try {
-        const form = document.createElement("form")
-        form.method = "GET"
-        form.action = window.location.href
-        document.body.appendChild(form)
-        form.submit()
-        console.log("🔄 Form submission refresh triggered")
-      } catch (e) {
-        console.error("Form submission failed, trying direct location assign")
-        window.location.href = window.location.href
-      }
-    }, 100)
   }
 
   // Find the currently selected bot
