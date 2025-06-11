@@ -244,10 +244,10 @@ export default function SettingsPage() {
       loadUserData()
     }
 
-    window.addEventListener("botChanged", handleBotChange as EventListener)
+    window.addEventListener("botSelectionChanged", handleBotChange as EventListener)
 
     return () => {
-      window.removeEventListener("botChanged", handleBotChange as EventListener)
+      window.removeEventListener("botSelectionChanged", handleBotChange as EventListener)
     }
   }, []) // Remove selectedBot dependency to prevent infinite loops
 
