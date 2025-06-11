@@ -19,6 +19,7 @@ import {
   getInvitableBots,
 } from "@/lib/user-actions"
 import { DeleteUserModal } from "@/components/delete-user-modal"
+import Loading from "@/components/loading"
 
 interface UserData {
   id: string
@@ -512,14 +513,7 @@ export default function SettingsPage() {
 
   // Show loading screen while initial data loads
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#038a71] mx-auto mb-4"></div>
-          <p className="text-[#616161]">Loading settings...</p>
-        </div>
-      </div>
-    )
+    return <Loading message="Loading settings..." />
   }
 
   return (
