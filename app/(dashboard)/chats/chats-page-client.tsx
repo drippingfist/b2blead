@@ -56,6 +56,7 @@ export default function ChatsPageClient() {
   const itemsPerPage = 100
   const [sortField, setSortField] = useState<string | null>("created_at")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
 
   // Listen for bot selection changes
   useEffect(() => {
@@ -109,6 +110,23 @@ export default function ChatsPageClient() {
     loadUserPreferences()
   }, [])
 
+  // Check if user is superadmin
+  useEffect(() => {
+    const checkSuperAdminStatus = async () => {
+      try {
+        const response = await fetch("/api/user-bot-access")
+        if (response.ok) {
+          const data = await response.json()
+          setIsSuperAdmin(data.isSuperAdmin)
+        }
+      } catch (error) {
+        console.error("Error checking superadmin status:", error)
+      }
+    }
+
+    checkSuperAdminStatus()
+  }, [])
+
   // Load bot data when selected bot changes
   useEffect(() => {
     const loadBotData = async () => {
@@ -138,7 +156,8 @@ export default function ChatsPageClient() {
   // Load threads data
   useEffect(() => {
     const loadThreads = async () => {
-      if (!selectedBot) {
+      // For superadmins, allow loading all threads when no bot is selected
+      if (!selectedBot && !isSuperAdmin) {
         setThreads([])
         setTotalCount(0)
         setLoading(false)
@@ -176,11 +195,12 @@ export default function ChatsPageClient() {
         }
 
         // Build base query for counting
-        let countQuery = supabase
-          .from("threads")
-          .select("id", { count: "exact", head: true })
-          .eq("bot_share_name", selectedBot)
-          .gt("count", 0)
+        let countQuery = supabase.from("threads").select("id", { count: "exact", head: true }).gt("count", 0)
+
+        // Only filter by bot if one is selected OR user is not superadmin
+        if (selectedBot) {
+          countQuery = countQuery.eq("bot_share_name", selectedBot)
+        }
 
         // Apply date filter to count query
         if (startDate) {
@@ -189,11 +209,14 @@ export default function ChatsPageClient() {
 
         // Apply filter to count query
         if (filter === "callbacks") {
-          // Count threads with callback records - need to use a different approach
-          const { data: callbackThreads } = await supabase
-            .from("callbacks")
-            .select("id")
-            .eq("bot_share_name", selectedBot)
+          // Count threads with callback records
+          let callbacksSubQuery = supabase.from("callbacks").select("id")
+
+          if (selectedBot) {
+            callbacksSubQuery = callbacksSubQuery.eq("bot_share_name", selectedBot)
+          }
+
+          const { data: callbackThreads } = await callbacksSubQuery
 
           if (callbackThreads && callbackThreads.length > 0) {
             const callbackIds = callbackThreads.map((c) => c.id)
@@ -209,11 +232,13 @@ export default function ChatsPageClient() {
           // We'll filter out those with callbacks in the main query
         } else if (filter === "user_messages") {
           // Get thread IDs that have user messages
-          const { data: userMessageThreads } = await supabase
-            .from("messages")
-            .select("thread_id")
-            .eq("role", "user")
-            .eq("bot_share_name", selectedBot)
+          let userMessagesSubQuery = supabase.from("messages").select("thread_id").eq("role", "user")
+
+          if (selectedBot) {
+            userMessagesSubQuery = userMessagesSubQuery.eq("bot_share_name", selectedBot)
+          }
+
+          const { data: userMessageThreads } = await userMessagesSubQuery
 
           if (userMessageThreads && userMessageThreads.length > 0) {
             const threadIds = [...new Set(userMessageThreads.map((m) => m.thread_id).filter(Boolean))]
@@ -241,9 +266,13 @@ export default function ChatsPageClient() {
               user_email
             )
           `)
-          .eq("bot_share_name", selectedBot)
           .gt("count", 0)
           .order(sortField || "created_at", { ascending: sortDirection === "asc" })
+
+        // Only filter by bot if one is selected
+        if (selectedBot) {
+          query = query.eq("bot_share_name", selectedBot)
+        }
 
         // Apply date filter
         if (startDate) {
@@ -298,7 +327,7 @@ export default function ChatsPageClient() {
     }
 
     loadThreads()
-  }, [selectedBot, filter, timePeriod, currentPage, sortField, sortDirection])
+  }, [selectedBot, filter, timePeriod, currentPage, sortField, sortDirection, isSuperAdmin])
 
   const handleStarToggle = async (threadId: string) => {
     try {
@@ -457,7 +486,7 @@ export default function ChatsPageClient() {
     )
   }
 
-  if (!selectedBot) {
+  if (!selectedBot && !isSuperAdmin) {
     return (
       <div className="p-4 md:p-6">
         <div className="mb-6">
@@ -548,9 +577,10 @@ export default function ChatsPageClient() {
         </div>
 
         {/* Dynamic Subheading */}
-        {botData && (
+        {(botData || (!selectedBot && isSuperAdmin)) && (
           <p className="text-sm text-[#616161]">
-            Showing threads on <span className="font-medium">{botData.client_name}</span> in {getTimePeriodLabel()}
+            Showing threads on <span className="font-medium">{botData?.client_name || "All Bots"}</span> in{" "}
+            {getTimePeriodLabel()}
             {getFilterLabel()} ({totalCount} threads)
           </p>
         )}
@@ -620,6 +650,16 @@ export default function ChatsPageClient() {
                       Start Time {getSortIndicator("created_at")}
                     </button>
                   </th>
+                  {!selectedBot && isSuperAdmin && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
+                      <button
+                        onClick={() => handleSort("bot_share_name")}
+                        className="flex items-center hover:text-blue-600 transition-colors"
+                      >
+                        Bot {getSortIndicator("bot_share_name")}
+                      </button>
+                    </th>
+                  )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                     Callback
                   </th>
@@ -673,7 +713,10 @@ export default function ChatsPageClient() {
                   <>
                     {/* Date Header Row */}
                     <tr key={`date-${date}`} className="bg-gray-50">
-                      <td colSpan={8} className="px-6 py-2 text-sm font-medium text-[#616161]">
+                      <td
+                        colSpan={!selectedBot && isSuperAdmin ? 9 : 8}
+                        className="px-6 py-2 text-sm font-medium text-[#616161]"
+                      >
                         {date}
                       </td>
                     </tr>
@@ -684,6 +727,15 @@ export default function ChatsPageClient() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
                           {formatDateTime(thread.created_at).time}
                         </td>
+
+                        {/* Bot (only show for superadmin viewing all bots) */}
+                        {!selectedBot && isSuperAdmin && (
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
+                            <span className="text-xs bg-gray-100 px-2 py-1 rounded">
+                              {thread.bot_share_name || "Unknown"}
+                            </span>
+                          </td>
+                        )}
 
                         {/* Callback */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
