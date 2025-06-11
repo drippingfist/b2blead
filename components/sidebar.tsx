@@ -134,7 +134,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   // Filter navigation based on user role
   const allNavigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { name: "Chats", href: "/", icon: MessageSquare },
+    { name: "Chats", href: "/chats", icon: MessageSquare }, // Changed from "/" to "/chats"
     { name: "Messages", href: "/messages", icon: Mail },
     { name: "Callbacks", href: "/callbacks", icon: PhoneCall },
     { name: "Improve Answers", href: "/improvements", icon: MessageSquarePlus, adminOnly: true },
@@ -258,7 +258,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             const isActive =
               pathname === item.href ||
               (item.href !== "/" && pathname.startsWith(item.href)) ||
-              (item.href === "/" && (pathname === "/" || pathname.startsWith("/thread/")))
+              (item.href === "/chats" && (pathname === "/chats" || pathname.startsWith("/thread/")))
 
             return (
               <Link
