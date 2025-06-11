@@ -485,7 +485,10 @@ export default function ThreadsView({
           loadMore()
         }
       },
-      { threshold: 0.1 },
+      {
+        threshold: 0.1,
+        rootMargin: "100px", // Trigger 100px before reaching the element
+      },
     )
 
     if (observerRef.current) {
@@ -928,14 +931,18 @@ export default function ThreadsView({
         )}
       </div>
 
+      {/* Infinite Scroll Trigger - positioned better */}
+      {hasMore && (
+        <div ref={observerRef} className="h-20 w-full flex items-center justify-center">
+          <div className="text-sm text-gray-400">Scroll to load more...</div>
+        </div>
+      )}
+
       {filteredThreads.length === 0 && searchQuery && (
         <div className="text-center py-12">
           <p className="text-[#616161]">No conversations found matching your search in the selected time period.</p>
         </div>
       )}
-
-      {/* Infinite Scroll Trigger */}
-      <div ref={observerRef} className="h-4 w-full" />
 
       {isLoadingMore && (
         <div className="flex items-center justify-center py-4">
