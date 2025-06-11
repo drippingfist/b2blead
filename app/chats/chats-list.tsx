@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback } from "react"
 import { supabase } from "@/lib/supabase/client"
 import Link from "next/link"
-import { ChevronLeft, ChevronRight, Clock, MessageSquare, Phone, Star, Trash2 } from "lucide-react" // Added Chevron Icons
+import { ChevronLeft, ChevronRight, Clock, MessageSquare, Phone, Star, Trash2 } from "lucide-react"
 import { formatTimeInTimezone, getTimezoneAbbreviation } from "@/lib/timezone-utils"
 import { calculateDateRangeForQuery, TIME_PERIODS } from "@/lib/time-utils"
-import { Button } from "@/components/ui/button" // Import Button for pagination
+import { Button } from "@/components/ui/button"
 
 interface Thread {
   id: string
@@ -36,7 +36,7 @@ interface ChatsListProps {
   onRefresh?: () => void
   initialThreads: Thread[]
   initialTotalThreads: number
-  initialBotDisplayName: string | null // This is effectively currentBotNameToDisplay from parent
+  initialBotDisplayName: string | null
   selectedTimePeriod: string
   accessibleBotShareNames: string[]
   setCurrentTimezoneAbbr: (abbr: string) => void
@@ -58,7 +58,7 @@ export default function ChatsList({
   setCurrentBotNameToDisplay,
 }: ChatsListProps) {
   const [threads, setThreads] = useState<Thread[]>(initialThreads)
-  const [loading, setLoading] = useState(false) // Manage loading state carefully
+  const [loading, setLoading] = useState(false)
   const [selectedThreadsSet, setSelectedThreadsSet] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
 
@@ -68,29 +68,33 @@ export default function ChatsList({
   const [currentPage, setCurrentPage] = useState(1)
 
   // Effect to reset page when selectedBot or selectedTimePeriod props change
-  // This is crucial if the component doesn't remount via key change, or as a safeguard.
-  // Given ChatsPageClient uses a key that includes selectedTimePeriod, this might be
-  // redundant for selectedTimePeriod but good for selectedBot if it could change without remount.
   useEffect(() => {
     console.log("🔄 ChatsList: selectedBot or selectedTimePeriod prop changed. Resetting currentPage to 1.")
+    console.log("🔄 ChatsList: selectedTimePeriod received:", selectedTimePeriod)
+    console.log("🔄 ChatsList: selectedBot received:", selectedBot)
     setCurrentPage(1)
   }, [selectedBot, selectedTimePeriod])
 
   const loadData = useCallback(
     async (pageToFetch: number) => {
       console.log(`🔄 ChatsList: loadData called for page ${pageToFetch}`)
-      console.log("🔄 ChatsList: selectedTimePeriod:", selectedTimePeriod)
-      console.log("🔄 ChatsList: selectedBot:", selectedBot)
+      console.log("🔄 ChatsList: selectedTimePeriod in loadData:", selectedTimePeriod)
+      console.log("🔄 ChatsList: selectedBot in loadData:", selectedBot)
 
       setLoading(true)
       try {
+        // 🐛 DEBUG: Let's see what calculateDateRangeForQuery returns
+        console.log("🕐 About to call calculateDateRangeForQuery with:", selectedTimePeriod)
         const { startDate, endDate } = calculateDateRangeForQuery(selectedTimePeriod)
+        console.log("🕐 calculateDateRangeForQuery returned:", { startDate, endDate })
+
         const targetBots = selectedBot ? [selectedBot] : accessibleBotShareNames
+        console.log("🎯 Target bots for queries:", targetBots)
 
         if (!isSuperAdmin && targetBots.length === 0) {
           setThreads([])
           setActualTotalThreads(0)
-          setCurrentBotNameToDisplay(initialBotDisplayName) // Use prop which is parent's current state
+          setCurrentBotNameToDisplay(initialBotDisplayName)
           setBotTimezone("UTC")
           setCurrentTimezoneAbbr(getTimezoneAbbreviation("UTC"))
           setLoading(false)
@@ -110,45 +114,67 @@ export default function ChatsList({
           )
           .gt("count", 0)
           .order("updated_at", { ascending: false })
-          .range((pageToFetch - 1) * PAGE_SIZE, pageToFetch * PAGE_SIZE - 1) // Pagination
+          .range((pageToFetch - 1) * PAGE_SIZE, pageToFetch * PAGE_SIZE - 1)
 
         if (targetBots.length > 0) {
+          console.log("🔍 Applying bot filter to threads query:", targetBots)
           threadsQuery = threadsQuery.in("bot_share_name", targetBots)
         }
-        if (startDate) threadsQuery = threadsQuery.gte("created_at", startDate)
-        if (endDate) threadsQuery = threadsQuery.lte("created_at", endDate)
+        if (startDate) {
+          console.log("🔍 Applying startDate filter to threads query:", startDate)
+          threadsQuery = threadsQuery.gte("created_at", startDate)
+        }
+        if (endDate) {
+          console.log("🔍 Applying endDate filter to threads query:", endDate)
+          threadsQuery = threadsQuery.lte("created_at", endDate)
+        }
 
+        console.log("🔍 Executing threads query...")
         const { data: threadsData, error: threadsError } = await threadsQuery
-        if (threadsError) throw threadsError
+        if (threadsError) {
+          console.error("❌ Threads query error:", threadsError)
+          throw threadsError
+        }
         setThreads(threadsData || [])
         console.log("✅ ChatsList: Threads fetched:", threadsData?.length || 0)
 
         // 2. Fetch Actual Total Count (Unpaginated)
+        console.log("🔢 Building count query...")
         let countQuery = supabase.from("threads").select("id", { count: "exact", head: true }).gt("count", 0)
-        if (targetBots.length > 0) countQuery = countQuery.in("bot_share_name", targetBots)
-        if (startDate) countQuery = countQuery.gte("created_at", startDate)
-        if (endDate) countQuery = countQuery.lte("created_at", endDate)
 
+        if (targetBots.length > 0) {
+          console.log("🔢 Applying bot filter to count query:", targetBots)
+          countQuery = countQuery.in("bot_share_name", targetBots)
+        }
+        if (startDate) {
+          console.log("🔢 Applying startDate filter to count query:", startDate)
+          countQuery = countQuery.gte("created_at", startDate)
+        }
+        if (endDate) {
+          console.log("🔢 Applying endDate filter to count query:", endDate)
+          countQuery = countQuery.lte("created_at", endDate)
+        }
+
+        console.log("🔢 Executing count query...")
         const { count, error: countError } = await countQuery
+
         if (countError) {
           console.error("❌ ChatsList: Count query error:", countError)
-          setActualTotalThreads(threadsData?.length || 0) // Fallback to current page size if count fails
+          console.error("❌ Count query details:", { targetBots, startDate, endDate })
+          setActualTotalThreads(threadsData?.length || 0)
         } else {
+          console.log("✅ ChatsList: Count query successful! Count:", count)
           setActualTotalThreads(count || 0)
-          console.log("✅ ChatsList: Count fetched:", count)
         }
 
         // 3. Update bot display name and timezone for the current view
         let determinedBotTimezone = "UTC"
-        // initialBotDisplayName (prop) is the current display name from parent.
-        // We determine if it needs to change based on fetched data.
         let determinedBotDisplayName = initialBotDisplayName
 
         if (selectedBot) {
           const botDataFromThreads = threadsData?.find((t) => t.bot_share_name === selectedBot)?.bots
           if (botDataFromThreads) {
             determinedBotTimezone = botDataFromThreads.timezone || "UTC"
-            // Only update display name if it was generic or not set for the specific bot
             if (
               !determinedBotDisplayName ||
               determinedBotDisplayName === "All Accessible Bots" ||
@@ -157,7 +183,6 @@ export default function ChatsList({
               determinedBotDisplayName = botDataFromThreads.bot_display_name || selectedBot
             }
           } else {
-            // Fallback: if selectedBot has no threads on this page, fetch its details directly
             const { data: botDetails } = await supabase
               .from("bots")
               .select("timezone, bot_display_name")
@@ -173,22 +198,18 @@ export default function ChatsList({
             }
           }
         } else if (threadsData && threadsData.length > 0 && threadsData[0].bots?.timezone) {
-          determinedBotTimezone = threadsData[0].bots.timezone // Use first thread's timezone if viewing multiple bots
+          determinedBotTimezone = threadsData[0].bots.timezone
         }
-        // If determinedBotDisplayName is still null (e.g. no selected bot, no threads),
-        // it will keep the initialBotDisplayName prop's value (e.g. "All Accessible Bots")
 
         setBotTimezone(determinedBotTimezone)
         setCurrentTimezoneAbbr(getTimezoneAbbreviation(determinedBotTimezone))
         if (determinedBotDisplayName !== initialBotDisplayName) {
-          // If logic derived a new name
           setCurrentBotNameToDisplay(determinedBotDisplayName)
         }
       } catch (error) {
         console.error("❌ ChatsList: Error loading threads data:", error)
         setThreads([])
         setActualTotalThreads(0)
-        // Reset to sensible defaults or reflect error state in display name/timezone
         setCurrentBotNameToDisplay(isSuperAdmin && !selectedBot ? "All Bots" : initialBotDisplayName)
         setBotTimezone("UTC")
         setCurrentTimezoneAbbr(getTimezoneAbbreviation("UTC"))
@@ -201,10 +222,9 @@ export default function ChatsList({
       selectedTimePeriod,
       accessibleBotShareNames,
       isSuperAdmin,
-      initialBotDisplayName, // important dependency for logic within loadData
+      initialBotDisplayName,
       setCurrentTimezoneAbbr,
       setCurrentBotNameToDisplay,
-      // supabase client and PAGE_SIZE are stable, no need to list
     ],
   )
 
@@ -243,7 +263,7 @@ export default function ChatsList({
       })
       if (response.ok) {
         setSelectedThreadsSet(new Set())
-        await loadData(currentPage) // Reload current page
+        await loadData(currentPage)
         onRefresh?.()
       } else {
         console.error("Failed to delete threads")
@@ -282,7 +302,6 @@ export default function ChatsList({
 
   const formatPhoneNumber = (phone?: string) => {
     if (!phone) return "Not provided"
-    // Basic NA formatting, can be improved for international numbers
     if (phone.length === 10 && /^\d+$/.test(phone)) {
       return phone.replace(/(\d{3})(\d{3})(\d{4})/, "($1) $2-$3")
     }
@@ -292,11 +311,9 @@ export default function ChatsList({
     return phone
   }
 
-  // Use botTimezone state for formatting, which is updated by loadData
   const timezoneAbbrToDisplay = getTimezoneAbbreviation(botTimezone)
   const currentPeriodLabel = TIME_PERIODS.find((p) => p.value === selectedTimePeriod)?.label || selectedTimePeriod
 
-  // Use initialBotDisplayName prop for display text, as it's kept current by parent (ChatsPageClient)
   const botDisplayForText = initialBotDisplayName || (isSuperAdmin && !selectedBot ? "All Bots" : "bots")
 
   const clientFilteredThreads = threads.filter((thread) => {
@@ -310,6 +327,12 @@ export default function ChatsList({
 
   return (
     <div className="space-y-4">
+      {/* Debug Panel */}
+      <div className="mb-4 p-2 bg-yellow-100 border border-yellow-300 rounded text-xs">
+        <strong>🐛 DEBUG:</strong> selectedTimePeriod = "{selectedTimePeriod}" | actualTotalThreads ={" "}
+        {actualTotalThreads} | currentPage = {currentPage}
+      </div>
+
       {isSuperAdmin && threads.length > 0 && (
         <div className="flex items-center justify-between p-4 bg-red-50 border border-red-200 rounded-lg">
           <div className="flex items-center space-x-4">
@@ -341,7 +364,6 @@ export default function ChatsList({
         </div>
       )}
 
-      {/* Info bar: Modified text and new pagination controls */}
       {(actualTotalThreads > 0 || loading) && (
         <div className="flex flex-col sm:flex-row justify-between items-center px-4 py-1 space-y-2 sm:space-y-0">
           <p className="text-sm text-[#616161] text-center sm:text-left">
@@ -387,7 +409,6 @@ export default function ChatsList({
         </div>
       )}
 
-      {/* Conditional rendering for loading or no threads */}
       {loading && clientFilteredThreads.length === 0 && <div className="p-4 text-center">Loading threads...</div>}
 
       {!loading && actualTotalThreads === 0 && (
