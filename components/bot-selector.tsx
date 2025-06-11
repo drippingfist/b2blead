@@ -74,6 +74,18 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
   const handleBotSelection = (botShareName: string | null) => {
     console.log("🤖 Bot selector: Selecting bot:", botShareName)
 
+    // Store current sidebar state before refresh
+    const sidebarElement = document.getElementById("mobile-sidebar")
+    const isSidebarOpen = sidebarElement && !sidebarElement.classList.contains("-translate-x-full")
+
+    if (isSidebarOpen) {
+      localStorage.setItem("sidebarWasOpen", "true")
+      console.log("💾 Sidebar was open, storing state")
+    } else {
+      localStorage.removeItem("sidebarWasOpen")
+      console.log("💾 Sidebar was closed, removing state")
+    }
+
     // Update localStorage immediately
     if (botShareName) {
       localStorage.setItem("selectedBot", botShareName)
