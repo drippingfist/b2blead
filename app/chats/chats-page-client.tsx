@@ -3,10 +3,11 @@
 import { useState, useCallback } from "react"
 import ThreadsView from "@/components/threads-view"
 import type { Thread } from "@/lib/simple-database"
-import { Calendar, Clock } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { ChevronDown, Check, Calendar } from "lucide-react"
+import { useRef, useEffect } from "react"
 
 const TIME_PERIOD_OPTIONS = [
+  { value: "none", label: "None" },
   { value: "today", label: "Today" },
   { value: "last7days", label: "Last 7 days" },
   { value: "last30days", label: "Last 30 days" },
@@ -16,15 +17,34 @@ const TIME_PERIOD_OPTIONS = [
 
 export default function ChatsPageClient() {
   const [threads, setThreads] = useState<Thread[]>([])
-  const [selectedTimePeriod, setSelectedTimePeriod] = useState<string | null>(null)
+  const [selectedTimePeriod, setSelectedTimePeriod] = useState<string>("none")
   const [totalCount, setTotalCount] = useState(0)
   const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   const loadThreadsForPeriod = useCallback(async (timePeriod: string) => {
+    if (timePeriod === "none") {
+      setThreads([])
+      setTotalCount(0)
+      setHasMore(false)
+      return
+    }
+
     setLoading(true)
-    setSelectedTimePeriod(timePeriod)
 
     try {
       console.log("🔄 Loading threads for period:", timePeriod)
@@ -42,7 +62,6 @@ export default function ChatsPageClient() {
       setThreads(data.threads || [])
       setTotalCount(data.totalCount || 0)
       setHasMore(data.hasMore && (data.threads?.length || 0) === 20)
-      setHasLoadedOnce(true)
     } catch (error) {
       console.error("❌ Error loading threads:", error)
       setThreads([])
@@ -54,7 +73,7 @@ export default function ChatsPageClient() {
   }, [])
 
   const loadMoreThreads = useCallback(async () => {
-    if (loading || !hasMore || !selectedTimePeriod) return
+    if (loading || !hasMore || selectedTimePeriod === "none") return
 
     setLoading(true)
     try {
@@ -85,81 +104,71 @@ export default function ChatsPageClient() {
   }, [threads.length, loading, hasMore, selectedTimePeriod])
 
   const handleRefresh = useCallback(async () => {
-    if (selectedTimePeriod) {
+    if (selectedTimePeriod !== "none") {
       await loadThreadsForPeriod(selectedTimePeriod)
     }
   }, [selectedTimePeriod, loadThreadsForPeriod])
 
-  // Show time period selection if no period is selected
-  if (!hasLoadedOnce) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16">
-        <div className="text-center max-w-md">
-          <div className="mb-6">
-            <Calendar className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Select Time Period</h2>
-            <p className="text-gray-600">
-              Choose a time period to view your chat conversations. This helps keep the page fast and organized.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {TIME_PERIOD_OPTIONS.map((option) => (
-              <Button
-                key={option.value}
-                onClick={() => loadThreadsForPeriod(option.value)}
-                disabled={loading}
-                variant="outline"
-                className="flex items-center justify-center p-4 h-auto hover:bg-[#038a71] hover:text-white hover:border-[#038a71] transition-colors"
-              >
-                <Clock className="h-4 w-4 mr-2" />
-                {option.label}
-              </Button>
-            ))}
-          </div>
-
-          {loading && (
-            <div className="mt-6 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#038a71]"></div>
-              <span className="ml-2 text-gray-600">Loading conversations...</span>
-            </div>
-          )}
-        </div>
-      </div>
-    )
+  const handleTimePeriodChange = (timePeriod: string) => {
+    setSelectedTimePeriod(timePeriod)
+    setDropdownOpen(false)
+    loadThreadsForPeriod(timePeriod)
   }
 
-  // Show threads view once a period is selected
+  const getCurrentTimePeriodLabel = () => {
+    return TIME_PERIOD_OPTIONS.find((option) => option.value === selectedTimePeriod)?.label || "None"
+  }
+
   return (
     <div>
-      {/* Time Period Selector Bar */}
-      <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center">
-            <Clock className="h-5 w-5 text-gray-500 mr-2" />
-            <span className="text-sm text-gray-600">Current period:</span>
-            <span className="ml-2 font-medium text-gray-900">
-              {TIME_PERIOD_OPTIONS.find((p) => p.value === selectedTimePeriod)?.label}
-            </span>
-          </div>
+      {/* Time Period Selector */}
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center">
+          <Calendar className="h-5 w-5 text-gray-500 mr-3" />
+          <span className="text-sm text-gray-600 mr-3">Time Period:</span>
 
-          <div className="flex flex-wrap gap-2">
-            {TIME_PERIOD_OPTIONS.map((option) => (
-              <Button
-                key={option.value}
-                onClick={() => loadThreadsForPeriod(option.value)}
-                disabled={loading}
-                variant={selectedTimePeriod === option.value ? "default" : "outline"}
-                size="sm"
-                className={selectedTimePeriod === option.value ? "bg-[#038a71] hover:bg-[#038a71]/90" : ""}
-              >
-                {option.label}
-              </Button>
-            ))}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              className="flex items-center border border-[#e0e0e0] rounded-md px-4 py-2 bg-white hover:bg-gray-50 transition-colors min-w-[150px] justify-between"
+            >
+              <span className={`text-sm ${selectedTimePeriod === "none" ? "text-gray-500" : "text-[#212121]"}`}>
+                {getCurrentTimePeriodLabel()}
+              </span>
+              <ChevronDown className="h-4 w-4 text-[#616161] ml-2" />
+            </button>
+
+            {dropdownOpen && (
+              <div className="absolute z-50 mt-1 w-full bg-white border border-[#e0e0e0] rounded-md shadow-lg">
+                {TIME_PERIOD_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => handleTimePeriodChange(option.value)}
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between ${
+                      selectedTimePeriod === option.value ? "bg-[#038a71]/10 text-[#038a71]" : "text-[#212121]"
+                    }`}
+                  >
+                    <span>{option.label}</span>
+                    {selectedTimePeriod === option.value && <Check className="h-4 w-4 text-[#038a71]" />}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
+
+        {selectedTimePeriod !== "none" && <div className="text-sm text-gray-600">{totalCount} total conversations</div>}
       </div>
 
+      {/* Loading State */}
+      {loading && selectedTimePeriod !== "none" && (
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#038a71]"></div>
+          <span className="ml-2 text-[#616161]">Loading conversations...</span>
+        </div>
+      )}
+
+      {/* Threads Table */}
       <ThreadsView
         initialThreads={threads}
         onRefresh={handleRefresh}
@@ -167,6 +176,7 @@ export default function ChatsPageClient() {
         hasMore={hasMore}
         totalCount={totalCount}
         selectedTimePeriod={selectedTimePeriod}
+        showEmptyState={selectedTimePeriod === "none"}
       />
     </div>
   )

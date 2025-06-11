@@ -14,7 +14,6 @@ export default async function ChatsPage() {
     redirect("/auth/login")
   }
 
-  // DON'T load any threads initially - let user select time period first
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-6">
