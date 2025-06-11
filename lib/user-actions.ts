@@ -108,7 +108,7 @@ export async function inviteUser(userData: {
     const { data: inviterBots, error: inviterBotsError } = await supabase
       .from("bot_users")
       .select("bot_share_name, role")
-      .eq("id", userData.invited_by)
+      .eq("user_id", userData.invited_by) // ✅ Changed from 'id' to 'user_id'
       .eq("is_active", true)
 
     if (inviterBotsError) {
