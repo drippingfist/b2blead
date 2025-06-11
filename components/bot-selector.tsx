@@ -117,28 +117,6 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
 
     // Dispatch custom event for other components
     window.dispatchEvent(new CustomEvent("botSelectionChanged", { detail: botShareName }))
-
-    // GUARANTEED FORCE REFRESH - Multiple approaches for maximum reliability
-    console.log("🔄 FORCING PAGE REFRESH...")
-
-    // Approach 1: window.location.reload()
-    window.location.reload()
-
-    // Approach 2: Form submission (backup if reload is prevented)
-    // This will only execute if reload is somehow prevented
-    setTimeout(() => {
-      try {
-        const form = document.createElement("form")
-        form.method = "GET"
-        form.action = window.location.href
-        document.body.appendChild(form)
-        form.submit()
-        console.log("🔄 Form submission refresh triggered")
-      } catch (e) {
-        console.error("Form submission failed, trying direct location assign")
-        window.location.href = window.location.href
-      }
-    }, 100)
   }
 
   if (loading) {
