@@ -24,31 +24,76 @@ export default function ChatsView({ initialMessages }: ChatsViewProps) {
   const [chatIdEnabled, setChatIdEnabled] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
 
-  // Group messages by date
-  const groupedMessages = messages.reduce((groups: { [key: string]: Message[] }, message) => {
-    const date = new Date(message.created_at).toLocaleDateString("en-US", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    })
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
 
-    if (!groups[date]) {
-      groups[date] = []
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
+    } else {
+      setSortField(field)
+      setSortDirection("desc")
     }
-    groups[date].push(message)
-    return groups
-  }, {})
+  }
 
-  // Filter messages based on search query
+  const getSortedMessages = (messages: Message[]) => {
+    if (!sortField) return messages
+
+    return [...messages].sort((a, b) => {
+      let aValue: any
+      let bValue: any
+
+      switch (sortField) {
+        case "time":
+          aValue = new Date(a.created_at).getTime()
+          bValue = new Date(b.created_at).getTime()
+          break
+        case "user":
+          aValue = (a.user_name || a.user_email || "Anonymous").toLowerCase()
+          bValue = (b.user_name || b.user_email || "Anonymous").toLowerCase()
+          break
+        case "sentiment":
+          aValue = a.sentiment_analysis || 0
+          bValue = b.sentiment_analysis || 0
+          break
+        case "message":
+          aValue = (a.user_message || a.bot_message || "").toLowerCase()
+          bValue = (b.user_message || b.bot_message || "").toLowerCase()
+          break
+        default:
+          return 0
+      }
+
+      if (sortDirection === "asc") {
+        return aValue > bValue ? 1 : -1
+      } else {
+        return aValue < bValue ? 1 : -1
+      }
+    })
+  }
+
+  const getSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ChevronDown className="h-4 w-4 ml-1 text-gray-300" />
+    }
+    return sortDirection === "asc" ? (
+      <ChevronDown className="h-4 w-4 ml-1 text-[#038a71] rotate-180" />
+    ) : (
+      <ChevronDown className="h-4 w-4 ml-1 text-[#038a71]" />
+    )
+  }
+
+  // Replace the existing filteredMessages logic with:
+  const sortedMessages = getSortedMessages(messages)
   const filteredMessages = searchQuery
-    ? messages.filter(
+    ? sortedMessages.filter(
         (msg) =>
           msg.user_message?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           msg.bot_message?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           msg.user_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           msg.user_email?.toLowerCase().includes(searchQuery.toLowerCase()),
       )
-    : messages
+    : sortedMessages
 
   const getSentimentEmoji = (sentiment?: number) => {
     if (!sentiment) return "😐"
@@ -61,6 +106,21 @@ export default function ChatsView({ initialMessages }: ChatsViewProps) {
     // This is a placeholder - you might want to calculate actual conversation duration
     return "00:02:30"
   }
+
+  // Replace the existing groupedMessages logic with:
+  const groupedMessages = filteredMessages.reduce((groups: { [key: string]: Message[] }, message) => {
+    const date = new Date(message.created_at).toLocaleDateString("en-US", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    })
+
+    if (!groups[date]) {
+      groups[date] = []
+    }
+    groups[date].push(message)
+    return groups
+  }, {})
 
   return (
     <div className="p-4 md:p-8">
@@ -135,20 +195,41 @@ export default function ChatsView({ initialMessages }: ChatsViewProps) {
           <thead>
             <tr className="bg-white border-b border-[#e0e0e0]">
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                <div className="flex items-center">
+                <button
+                  className="flex items-center hover:text-[#038a71] transition-colors"
+                  onClick={() => handleSort("time")}
+                >
                   Time
-                  <ChevronDown className="h-4 w-4 ml-1" />
-                </div>
+                  {getSortIcon("time")}
+                </button>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">User</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                <div className="flex items-center">
+                <button
+                  className="flex items-center hover:text-[#038a71] transition-colors"
+                  onClick={() => handleSort("user")}
+                >
+                  User
+                  {getSortIcon("user")}
+                </button>
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
+                <button
+                  className="flex items-center hover:text-[#038a71] transition-colors"
+                  onClick={() => handleSort("sentiment")}
+                >
                   Sentiment
                   <Info className="h-4 w-4 ml-1 text-[#616161]" />
-                </div>
+                  {getSortIcon("sentiment")}
+                </button>
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                Message Preview
+                <button
+                  className="flex items-center hover:text-[#038a71] transition-colors"
+                  onClick={() => handleSort("message")}
+                >
+                  Message Preview
+                  {getSortIcon("message")}
+                </button>
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                 Duration
