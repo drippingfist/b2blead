@@ -90,6 +90,7 @@ export default function SettingsPage() {
   const [botSettingsSaving, setBotSettingsSaving] = useState(false)
   const [clientName, setClientName] = useState<string>("")
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
+  const [editingEmail, setEditingEmail] = useState(false)
 
   useEffect(() => {
     async function loadUserData() {
@@ -311,6 +312,7 @@ export default function SettingsPage() {
         throw new Error(updateError.message)
       }
 
+      setEditingEmail(false) // Close edit mode on success
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     } catch (err: any) {
@@ -585,15 +587,52 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="clientEmail">Client Email</Label>
-              <Input
-                id="clientEmail"
-                type="email"
-                value={botSettings.client_email}
-                onChange={(e) => setBotSettings((prev) => ({ ...prev, client_email: e.target.value }))}
-                placeholder={botSettings.client_email || "Enter client email address"}
-                disabled={botSettingsLoading || botSettingsSaving}
-                className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
-              />
+              <div className="flex items-center space-x-2">
+                <Input
+                  id="clientEmail"
+                  type="email"
+                  value={botSettings.client_email}
+                  onChange={(e) => setBotSettings((prev) => ({ ...prev, client_email: e.target.value }))}
+                  placeholder="Enter client email address"
+                  disabled={botSettingsLoading || botSettingsSaving || !editingEmail}
+                  className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] flex-1"
+                />
+                {!editingEmail ? (
+                  <Button
+                    onClick={() => setEditingEmail(true)}
+                    variant="outline"
+                    size="sm"
+                    disabled={botSettingsLoading}
+                    className="px-3"
+                  >
+                    Edit
+                  </Button>
+                ) : (
+                  <div className="flex space-x-1">
+                    <Button
+                      onClick={handleSaveBotSettings}
+                      disabled={botSettingsSaving}
+                      size="sm"
+                      className="bg-[#038a71] hover:bg-[#038a71]/90 px-3"
+                    >
+                      {botSettingsSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setEditingEmail(false)
+                        // Reset to original value
+                        loadBotSettings()
+                      }}
+                      variant="outline"
+                      size="sm"
+                      disabled={botSettingsSaving}
+                      className="px-3"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -795,10 +834,7 @@ export default function SettingsPage() {
                             </div>
                             <div className="space-y-1">
                               <Label className="text-xs">Role</Label>
-                              <Select
-                                value={user.role}
-                                onValueChange={(value) => handleUserEdit(user.id, "role", value)}
-                              >
+                              <Select value={user.role} onChange={(value) => handleUserEdit(user.id, "role", value)}>
                                 <SelectTrigger className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8">
                                   <SelectValue />
                                 </SelectTrigger>
