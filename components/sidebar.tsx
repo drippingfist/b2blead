@@ -134,7 +134,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   // Filter navigation based on user role
   const allNavigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { name: "Chats", href: "/chats", icon: MessageSquare }, // Changed from "/" to "/chats"
+    { name: "Chats", href: "/chats", icon: MessageSquare }, // Updated to point to /chats
     { name: "Messages", href: "/messages", icon: Mail },
     { name: "Callbacks", href: "/callbacks", icon: PhoneCall },
     { name: "Improve Answers", href: "/improvements", icon: MessageSquarePlus, adminOnly: true },
@@ -234,7 +234,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="p-6">
           <div className="flex flex-col space-y-4">
             <div className="flex items-center justify-between">
-              <Link href="/" className="flex items-center" onClick={handleLinkClick}>
+              <Link href="/dashboard" className="flex items-center" onClick={handleLinkClick}>
                 <img src="/logo.svg" alt="b2bLEAD.ai" className="h-12 w-auto" />
               </Link>
               {/* Close button for mobile */}
@@ -258,7 +258,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             const isActive =
               pathname === item.href ||
               (item.href !== "/" && pathname.startsWith(item.href)) ||
-              (item.href === "/chats" && (pathname === "/chats" || pathname.startsWith("/thread/")))
+              (item.href === "/chats" && pathname.startsWith("/thread/"))
 
             return (
               <Link
