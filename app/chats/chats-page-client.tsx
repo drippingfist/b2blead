@@ -1,23 +1,10 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Calendar, ChevronDown, Check, RefreshCw, MessageSquare, Clock, User, Search, List } from "lucide-react"
+import { Calendar, ChevronDown, Check, RefreshCw, List } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase/client"
-import Link from "next/link"
 import type { Bot } from "@/lib/database"
-
-interface Thread {
-  id: string
-  thread_id?: string
-  created_at: string
-  updated_at: string
-  message_preview?: string
-  count?: number
-  bot_share_name?: string
-  duration?: string
-  sentiment_score?: number
-}
 
 interface ChatsPageClientProps {
   bots: Bot[]
@@ -41,20 +28,15 @@ const DISPLAY_LIMIT_OPTIONS = [
 ]
 
 export default function ChatsPageClient({ bots }: ChatsPageClientProps) {
-  const [threads, setThreads] = useState<Thread[]>([])
   const [loading, setLoading] = useState(false)
-  const [selectedBot, setSelectedBot] = useState<string | null>(null)
-  const [currentTimePeriod, setCurrentTimePeriod] = useState<TimePeriod>("last30days")
+  const [selectedBot, setSelectedBot] = useState<string>("amata")
+  const [currentTimePeriod, setCurrentTimePeriod] = useState<TimePeriod>("last7days")
   const [displayLimit, setDisplayLimit] = useState<DisplayLimit>(50)
   const [timePeriodDropdownOpen, setTimePeriodDropdownOpen] = useState(false)
-  const [botDropdownOpen, setBotDropdownOpen] = useState(false)
   const [limitDropdownOpen, setLimitDropdownOpen] = useState(false)
-  const [currentThreadCount, setCurrentThreadCount] = useState(0)
   const [totalThreadCount, setTotalThreadCount] = useState(0)
-  const [searchQuery, setSearchQuery] = useState("")
 
   const timePeriodDropdownRef = useRef<HTMLDivElement>(null)
-  const botDropdownRef = useRef<HTMLDivElement>(null)
   const limitDropdownRef = useRef<HTMLDivElement>(null)
 
   // Close dropdowns when clicking outside
@@ -62,9 +44,6 @@ export default function ChatsPageClient({ bots }: ChatsPageClientProps) {
     const handleClickOutside = (event: MouseEvent) => {
       if (timePeriodDropdownRef.current && !timePeriodDropdownRef.current.contains(event.target as Node)) {
         setTimePeriodDropdownOpen(false)
-      }
-      if (botDropdownRef.current && !botDropdownRef.current.contains(event.target as Node)) {
-        setBotDropdownOpen(false)
       }
       if (limitDropdownRef.current && !limitDropdownRef.current.contains(event.target as Node)) {
         setLimitDropdownOpen(false)
@@ -99,23 +78,17 @@ export default function ChatsPageClient({ bots }: ChatsPageClientProps) {
     }
   }
 
-  // Function to reload threads based on time period and bot selection
-  const reloadThreadsForTimePeriod = async (
-    period: TimePeriod,
-    botFilter?: string | null,
-    limit: DisplayLimit = displayLimit,
-  ) => {
+  // Function to get thread count based on time period and bot selection
+  const getThreadCount = async (period: TimePeriod, botFilter: string, limit: DisplayLimit = displayLimit) => {
     setLoading(true)
-    console.log("🔄 Reloading threads for period:", period, "bot:", botFilter || "ALL", "limit:", limit)
+    console.log("🔄 Getting thread count for period:", period, "bot:", botFilter, "limit:", limit)
 
     try {
-      // Build the base query for both count and data
+      // Build the base query for count
       let baseQuery = supabase.from("threads").select("*", { count: "exact" }).gt("count", 0)
 
-      // Apply bot filter if selected
-      if (botFilter) {
-        baseQuery = baseQuery.eq("bot_share_name", botFilter)
-      }
+      // Apply bot filter
+      baseQuery = baseQuery.eq("bot_share_name", botFilter)
 
       // Apply time period filter
       const dateFilter = getDateFilterForPeriod(period)
@@ -123,7 +96,7 @@ export default function ChatsPageClient({ bots }: ChatsPageClientProps) {
         baseQuery = baseQuery.gte("created_at", dateFilter)
       }
 
-      // First, get the total count without limit
+      // Get the total count
       const { count: totalCount, error: countError } = await baseQuery
 
       if (countError) {
@@ -133,25 +106,9 @@ export default function ChatsPageClient({ bots }: ChatsPageClientProps) {
         setTotalThreadCount(totalCount || 0)
         console.log("📊 Total thread count:", totalCount)
       }
-
-      // Then, get the threads with the specified limit
-      const { data: threadData, error: dataError } = await baseQuery
-        .order("updated_at", { ascending: false })
-        .limit(limit)
-
-      if (dataError) {
-        console.error("❌ Error fetching threads:", dataError)
-        setThreads([])
-        setCurrentThreadCount(0)
-      } else {
-        setThreads(threadData || [])
-        setCurrentThreadCount(threadData?.length || 0)
-        console.log("✅ Successfully fetched", threadData?.length || 0, "threads")
-      }
     } catch (error) {
       console.error("❌ Unexpected error:", error)
-      setThreads([])
-      setCurrentThreadCount(0)
+      setTotalThreadCount(0)
     } finally {
       setLoading(false)
     }
@@ -161,31 +118,29 @@ export default function ChatsPageClient({ bots }: ChatsPageClientProps) {
   const handleTimePeriodChange = async (period: TimePeriod) => {
     setCurrentTimePeriod(period)
     setTimePeriodDropdownOpen(false)
-    await reloadThreadsForTimePeriod(period, selectedBot, displayLimit)
-  }
-
-  // Handle bot change
-  const handleBotChange = async (botShareName: string | null) => {
-    setSelectedBot(botShareName)
-    setBotDropdownOpen(false)
-    await reloadThreadsForTimePeriod(currentTimePeriod, botShareName, displayLimit)
+    await getThreadCount(period, selectedBot, displayLimit)
   }
 
   // Handle display limit change
   const handleDisplayLimitChange = async (limit: DisplayLimit) => {
     setDisplayLimit(limit)
     setLimitDropdownOpen(false)
-    await reloadThreadsForTimePeriod(currentTimePeriod, selectedBot, limit)
+    await getThreadCount(currentTimePeriod, selectedBot, limit)
   }
 
-  // Initialize with current time period on mount
+  // Handle refresh
+  const handleRefresh = async () => {
+    await getThreadCount(currentTimePeriod, selectedBot, displayLimit)
+  }
+
+  // Initialize with current settings on mount
   useEffect(() => {
-    reloadThreadsForTimePeriod(currentTimePeriod, selectedBot, displayLimit)
+    getThreadCount(currentTimePeriod, selectedBot, displayLimit)
   }, [])
 
   // Get current time period label
   const getCurrentTimePeriodLabel = () => {
-    return TIME_PERIOD_OPTIONS.find((option) => option.value === currentTimePeriod)?.label || "Last 30 days"
+    return TIME_PERIOD_OPTIONS.find((option) => option.value === currentTimePeriod)?.label || "Last 7 days"
   }
 
   // Get current display limit label
@@ -193,281 +148,93 @@ export default function ChatsPageClient({ bots }: ChatsPageClientProps) {
     return DISPLAY_LIMIT_OPTIONS.find((option) => option.value === displayLimit)?.label || "50 rows"
   }
 
-  // Get selected bot name for display
-  const getSelectedBotName = () => {
-    if (!selectedBot) return "All Bots"
-    const bot = bots.find((b) => b.bot_share_name === selectedBot)
-    return bot?.client_name || bot?.bot_share_name || selectedBot
-  }
-
-  // Filter threads based on search query
-  const filteredThreads = searchQuery
-    ? threads.filter(
-        (thread) =>
-          thread.message_preview?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          thread.thread_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          thread.bot_share_name?.toLowerCase().includes(searchQuery.toLowerCase()),
-      )
-    : threads
-
-  // Format duration
-  const formatDuration = (duration?: string) => {
-    if (!duration) return "00:00:00"
-    const match = duration.match(/(\d+):(\d+):(\d+)/)
-    if (match) {
-      const [, hours, minutes, seconds] = match
-      return `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}:${seconds.padStart(2, "0")}`
-    }
-    return duration
-  }
-
-  // Get sentiment emoji
-  const getSentimentEmoji = (sentiment?: number) => {
-    if (sentiment === undefined || sentiment === null) return "😐"
-    if (sentiment >= 4) return "😊"
-    if (sentiment === 3) return "😐"
-    return "😞"
-  }
-
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Debug Information Box */}
-      <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
-        <h3 className="text-sm font-semibold text-blue-800 mb-2">🔍 Debug Information</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-xs">
-          <div>
-            <span className="font-medium text-blue-700">Selected Bot:</span>
-            <span className="ml-2 text-blue-600">{getSelectedBotName()}</span>
-          </div>
-          <div>
-            <span className="font-medium text-blue-700">Time Period:</span>
-            <span className="ml-2 text-blue-600">{getCurrentTimePeriodLabel()}</span>
-          </div>
-          <div>
-            <span className="font-medium text-blue-700">Display Limit:</span>
-            <span className="ml-2 text-blue-600">{displayLimit} rows</span>
-          </div>
-          <div>
-            <span className="font-medium text-blue-700">Total Count:</span>
-            <span className="ml-2 text-blue-600">{totalThreadCount} threads</span>
-          </div>
-        </div>
+      <div className="mb-6 p-6 bg-blue-50 border border-blue-200 rounded-md">
+        <h3 className="text-lg font-semibold text-blue-800 mb-4">
+          Showing threads for AMATA from {getCurrentTimePeriodLabel()} ({totalThreadCount} total) Times in GMT+7
+        </h3>
       </div>
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 space-y-4 md:space-y-0">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Chats</h1>
-          <p className="text-gray-600 mt-1">
-            Showing {currentThreadCount} of {totalThreadCount} conversations for {getSelectedBotName()} in{" "}
-            {getCurrentTimePeriodLabel()}
-          </p>
-        </div>
+      {/* Controls */}
+      <div className="flex flex-wrap gap-4 justify-center">
+        {/* Time Period Selector */}
+        <div className="relative" ref={timePeriodDropdownRef}>
+          <button
+            onClick={() => setTimePeriodDropdownOpen(!timePeriodDropdownOpen)}
+            className="flex items-center border border-gray-300 rounded-md px-6 py-3 bg-white hover:bg-gray-50 transition-colors shadow-sm"
+          >
+            <Calendar className="h-5 w-5 text-gray-500 mr-3" />
+            <span className="text-gray-700 font-medium">{getCurrentTimePeriodLabel()}</span>
+            <ChevronDown className="h-5 w-5 text-gray-500 ml-3" />
+          </button>
 
-        <div className="flex flex-wrap gap-2">
-          {/* Bot Selector */}
-          <div className="relative" ref={botDropdownRef}>
-            <button
-              onClick={() => setBotDropdownOpen(!botDropdownOpen)}
-              className="flex items-center border border-gray-300 rounded-md px-4 py-2 bg-white hover:bg-gray-50 transition-colors"
-            >
-              <User className="h-4 w-4 text-gray-500 mr-2" />
-              <span className="text-sm text-gray-700">{getSelectedBotName()}</span>
-              <ChevronDown className="h-4 w-4 text-gray-500 ml-2" />
-            </button>
-
-            {botDropdownOpen && (
-              <div className="absolute z-50 mt-1 right-0 bg-white border border-gray-300 rounded-md shadow-lg min-w-[200px]">
+          {timePeriodDropdownOpen && (
+            <div className="absolute z-50 mt-2 left-0 bg-white border border-gray-300 rounded-md shadow-lg min-w-[180px]">
+              {TIME_PERIOD_OPTIONS.map((option) => (
                 <button
-                  onClick={() => handleBotChange(null)}
+                  key={option.value}
+                  onClick={() => handleTimePeriodChange(option.value)}
                   disabled={loading}
-                  className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between disabled:opacity-50 ${
-                    !selectedBot ? "bg-blue-50 text-blue-700" : "text-gray-700"
+                  className={`w-full text-left px-4 py-3 text-sm hover:bg-gray-50 flex items-center justify-between disabled:opacity-50 ${
+                    currentTimePeriod === option.value ? "bg-blue-50 text-blue-700" : "text-gray-700"
                   }`}
                 >
-                  <span>All Bots</span>
-                  {!selectedBot && <Check className="h-4 w-4 text-blue-700" />}
+                  <span>{option.label}</span>
+                  {currentTimePeriod === option.value && <Check className="h-4 w-4 text-blue-700" />}
                 </button>
-                {bots.map((bot) => (
-                  <button
-                    key={bot.id}
-                    onClick={() => handleBotChange(bot.bot_share_name || "")}
-                    disabled={loading}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between disabled:opacity-50 ${
-                      selectedBot === bot.bot_share_name ? "bg-blue-50 text-blue-700" : "text-gray-700"
-                    }`}
-                  >
-                    <span>{bot.client_name || bot.bot_share_name}</span>
-                    {selectedBot === bot.bot_share_name && <Check className="h-4 w-4 text-blue-700" />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-          {/* Time Period Selector */}
-          <div className="relative" ref={timePeriodDropdownRef}>
-            <button
-              onClick={() => setTimePeriodDropdownOpen(!timePeriodDropdownOpen)}
-              className="flex items-center border border-gray-300 rounded-md px-4 py-2 bg-white hover:bg-gray-50 transition-colors"
-            >
-              <Calendar className="h-4 w-4 text-gray-500 mr-2" />
-              <span className="text-sm text-gray-700">{getCurrentTimePeriodLabel()}</span>
-              <ChevronDown className="h-4 w-4 text-gray-500 ml-2" />
-            </button>
-
-            {timePeriodDropdownOpen && (
-              <div className="absolute z-50 mt-1 right-0 bg-white border border-gray-300 rounded-md shadow-lg min-w-[150px]">
-                {TIME_PERIOD_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    onClick={() => handleTimePeriodChange(option.value)}
-                    disabled={loading}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between disabled:opacity-50 ${
-                      currentTimePeriod === option.value ? "bg-blue-50 text-blue-700" : "text-gray-700"
-                    }`}
-                  >
-                    <span>{option.label}</span>
-                    {currentTimePeriod === option.value && <Check className="h-4 w-4 text-blue-700" />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* NEW: Display Limit Selector */}
-          <div className="relative" ref={limitDropdownRef}>
-            <button
-              onClick={() => setLimitDropdownOpen(!limitDropdownOpen)}
-              className="flex items-center border border-gray-300 rounded-md px-4 py-2 bg-white hover:bg-gray-50 transition-colors"
-            >
-              <List className="h-4 w-4 text-gray-500 mr-2" />
-              <span className="text-sm text-gray-700">{getCurrentDisplayLimitLabel()}</span>
-              <ChevronDown className="h-4 w-4 text-gray-500 ml-2" />
-            </button>
-
-            {limitDropdownOpen && (
-              <div className="absolute z-50 mt-1 right-0 bg-white border border-gray-300 rounded-md shadow-lg min-w-[150px]">
-                {DISPLAY_LIMIT_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    onClick={() => handleDisplayLimitChange(option.value)}
-                    disabled={loading}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between disabled:opacity-50 ${
-                      displayLimit === option.value ? "bg-blue-50 text-blue-700" : "text-gray-700"
-                    }`}
-                  >
-                    <span>{option.label}</span>
-                    {displayLimit === option.value && <Check className="h-4 w-4 text-blue-700" />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <Button
-            onClick={() => reloadThreadsForTimePeriod(currentTimePeriod, selectedBot, displayLimit)}
-            disabled={loading}
-            variant="outline"
+        {/* Display Limit Selector */}
+        <div className="relative" ref={limitDropdownRef}>
+          <button
+            onClick={() => setLimitDropdownOpen(!limitDropdownOpen)}
+            className="flex items-center border border-gray-300 rounded-md px-6 py-3 bg-white hover:bg-gray-50 transition-colors shadow-sm"
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            {loading ? "Loading..." : "Refresh"}
-          </Button>
+            <List className="h-5 w-5 text-gray-500 mr-3" />
+            <span className="text-gray-700 font-medium">{getCurrentDisplayLimitLabel()}</span>
+            <ChevronDown className="h-5 w-5 text-gray-500 ml-3" />
+          </button>
 
-          <Button className="bg-blue-600 hover:bg-blue-700">Export</Button>
+          {limitDropdownOpen && (
+            <div className="absolute z-50 mt-2 left-0 bg-white border border-gray-300 rounded-md shadow-lg min-w-[150px]">
+              {DISPLAY_LIMIT_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => handleDisplayLimitChange(option.value)}
+                  disabled={loading}
+                  className={`w-full text-left px-4 py-3 text-sm hover:bg-gray-50 flex items-center justify-between disabled:opacity-50 ${
+                    displayLimit === option.value ? "bg-blue-50 text-blue-700" : "text-gray-700"
+                  }`}
+                >
+                  <span>{option.label}</span>
+                  {displayLimit === option.value && <Check className="h-4 w-4 text-blue-700" />}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-      </div>
 
-      {/* Search */}
-      <div className="mb-6">
-        <div className="relative w-full max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-          <input
-            type="text"
-            placeholder="Search conversations..."
-            className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
+        {/* Refresh Button */}
+        <Button
+          onClick={handleRefresh}
+          disabled={loading}
+          className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+        >
+          <RefreshCw className={`h-5 w-5 mr-3 ${loading ? "animate-spin" : ""}`} />
+          {loading ? "Loading..." : "Refresh"}
+        </Button>
       </div>
 
       {/* Loading State */}
       {loading && (
-        <div className="flex items-center justify-center py-12">
+        <div className="flex items-center justify-center py-12 mt-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-3 text-gray-600">Loading conversations...</span>
-        </div>
-      )}
-
-      {/* Threads List */}
-      {!loading && (
-        <div className="space-y-4">
-          {filteredThreads && filteredThreads.length > 0 ? (
-            filteredThreads.map((thread) => (
-              <Link key={thread.id} href={`/chats/${thread.id}`}>
-                <div className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow cursor-pointer">
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-center space-x-3">
-                      <h3 className="font-medium text-gray-900">Thread {thread.thread_id || thread.id.slice(0, 8)}</h3>
-                      {thread.sentiment_score && (
-                        <span className="text-lg">{getSentimentEmoji(thread.sentiment_score)}</span>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <span className="text-sm text-gray-500">{new Date(thread.updated_at).toLocaleDateString()}</span>
-                      <div className="text-xs text-gray-400 mt-1">
-                        {new Date(thread.updated_at).toLocaleTimeString()}
-                      </div>
-                    </div>
-                  </div>
-
-                  <p className="text-gray-600 text-sm mb-3 line-clamp-2">
-                    {thread.message_preview || "No preview available"}
-                  </p>
-
-                  <div className="flex justify-between items-center text-xs text-gray-500">
-                    <div className="flex items-center space-x-4">
-                      <span className="flex items-center">
-                        <MessageSquare className="h-4 w-4 mr-1" />
-                        {thread.count || 0} messages
-                      </span>
-                      {thread.duration && (
-                        <span className="flex items-center">
-                          <Clock className="h-4 w-4 mr-1" />
-                          {formatDuration(thread.duration)}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <div className="font-medium text-gray-700">
-                        {bots.find((b) => b.bot_share_name === thread.bot_share_name)?.client_name ||
-                          thread.bot_share_name}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            ))
-          ) : (
-            <div className="text-center py-12">
-              <MessageSquare className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No conversations found</h3>
-              <p className="text-gray-500">
-                {searchQuery
-                  ? "No conversations match your search criteria."
-                  : `No conversations found for ${getSelectedBotName()} in ${getCurrentTimePeriodLabel()}.`}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Results Summary */}
-      {!loading && filteredThreads.length > 0 && (
-        <div className="mt-8 text-center text-sm text-gray-500">
-          Showing {filteredThreads.length} of {totalThreadCount} conversations
-          {searchQuery && ` matching "${searchQuery}"`}
+          <span className="ml-3 text-gray-600">Getting thread count...</span>
         </div>
       )}
     </div>
