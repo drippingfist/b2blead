@@ -42,7 +42,7 @@ interface ChatsListProps {
   setCurrentBotNameToDisplay: (name: string | null) => void
 }
 
-// PAGE_SIZE is now dynamic via pageSize state
+const PAGE_SIZE = 50
 
 export default function ChatsList({
   selectedBot,
@@ -60,7 +60,6 @@ export default function ChatsList({
   const [loading, setLoading] = useState(false)
   const [selectedThreadsSet, setSelectedThreadsSet] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
-  const [pageSize, setPageSize] = useState<number>(50)
 
   // State for data fetched by this component
   const [botTimezone, setBotTimezone] = useState<string>("UTC")
@@ -103,7 +102,7 @@ export default function ChatsList({
         `)
         .gt("count", 0)
         .order("updated_at", { ascending: false })
-        .limit(pageSize)
+        .limit(PAGE_SIZE)
 
       if (targetBots.length > 0) {
         threadsQuery = threadsQuery.in("bot_share_name", targetBots)
@@ -193,7 +192,6 @@ export default function ChatsList({
     initialBotDisplayName,
     setCurrentTimezoneAbbr,
     setCurrentBotNameToDisplay,
-    pageSize,
   ])
 
   useEffect(() => {
@@ -310,27 +308,12 @@ export default function ChatsList({
         </div>
       )}
 
-      {/* Page Size Selector */}
-      <div className="flex justify-between items-center px-4 mb-4">
-        <div className="flex items-center space-x-2">
-          <span className="text-sm text-gray-600">Show:</span>
-          <select
-            value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-            className="border border-gray-300 rounded px-2 py-1 text-sm"
-          >
-            <option value={50}>50 threads</option>
-            <option value={100}>100 threads</option>
-            <option value={500}>500 threads</option>
-          </select>
-        </div>
-      </div>
-
       {(threads.length > 0 || loading) && (
         <p className="text-sm text-[#616161] px-4">
           Showing {clientFilteredThreads.length > 0 ? clientFilteredThreads.length : loading ? "..." : "0"} of{" "}
-          {actualTotalThreads} threads for {currentPeriodLabel}
-          {initialBotDisplayName ? ` • ${initialBotDisplayName}` : ""}
+          {actualTotalThreads} threads
+          {initialBotDisplayName ? ` for ${initialBotDisplayName}` : ""}
+          {` (${currentPeriodLabel})`}
           {" • "}Times in {timezoneAbbr}
           {activeFilter === "callbacks" && <span className="text-green-600"> • with callbacks</span>}
           {activeFilter === "dropped-callbacks" && <span className="text-green-600"> • with dropped callbacks</span>}

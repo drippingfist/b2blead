@@ -54,7 +54,7 @@ export default function ChatsPageClient({
   const [currentBotNameToDisplay, setCurrentBotNameToDisplay] = useState<string | null>(initialBotDisplayName)
 
   const handleTimePeriodChange = (newTimePeriod: string) => {
-    console.log("🕐 CLIENT: Time period changed from", selectedTimePeriod, "to", newTimePeriod)
+    console.log("🕐 ChatsPageClient: Time period changed to:", newTimePeriod)
     setSelectedTimePeriod(newTimePeriod)
   }
 
@@ -65,11 +65,6 @@ export default function ChatsPageClient({
   return (
     <>
       <ChatsHeader selectedTimePeriod={selectedTimePeriod} onTimePeriodChange={handleTimePeriodChange} />
-
-      <div className="mb-4 p-2 bg-yellow-100 border border-yellow-300 rounded text-xs">
-        <strong>Debug:</strong> Time Period = {selectedTimePeriod} | Bot = {initialSelectedBot || "All"} | SuperAdmin ={" "}
-        {isSuperAdmin.toString()}
-      </div>
 
       <div className="mb-4 p-4 bg-gray-100 rounded text-xs">
         <strong>Debug Info:</strong>
