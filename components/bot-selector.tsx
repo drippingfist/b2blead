@@ -44,6 +44,12 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
 
         setBots(data || [])
         console.log(`✅ Successfully loaded ${data?.length || 0} bots`)
+
+        // Auto-select the single bot if there's only one
+        if (data && data.length === 1 && !selectedBot) {
+          console.log("🤖 Auto-selecting the only available bot:", data[0].bot_share_name)
+          handleBotSelection(data[0].bot_share_name)
+        }
       } catch (error: any) {
         console.error("❌ Exception loading bots:", error)
         setError(`Exception: ${error.message}`)
@@ -53,7 +59,7 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
     }
 
     loadBots()
-  }, [])
+  }, [selectedBot])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -99,6 +105,9 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
     if (onSelectBot) {
       onSelectBot(botShareName)
     }
+
+    // Dispatch custom event for other components
+    window.dispatchEvent(new CustomEvent("botSelectionChanged", { detail: botShareName }))
 
     // GUARANTEED FORCE REFRESH - Multiple approaches for maximum reliability
     console.log("🔄 FORCING PAGE REFRESH...")
@@ -175,7 +184,7 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
               {selectedBot === null && <Check className="h-4 w-4 text-[#038a71]" />}
             </button>
 
-            {/* Individual bot options - showing bot_share_name */}
+            {/* Individual bot options - showing client_name */}
             {bots.map((bot) => (
               <button
                 key={bot.id}
@@ -203,7 +212,7 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
       {/* Debug info */}
       <div className="text-xs text-gray-500">
         <div>Found: {bots.length} bots</div>
-        <div>Selected: {selectedBot || "All Bots"}</div>
+        <div>Selected: {selectedBot ? currentBot?.client_name : "All Bots"}</div>
         {error && <div className="text-red-500">Error: {error}</div>}
       </div>
     </div>

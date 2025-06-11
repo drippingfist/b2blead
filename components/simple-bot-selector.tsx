@@ -55,6 +55,12 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
         }
 
         setBots(botsData)
+
+        // Auto-select the single bot if there's only one
+        if (botsData.length === 1 && !selectedBot) {
+          console.log("🤖 Auto-selecting the only available bot:", botsData[0].bot_share_name)
+          handleBotSelection(botsData[0].bot_share_name)
+        }
       } catch (error: any) {
         console.error("Failed to load bots:", error)
         setError(error.message)
@@ -64,7 +70,7 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
     }
 
     loadBots()
-  }, [])
+  }, [selectedBot])
 
   // Close dropdown when clicking outside
   useEffect(() => {
