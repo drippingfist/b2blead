@@ -1,8 +1,16 @@
+"use client"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search, Filter, Download } from "lucide-react"
+import { TIME_PERIODS } from "@/lib/time-utils"
 
-export function ChatsHeader() {
+interface ChatsHeaderProps {
+  selectedTimePeriod: string
+  onTimePeriodChange: (value: string) => void
+}
+
+export function ChatsHeader({ selectedTimePeriod, onTimePeriodChange }: ChatsHeaderProps) {
   return (
     <div className="flex flex-col gap-4 mb-6">
       <div className="flex items-center justify-between">
@@ -20,6 +28,21 @@ export function ChatsHeader() {
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search chats..." className="pl-8" />
         </div>
+
+        {/* Time Period Selector */}
+        <select
+          value={selectedTimePeriod}
+          onChange={(e) => onTimePeriodChange(e.target.value)}
+          className="h-10 border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 rounded-md sm:w-auto"
+          aria-label="Select time period"
+        >
+          {TIME_PERIODS.map((period) => (
+            <option key={period.value} value={period.value}>
+              {period.label}
+            </option>
+          ))}
+        </select>
+
         <Button variant="outline" size="icon" className="h-10 w-10">
           <Filter className="h-4 w-4" />
         </Button>

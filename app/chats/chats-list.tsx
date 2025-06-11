@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { supabase } from "@/lib/supabase/client"
-import { getThreadsSimple } from "@/lib/simple-database"
 import Link from "next/link"
 import { Clock, MessageSquare, Phone, Star, Trash2 } from "lucide-react"
 import { formatTimeInTimezone, getTimezoneAbbreviation } from "@/lib/timezone-utils"
+import { calculateDateRangeForQuery, TIME_PERIODS } from "@/lib/time-utils"
 
 interface Thread {
   id: string
@@ -22,83 +22,204 @@ interface Thread {
   mean_response_time?: number
   starred?: boolean
   callbacks?: any
+  bots?: {
+    client_name?: string
+    bot_display_name?: string
+    timezone?: string
+  } | null
 }
 
 interface ChatsListProps {
   selectedBot: string | null
   isSuperAdmin?: boolean
   onRefresh?: () => void
+  initialThreads: Thread[]
+  initialTotalThreads: number
+  initialBotDisplayName: string | null
+  selectedTimePeriod: string
+  accessibleBotShareNames: string[]
+  setCurrentTimezoneAbbr: (abbr: string) => void
+  setCurrentBotNameToDisplay: (name: string | null) => void
 }
 
-export default function ChatsList({ selectedBot, isSuperAdmin = false, onRefresh }: ChatsListProps) {
-  const [threads, setThreads] = useState<Thread[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedThreads, setSelectedThreads] = useState<Set<string>>(new Set())
+const PAGE_SIZE = 50
+
+export default function ChatsList({
+  selectedBot,
+  isSuperAdmin = false,
+  onRefresh,
+  initialThreads,
+  initialTotalThreads,
+  initialBotDisplayName,
+  selectedTimePeriod,
+  accessibleBotShareNames,
+  setCurrentTimezoneAbbr,
+  setCurrentBotNameToDisplay,
+}: ChatsListProps) {
+  const [threads, setThreads] = useState<Thread[]>(initialThreads)
+  const [loading, setLoading] = useState(false)
+  const [selectedThreadsSet, setSelectedThreadsSet] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
+
+  // State for data fetched by this component
   const [botTimezone, setBotTimezone] = useState<string>("UTC")
+  const [actualTotalThreads, setActualTotalThreads] = useState<number>(initialTotalThreads)
   const [activeFilter, setActiveFilter] = useState<"none" | "callbacks" | "dropped-callbacks">("none")
 
-  useEffect(() => {
-    loadThreads()
-  }, [selectedBot])
-
-  const loadThreads = async () => {
+  // The core loadData function
+  const loadData = useCallback(async () => {
+    setLoading(true)
     try {
-      setLoading(true)
-      const threadsData = await getThreadsSimple(50, selectedBot)
+      const { startDate, endDate } = calculateDateRangeForQuery(selectedTimePeriod)
 
-      // Filter out threads with count < 1
-      const validThreads = threadsData.filter((thread) => (thread.count || 0) >= 1)
-      setThreads(validThreads)
+      // After calculating date range, add this logging:
+      console.log("🕐 Time period:", selectedTimePeriod)
+      console.log("📅 Date range:", { startDate, endDate })
+      console.log("🎯 Target bots:", selectedBot ? [selectedBot] : accessibleBotShareNames)
 
-      // Get bot timezone if we have a selected bot
-      if (selectedBot) {
-        const { data: bot } = await supabase.from("bots").select("timezone").eq("bot_share_name", selectedBot).single()
+      const targetBots = selectedBot ? [selectedBot] : accessibleBotShareNames
 
-        if (bot?.timezone) {
-          setBotTimezone(bot.timezone)
-        }
+      // Handle case where non-superadmin has no bots
+      if (!isSuperAdmin && targetBots.length === 0) {
+        setThreads([])
+        setActualTotalThreads(0)
+        setCurrentBotNameToDisplay(initialBotDisplayName)
+        setBotTimezone("UTC")
+        setCurrentTimezoneAbbr(getTimezoneAbbreviation("UTC"))
+        setLoading(false)
+        return
       }
+
+      // 1. Fetch Paginated Threads for Display
+      let threadsQuery = supabase
+        .from("threads")
+        .select(`
+          id, created_at, bot_share_name, thread_id, updated_at, duration, message_preview,
+          sentiment_score, sentiment_justification, cb_requested, count, mean_response_time, starred,
+          callbacks!callbacks_id_fkey(*),
+          bots(client_name, bot_display_name, timezone)
+        `)
+        .gt("count", 0)
+        .order("updated_at", { ascending: false })
+        .limit(PAGE_SIZE)
+
+      if (targetBots.length > 0) {
+        threadsQuery = threadsQuery.in("bot_share_name", targetBots)
+      }
+
+      if (startDate) threadsQuery = threadsQuery.gte("created_at", startDate)
+      if (endDate) threadsQuery = threadsQuery.lte("created_at", endDate)
+
+      const { data: threadsData, error: threadsError } = await threadsQuery
+      if (threadsError) throw threadsError
+      setThreads(threadsData || [])
+
+      // 2. Fetch Actual Total Count
+      let countQuery = supabase.from("threads").select("id", { count: "exact", head: true }).gt("count", 0)
+
+      if (targetBots.length > 0) {
+        countQuery = countQuery.in("bot_share_name", targetBots)
+      }
+      if (startDate) {
+        console.log("📅 Applying startDate filter:", startDate)
+        countQuery = countQuery.gte("created_at", startDate)
+      }
+      if (endDate) {
+        console.log("📅 Applying endDate filter:", endDate)
+        countQuery = countQuery.lte("created_at", endDate)
+      }
+
+      console.log("🔍 About to execute count query...")
+      const { count, error: countError } = await countQuery
+
+      if (countError) {
+        console.error("❌ Error fetching actual total count:", countError)
+        console.error("❌ Count query details:", { targetBots, startDate, endDate })
+        setActualTotalThreads(threadsData?.length || 0)
+      } else {
+        console.log("✅ Count query successful:", count)
+        setActualTotalThreads(count || 0)
+      }
+
+      // 3. Update bot display name and timezone for the current view
+      let currentViewBotTimezone = "UTC"
+      let currentViewBotDisplayName = initialBotDisplayName
+
+      if (selectedBot) {
+        const botDataFromThreads = threadsData?.find((t) => t.bot_share_name === selectedBot)?.bots
+        if (botDataFromThreads) {
+          currentViewBotTimezone = botDataFromThreads.timezone || "UTC"
+          currentViewBotDisplayName = botDataFromThreads.bot_display_name || selectedBot
+        } else {
+          const { data: botDetails } = await supabase
+            .from("bots")
+            .select("timezone, bot_display_name")
+            .eq("bot_share_name", selectedBot)
+            .single()
+          currentViewBotTimezone = botDetails?.timezone || "UTC"
+          currentViewBotDisplayName = botDetails?.bot_display_name || selectedBot
+        }
+      } else if (threadsData && threadsData.length > 0 && threadsData[0].bots?.timezone) {
+        currentViewBotTimezone = threadsData[0].bots.timezone
+      }
+
+      setBotTimezone(currentViewBotTimezone)
+      setCurrentTimezoneAbbr(getTimezoneAbbreviation(currentViewBotTimezone))
+      setCurrentBotNameToDisplay(currentViewBotDisplayName)
     } catch (error) {
-      console.error("Error loading threads:", error)
+      console.error("Error loading threads data:", error)
+      setThreads([])
+      setActualTotalThreads(0)
     } finally {
       setLoading(false)
     }
-  }
+  }, [
+    selectedBot,
+    selectedTimePeriod,
+    accessibleBotShareNames,
+    isSuperAdmin,
+    initialBotDisplayName,
+    setCurrentTimezoneAbbr,
+    setCurrentBotNameToDisplay,
+  ])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   const handleSelectAll = () => {
-    if (selectedThreads.size === threads.length) {
-      setSelectedThreads(new Set())
+    if (selectedThreadsSet.size === threads.length) {
+      setSelectedThreadsSet(new Set())
     } else {
-      setSelectedThreads(new Set(threads.map((t) => t.id)))
+      setSelectedThreadsSet(new Set(threads.map((t) => t.id)))
     }
   }
 
   const handleSelectThread = (threadId: string) => {
-    const newSelected = new Set(selectedThreads)
+    const newSelected = new Set(selectedThreadsSet)
     if (newSelected.has(threadId)) {
       newSelected.delete(threadId)
     } else {
       newSelected.add(threadId)
     }
-    setSelectedThreads(newSelected)
+    setSelectedThreadsSet(newSelected)
   }
 
   const handleDeleteSelected = async () => {
-    if (selectedThreads.size === 0) return
+    if (selectedThreadsSet.size === 0) return
 
     setDeleting(true)
     try {
       const response = await fetch("/api/delete-threads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threadIds: Array.from(selectedThreads) }),
+        body: JSON.stringify({ threadIds: Array.from(selectedThreadsSet) }),
       })
 
       if (response.ok) {
-        setSelectedThreads(new Set())
-        loadThreads() // Refresh the list
-        onRefresh?.() // Trigger parent refresh if needed
+        setSelectedThreadsSet(new Set())
+        await loadData()
+        onRefresh?.()
       } else {
         console.error("Failed to delete threads")
       }
@@ -132,15 +253,13 @@ export default function ChatsList({ selectedBot, isSuperAdmin = false, onRefresh
   }
 
   const timezoneAbbr = getTimezoneAbbreviation(botTimezone)
+  const currentPeriodLabel = TIME_PERIODS.find((p) => p.value === selectedTimePeriod)?.label || selectedTimePeriod
 
   // Apply active filter
-  const filteredThreads = threads.filter((thread) => {
-    if (activeFilter === "callbacks") {
-      return thread.callbacks // Only threads with callback records
-    } else if (activeFilter === "dropped-callbacks") {
-      return thread.cb_requested && !thread.callbacks // Threads requesting callbacks but no callback record
-    }
-    return true // No filter applied
+  const clientFilteredThreads = threads.filter((thread) => {
+    if (activeFilter === "callbacks") return thread.callbacks
+    if (activeFilter === "dropped-callbacks") return thread.cb_requested && !thread.callbacks
+    return true
   })
 
   return (
@@ -152,19 +271,19 @@ export default function ChatsList({ selectedBot, isSuperAdmin = false, onRefresh
             <label className="flex items-center space-x-2">
               <input
                 type="checkbox"
-                checked={selectedThreads.size === threads.length && threads.length > 0}
+                checked={selectedThreadsSet.size === threads.length && threads.length > 0}
                 onChange={handleSelectAll}
                 className="rounded border-gray-300"
               />
               <span className="text-sm font-medium">Select All</span>
             </label>
-            {selectedThreads.size > 0 && (
+            {selectedThreadsSet.size > 0 && (
               <span className="text-sm text-gray-600">
-                {selectedThreads.size} thread{selectedThreads.size !== 1 ? "s" : ""} selected
+                {selectedThreadsSet.size} thread{selectedThreadsSet.size !== 1 ? "s" : ""} selected
               </span>
             )}
           </div>
-          {selectedThreads.size > 0 && (
+          {selectedThreadsSet.size > 0 && (
             <button
               onClick={handleDeleteSelected}
               disabled={deleting}
@@ -177,9 +296,13 @@ export default function ChatsList({ selectedBot, isSuperAdmin = false, onRefresh
         </div>
       )}
 
-      {threads.length > 0 && (
+      {(threads.length > 0 || loading) && (
         <p className="text-sm text-[#616161] px-4">
-          {filteredThreads.length} thread{filteredThreads.length !== 1 ? "s" : ""} • Times in {timezoneAbbr}
+          Showing {clientFilteredThreads.length > 0 ? clientFilteredThreads.length : loading ? "..." : "0"} of{" "}
+          {actualTotalThreads} threads
+          {initialBotDisplayName ? ` for ${initialBotDisplayName}` : ""}
+          {` (${currentPeriodLabel})`}
+          {" • "}Times in {timezoneAbbr}
           {activeFilter === "callbacks" && <span className="text-green-600"> • with callbacks</span>}
           {activeFilter === "dropped-callbacks" && <span className="text-green-600"> • with dropped callbacks</span>}
         </p>
@@ -192,17 +315,15 @@ export default function ChatsList({ selectedBot, isSuperAdmin = false, onRefresh
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredThreads.map((thread) => (
+          {clientFilteredThreads.map((thread) => (
             <div key={thread.id} className="border border-[#e0e0e0] rounded-lg overflow-hidden bg-white">
-              {/* Thread Header */}
               <div className="p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-3 flex-1">
-                    {/* Superadmin Checkbox */}
                     {isSuperAdmin && (
                       <input
                         type="checkbox"
-                        checked={selectedThreads.has(thread.id)}
+                        checked={selectedThreadsSet.has(thread.id)}
                         onChange={() => handleSelectThread(thread.id)}
                         className="mt-1 rounded border-gray-300"
                       />
@@ -240,12 +361,10 @@ export default function ChatsList({ selectedBot, isSuperAdmin = false, onRefresh
                         </div>
                       </div>
 
-                      {/* Message Preview */}
                       <div className="text-sm text-[#616161] mb-3">
                         <p className="line-clamp-2">{thread.message_preview || "No preview available"}</p>
                       </div>
 
-                      {/* Callback Information - Prominent Display */}
                       {thread.callbacks && (
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
                           <h4 className="text-sm font-medium text-blue-800 mb-2 flex items-center">
@@ -253,7 +372,6 @@ export default function ChatsList({ selectedBot, isSuperAdmin = false, onRefresh
                             Callback Request
                           </h4>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                            {/* Name */}
                             {(thread.callbacks.user_name ||
                               thread.callbacks.user_first_name ||
                               thread.callbacks.user_surname) && (
@@ -266,7 +384,6 @@ export default function ChatsList({ selectedBot, isSuperAdmin = false, onRefresh
                               </div>
                             )}
 
-                            {/* Email */}
                             {thread.callbacks.user_email && (
                               <div>
                                 <span className="font-medium text-blue-700">Email: </span>
@@ -274,7 +391,6 @@ export default function ChatsList({ selectedBot, isSuperAdmin = false, onRefresh
                               </div>
                             )}
 
-                            {/* Phone */}
                             {thread.callbacks.user_phone && (
                               <div>
                                 <span className="font-medium text-blue-700">Phone: </span>
@@ -282,7 +398,6 @@ export default function ChatsList({ selectedBot, isSuperAdmin = false, onRefresh
                               </div>
                             )}
 
-                            {/* Company */}
                             {thread.callbacks.user_company && (
                               <div>
                                 <span className="font-medium text-blue-700">Company: </span>
@@ -291,7 +406,6 @@ export default function ChatsList({ selectedBot, isSuperAdmin = false, onRefresh
                             )}
                           </div>
 
-                          {/* Callback Message */}
                           {thread.callbacks.user_cb_message && (
                             <div className="mt-2 pt-2 border-t border-blue-200">
                               <span className="font-medium text-blue-700">Message: </span>

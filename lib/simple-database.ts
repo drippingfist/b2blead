@@ -65,9 +65,9 @@ export interface Callback {
 
 // Get threads - filter by bot_share_name and date range if provided
 export async function getThreadsSimple(
-  limit = 50, 
-  botShareName?: string | null, 
-  dateRange?: { start: Date; end: Date } | null
+  limit = 50,
+  botShareName?: string | null,
+  dateRange?: { start: Date; end: Date } | null,
 ): Promise<Thread[]> {
   console.log("🧵 Fetching threads for bot_share_name:", botShareName || "ALL")
   console.log("🧵 Date range:", dateRange)
@@ -157,9 +157,7 @@ export async function getThreadsSimple(
   // Apply date range filter if provided
   if (dateRange) {
     console.log("📅 Applying date range filter:", dateRange.start, "to", dateRange.end)
-    query = query
-      .gte("created_at", dateRange.start.toISOString())
-      .lte("created_at", dateRange.end.toISOString())
+    query = query.gte("created_at", dateRange.start.toISOString()).lte("created_at", dateRange.end.toISOString())
   }
 
   const { data, error } = await query
@@ -175,8 +173,8 @@ export async function getThreadsSimple(
 
 // Get count of threads - filter by bot_share_name and date range if provided
 export async function getThreadsCount(
-  botShareName?: string | null, 
-  dateRange?: { start: Date; end: Date } | null
+  botShareName?: string | null,
+  dateRange?: { start: Date; end: Date } | null,
 ): Promise<number> {
   console.log("🔢 Getting thread count for bot_share_name:", botShareName || "ALL")
   console.log("🔢 Date range:", dateRange)
@@ -225,10 +223,7 @@ export async function getThreadsCount(
     return 0
   }
 
-  let query = supabase
-    .from("threads")
-    .select("*", { count: "exact", head: true })
-    .gt("count", 0)
+  let query = supabase.from("threads").select("*", { count: "exact", head: true }).gt("count", 0)
 
   // If a specific bot is selected, filter by that bot (if user has access)
   if (botShareName) {
@@ -246,9 +241,7 @@ export async function getThreadsCount(
   // Apply date range filter if provided
   if (dateRange) {
     console.log("📅 Applying date range filter to count:", dateRange.start, "to", dateRange.end)
-    query = query
-      .gte("created_at", dateRange.start.toISOString())
-      .lte("created_at", dateRange.end.toISOString())
+    query = query.gte("created_at", dateRange.start.toISOString()).lte("created_at", dateRange.end.toISOString())
   }
 
   const { count, error } = await query
