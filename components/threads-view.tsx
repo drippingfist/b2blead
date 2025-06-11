@@ -36,7 +36,7 @@ interface ThreadsViewProps {
   bots?: Bot[] // Add bots prop to get timezone info
   totalCount?: number // Add totalCount prop
   selectedTimePeriod?: string // Add selectedTimePeriod prop
-  onLoadMore?: () => void
+  onLoadMore?: () => Promise<void>
   hasMore: boolean
 }
 
@@ -69,6 +69,7 @@ export default function ThreadsView({
     botsLength: bots?.length || 0,
     totalCount,
     selectedTimePeriod,
+    hasMore,
   })
 
   const [threads, setThreads] = useState<ThreadWithMessageCount[]>([])
@@ -85,8 +86,8 @@ export default function ThreadsView({
   const [dateFilter, setDateFilter] = useState<DateFilter>("last30days")
   const [dateDropdownOpen, setDateDropdownOpen] = useState(false)
   const dateDropdownRef = useRef<HTMLDivElement>(null)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const observerRef = useRef<HTMLDivElement>(null)
 
   // Safely access TIME_PERIODS with fallback
   const dateFilterOptions = TIME_PERIODS
@@ -475,23 +476,25 @@ export default function ThreadsView({
     }
   }, [isLoadingMore, hasMore, onLoadMore])
 
+  // Intersection Observer for infinite scroll
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
+          console.log("🔄 Intersection detected, loading more...")
           loadMore()
         }
       },
       { threshold: 0.1 },
     )
 
-    if (scrollContainerRef.current) {
-      observer.observe(scrollContainerRef.current.lastElementChild as Element)
+    if (observerRef.current) {
+      observer.observe(observerRef.current)
     }
 
     return () => {
-      if (scrollContainerRef.current) {
-        observer.unobserve(scrollContainerRef.current.lastElementChild as Element)
+      if (observerRef.current) {
+        observer.unobserve(observerRef.current)
       }
     }
   }, [hasMore, isLoadingMore, loadMore])
@@ -656,7 +659,7 @@ export default function ThreadsView({
               </th>
             </tr>
           </thead>
-          <tbody ref={scrollContainerRef}>
+          <tbody>
             {Object.entries(groupedThreads).length > 0 ? (
               Object.entries(groupedThreads).map(([date, dateThreads]) => (
                 <>
@@ -799,7 +802,7 @@ export default function ThreadsView({
       </div>
 
       {/* Mobile Cards */}
-      <div className="md:hidden space-y-4" ref={scrollContainerRef}>
+      <div className="md:hidden space-y-4">
         {Object.entries(groupedThreads).length > 0 ? (
           Object.entries(groupedThreads).map(([date, dateThreads]) => (
             <div key={`mobile-date-${date}`}>
@@ -931,10 +934,19 @@ export default function ThreadsView({
         </div>
       )}
 
+      {/* Infinite Scroll Trigger */}
+      <div ref={observerRef} className="h-4 w-full" />
+
       {isLoadingMore && (
         <div className="flex items-center justify-center py-4">
           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#038a71]"></div>
           <span className="ml-2 text-[#616161]">Loading more threads...</span>
+        </div>
+      )}
+
+      {!hasMore && threads.length > 0 && (
+        <div className="text-center py-4">
+          <p className="text-[#616161] text-sm">You've reached the end of the threads list.</p>
         </div>
       )}
     </div>
