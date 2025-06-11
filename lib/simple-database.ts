@@ -1,4 +1,19 @@
+// lib/simple-database.ts
+
 import { supabase } from "@/lib/supabase/client"
+
+interface ThreadSimple {
+  id: string
+  title: string
+  createdAt: Date
+  updatedAt: Date
+  starterBotId: string
+}
+
+interface Bot {
+  id: string
+  name: string
+}
 
 export interface Thread {
   id: string
@@ -62,6 +77,35 @@ export interface Callback {
   user_ip?: string
   user_cb_message?: string
 }
+
+// Mock data (replace with actual database calls)
+const threadsSimple: ThreadSimple[] = [
+  {
+    id: "1",
+    title: "Thread 1",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    starterBotId: "bot1",
+  },
+  {
+    id: "2",
+    title: "Thread 2",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    starterBotId: "bot2",
+  },
+]
+
+const bots: Bot[] = [
+  {
+    id: "bot1",
+    name: "Bot 1",
+  },
+  {
+    id: "bot2",
+    name: "Bot 2",
+  },
+]
 
 // Get threads - filter by bot_share_name and date range if provided
 export async function getThreadsSimple(
@@ -326,5 +370,22 @@ export async function toggleMessageStar(messageId: string, isStarred: boolean): 
   } catch (error) {
     console.error("Exception in toggleMessageStar:", error)
     return false
+  }
+}
+
+// Get bots (for compatibility)
+export async function getBots(): Promise<any[]> {
+  try {
+    const { data, error } = await supabase.from("bots").select("*").order("bot_display_name", { ascending: true })
+
+    if (error) {
+      console.error("Error fetching bots:", error)
+      return []
+    }
+
+    return data || []
+  } catch (error) {
+    console.error("Exception in getBots:", error)
+    return []
   }
 }

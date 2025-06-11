@@ -1,98 +1,102 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { ChatsHeader } from "./chats-header"
+import { useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import ChatsHeader from "./chats-header"
 import ChatsList from "./chats-list"
-
-interface Thread {
-  id: string
-  created_at: string
-  bot_share_name?: string
-  thread_id?: string
-  updated_at: string
-  duration?: string
-  message_preview?: string
-  sentiment_score?: number
-  sentiment_justification?: string
-  cb_requested?: boolean
-  count?: number
-  mean_response_time?: number
-  starred?: boolean
-  callbacks?: any
-  bots?: {
-    client_name?: string
-    bot_display_name?: string
-    timezone?: string
-  } | null
-}
+import type { Thread } from "@/lib/simple-database"
 
 interface ChatsPageClientProps {
   initialThreads: Thread[]
-  isSuperAdmin: boolean
-  initialTotalThreads: number
-  initialBotDisplayName: string | null
-  initialSelectedBot: string | null
-  defaultTimePeriodValue: string
+  selectedBot: string | null
+  selectedTimePeriod: string
+  actualTotalCount: number
+  botDisplayName: string | null
+  timezoneAbbr: string
   accessibleBotShareNames: string[]
-  initialTimezoneAbbr: string
 }
 
 export default function ChatsPageClient({
   initialThreads,
-  isSuperAdmin,
-  initialTotalThreads,
-  initialBotDisplayName,
-  initialSelectedBot,
-  defaultTimePeriodValue,
+  selectedBot,
+  selectedTimePeriod,
+  actualTotalCount,
+  botDisplayName,
+  timezoneAbbr,
   accessibleBotShareNames,
-  initialTimezoneAbbr,
 }: ChatsPageClientProps) {
   const router = useRouter()
-  const [selectedTimePeriod, setSelectedTimePeriod] = useState<string>(defaultTimePeriodValue)
-  const [currentTimezoneAbbr, setCurrentTimezoneAbbr] = useState<string>(initialTimezoneAbbr)
-  const [currentBotNameToDisplay, setCurrentBotNameToDisplay] = useState<string | null>(initialBotDisplayName)
+  const searchParams = useSearchParams()
+  const [isClient, setIsClient] = useState(false)
 
-  const handleTimePeriodChange = (newTimePeriod: string) => {
-    console.log("🕐 ChatsPageClient: Time period changed to:", newTimePeriod)
-    setSelectedTimePeriod(newTimePeriod)
-  }
+  useEffect(() => {
+    setIsClient(true)
 
-  const handleRefresh = () => {
-    router.refresh()
+    // Save the current time period to localStorage for persistence
+    if (selectedTimePeriod) {
+      localStorage.setItem("chats-time-period", selectedTimePeriod)
+      console.log("💾 Saved time period to localStorage:", selectedTimePeriod)
+    }
+  }, [selectedTimePeriod])
+
+  const handleTimePeriodChange = (value: string) => {
+    console.log("🕐 ChatsPageClient: Time period changed to:", value)
+
+    // Save to localStorage immediately
+    localStorage.setItem("chats-time-period", value)
+
+    // Create a new URLSearchParams object based on the current URL search parameters
+    const params = new URLSearchParams(searchParams.toString())
+
+    // Update the timePeriod parameter
+    params.set("timePeriod", value)
+
+    // If there's a bot parameter, keep it
+    if (selectedBot) {
+      params.set("bot", selectedBot)
+    }
+
+    // Navigate to the new URL with updated search parameters - this will trigger a full page reload
+    router.push(`/chats?${params.toString()}`)
   }
 
   return (
-    <>
-      <ChatsHeader selectedTimePeriod={selectedTimePeriod} onTimePeriodChange={handleTimePeriodChange} />
+    <div className="space-y-6">
+      <ChatsHeader
+        botDisplayName={botDisplayName}
+        selectedBot={selectedBot}
+        selectedTimePeriod={selectedTimePeriod}
+        totalThreads={actualTotalCount}
+        timezoneAbbr={timezoneAbbr}
+        onTimePeriodChange={handleTimePeriodChange}
+      />
 
-      <div className="mb-4 p-4 bg-gray-100 rounded text-xs">
+      {isClient && (
+        <ChatsList
+          key={`threads-${selectedBot}-${selectedTimePeriod}`}
+          initialThreads={initialThreads}
+          selectedBot={selectedBot}
+          selectedTimePeriod={selectedTimePeriod}
+          totalCount={actualTotalCount}
+          accessibleBotShareNames={accessibleBotShareNames}
+        />
+      )}
+
+      <div className="mt-4 p-4 bg-gray-100 rounded text-xs">
         <strong>Debug Info:</strong>
         <br />
         Selected Time Period: {selectedTimePeriod}
         <br />
-        Initial Bot: {initialSelectedBot || "All Bots"}
+        Selected Bot: {selectedBot || "All Bots"}
         <br />
-        Bot Display Name: {currentBotNameToDisplay}
+        Bot Display Name: {botDisplayName}
         <br />
-        Accessible Bots: {accessibleBotShareNames.length}
+        Actual Total Count: {actualTotalCount}
         <br />
-        SuperAdmin: {isSuperAdmin.toString()}
+        Threads Displayed: {initialThreads.length}
+        <br />
+        Timezone: {timezoneAbbr}
       </div>
-
-      <ChatsList
-        key={`${initialSelectedBot || "all"}-${selectedTimePeriod}`}
-        selectedBot={initialSelectedBot}
-        isSuperAdmin={isSuperAdmin}
-        initialThreads={initialThreads}
-        initialTotalThreads={initialTotalThreads}
-        initialBotDisplayName={currentBotNameToDisplay}
-        selectedTimePeriod={selectedTimePeriod}
-        accessibleBotShareNames={accessibleBotShareNames}
-        setCurrentTimezoneAbbr={setCurrentTimezoneAbbr}
-        setCurrentBotNameToDisplay={setCurrentBotNameToDisplay}
-        onRefresh={handleRefresh}
-      />
-    </>
+    </div>
   )
 }

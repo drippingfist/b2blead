@@ -29,6 +29,7 @@ import { formatTimeInTimezone, formatDateOnlyInTimezone, getTimezoneAbbreviation
 import { refreshSentimentAnalysis } from "@/lib/actions"
 import { toggleThreadStarred } from "@/lib/simple-database"
 import { supabase } from "@/lib/supabase/client"
+import { TIME_PERIODS } from "@/lib/time-utils"
 
 interface ThreadsViewProps {
   initialThreads: Thread[]
@@ -36,6 +37,7 @@ interface ThreadsViewProps {
   onRefresh?: () => void
   bots?: Bot[] // Add bots prop to get timezone info
   totalCount?: number // Add totalCount prop
+  selectedTimePeriod?: string // Add selectedTimePeriod prop
 }
 
 interface ThreadWithMessageCount extends Thread {
@@ -51,12 +53,22 @@ interface ThreadWithMessageCount extends Thread {
 type DateFilter = "today" | "last7days" | "last30days" | "alltime"
 
 export default function ThreadsView({
-  initialThreads,
+  initialThreads = [], // Add default value to prevent undefined
   selectedBot,
   onRefresh,
-  bots = [],
-  totalCount,
+  bots = [], // Add default value to prevent undefined
+  totalCount = 0, // Add default value to prevent undefined
+  selectedTimePeriod = "last30days", // Add default value to prevent undefined
 }: ThreadsViewProps) {
+  // Debug logging
+  console.log("[ThreadsView] Props received:", {
+    initialThreadsLength: initialThreads?.length || 0,
+    selectedBot,
+    botsLength: bots?.length || 0,
+    totalCount,
+    selectedTimePeriod,
+  })
+
   const [threads, setThreads] = useState<ThreadWithMessageCount[]>([])
   const [threadIdEnabled, setThreadIdEnabled] = useState(false) // Hidden by default
   const [searchQuery, setSearchQuery] = useState("")
@@ -72,12 +84,26 @@ export default function ThreadsView({
   const [dateDropdownOpen, setDateDropdownOpen] = useState(false)
   const dateDropdownRef = useRef<HTMLDivElement>(null)
 
-  const dateFilterOptions = [
-    { value: "today" as DateFilter, label: "Today" },
-    { value: "last7days" as DateFilter, label: "Last 7 days" },
-    { value: "last30days" as DateFilter, label: "Last 30 days" },
-    { value: "alltime" as DateFilter, label: "All Time" },
-  ]
+  // Safely access TIME_PERIODS with fallback
+  const dateFilterOptions = TIME_PERIODS
+    ? [
+        { value: "today" as DateFilter, label: TIME_PERIODS.find((p) => p.value === "today")?.label || "Today" },
+        {
+          value: "last7days" as DateFilter,
+          label: TIME_PERIODS.find((p) => p.value === "last7days")?.label || "Last 7 days",
+        },
+        {
+          value: "last30days" as DateFilter,
+          label: TIME_PERIODS.find((p) => p.value === "last30days")?.label || "Last 30 days",
+        },
+        { value: "alltime" as DateFilter, label: TIME_PERIODS.find((p) => p.value === "all")?.label || "All Time" },
+      ]
+    : [
+        { value: "today" as DateFilter, label: "Today" },
+        { value: "last7days" as DateFilter, label: "Last 7 days" },
+        { value: "last30days" as DateFilter, label: "Last 30 days" },
+        { value: "alltime" as DateFilter, label: "All Time" },
+      ]
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -92,6 +118,7 @@ export default function ThreadsView({
   }, [])
 
   const filterThreadsByDate = (threads: ThreadWithMessageCount[], filter: DateFilter): ThreadWithMessageCount[] => {
+    if (!threads) return [] // Safety check
     if (filter === "alltime") return threads
 
     const now = new Date()
@@ -137,7 +164,7 @@ export default function ThreadsView({
   }
 
   const sortThreads = (threads: ThreadWithMessageCount[]) => {
-    if (!sortColumn) return threads
+    if (!sortColumn || !threads) return threads
 
     return [...threads].sort((a, b) => {
       let aValue: any
@@ -185,6 +212,12 @@ export default function ThreadsView({
 
   // Process threads when initialThreads changes
   useEffect(() => {
+    if (!initialThreads) {
+      console.warn("[ThreadsView] initialThreads is undefined, setting empty array")
+      setThreads([])
+      return
+    }
+
     // Sort threads by created_at in descending order (newest first)
     const sortedThreads = [...initialThreads].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
@@ -194,7 +227,7 @@ export default function ThreadsView({
 
   // Get timezone for the selected bot or default to Asia/Bangkok for superadmin
   const getSelectedBotTimezone = (): string | undefined => {
-    if (!selectedBot || !bots.length) return "Asia/Bangkok" // Default for superadmin
+    if (!selectedBot || !bots?.length) return "Asia/Bangkok" // Default for superadmin
     const bot = bots.find((b) => b.bot_share_name === selectedBot)
     return bot?.timezone || "Asia/Bangkok"
   }
@@ -203,27 +236,32 @@ export default function ThreadsView({
   const timezoneAbbr = getTimezoneAbbreviation(displayTimezone)
 
   // Apply date filter, then sorting, then grouping
-  const dateFilteredThreads = filterThreadsByDate(threads, dateFilter)
+  const dateFilteredThreads = filterThreadsByDate(threads || [], dateFilter)
   const sortedThreads = sortThreads(dateFilteredThreads)
-  const groupedThreads = sortedThreads.reduce((groups: { [key: string]: ThreadWithMessageCount[] }, thread) => {
-    const date = formatDateOnlyInTimezone(thread.created_at, displayTimezone)
 
-    if (!groups[date]) {
-      groups[date] = []
-    }
-    groups[date].push(thread)
-    return groups
-  }, {})
+  // Safety check before grouping
+  const groupedThreads = sortedThreads
+    ? sortedThreads.reduce((groups: { [key: string]: ThreadWithMessageCount[] }, thread) => {
+        const date = formatDateOnlyInTimezone(thread.created_at, displayTimezone)
+
+        if (!groups[date]) {
+          groups[date] = []
+        }
+        groups[date].push(thread)
+        return groups
+      }, {})
+    : {}
 
   // Filter threads based on search query (apply to date-filtered threads)
-  const filteredThreads = searchQuery
-    ? dateFilteredThreads.filter(
-        (thread) =>
-          thread.message_preview?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          thread.thread_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          thread.sentiment_justification?.toLowerCase().includes(searchQuery.toLowerCase()),
-      )
-    : dateFilteredThreads
+  const filteredThreads =
+    searchQuery && dateFilteredThreads
+      ? dateFilteredThreads.filter(
+          (thread) =>
+            thread.message_preview?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            thread.thread_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            thread.sentiment_justification?.toLowerCase().includes(searchQuery.toLowerCase()),
+        )
+      : dateFilteredThreads || []
 
   const getSentimentEmoji = (sentiment?: number) => {
     if (sentiment === undefined || sentiment === null) return "😐"
@@ -394,7 +432,7 @@ export default function ThreadsView({
 
   // Get the selected bot's client name for display
   const getSelectedBotName = () => {
-    if (!selectedBot || !bots.length) return null
+    if (!selectedBot || !bots?.length) return null
     const bot = bots.find((b) => b.bot_share_name === selectedBot)
     return bot?.client_name || bot?.bot_share_name || selectedBot
   }
@@ -416,6 +454,13 @@ export default function ThreadsView({
     return dateFilterOptions.find((option) => option.value === dateFilter)?.label || "Last 30 days"
   }
 
+  // Get the time period label from TIME_PERIODS
+  const getTimePeriodLabel = () => {
+    if (!TIME_PERIODS) return "Last 30 days"
+    const period = TIME_PERIODS.find((p) => p.value === selectedTimePeriod)
+    return period?.label || "Last 30 days"
+  }
+
   return (
     <div className="p-4 md:p-8 pt-0 relative">
       {/* Tooltip */}
@@ -435,8 +480,8 @@ export default function ThreadsView({
       <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 space-y-4 md:space-y-0">
         <div className="mb-6">
           <p className="text-[#616161]">
-            {selectedBot ? `Showing threads for ${selectedBotName}` : "Showing all threads"} ({getFilteredCount()}{" "}
-            total)
+            {selectedBot ? `Showing threads for ${selectedBotName}` : "Showing threads"} from {getTimePeriodLabel()} (
+            {totalCount || 0} total)
             <span className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded">Times in {timezoneAbbr}</span>
           </p>
         </div>
@@ -479,7 +524,7 @@ export default function ThreadsView({
               <ChevronDown className="h-4 w-4 text-[#616161] ml-2" />
             </button>
 
-            {dateDropdownOpen && (
+            {dateDropdownOpen && dateFilterOptions && (
               <div className="absolute z-50 mt-1 w-full bg-white border border-[#e0e0e0] rounded-md shadow-lg min-w-[150px]">
                 {dateFilterOptions.map((option) => (
                   <button

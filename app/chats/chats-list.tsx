@@ -7,33 +7,12 @@ import { ChevronLeft, ChevronRight, Clock, MessageSquare, Phone, Star, Trash2 } 
 import { formatTimeInTimezone, getTimezoneAbbreviation } from "@/lib/timezone-utils"
 import { calculateDateRangeForQuery, TIME_PERIODS } from "@/lib/time-utils"
 import { Button } from "@/components/ui/button"
-
-interface Thread {
-  id: string
-  created_at: string
-  bot_share_name?: string
-  thread_id?: string
-  updated_at: string
-  duration?: string
-  message_preview?: string
-  sentiment_score?: number
-  sentiment_justification?: string
-  cb_requested?: boolean
-  count?: number
-  mean_response_time?: number
-  starred?: boolean
-  callbacks?: any
-  bots?: {
-    client_name?: string
-    bot_display_name?: string
-    timezone?: string
-  } | null
-}
+import ThreadsView from "@/components/threads-view"
+import type { Thread, Bot } from "@/lib/database"
 
 interface ChatsListProps {
   selectedBot: string | null
   isSuperAdmin?: boolean
-  onRefresh?: () => void
   initialThreads: Thread[]
   initialTotalThreads: number
   initialBotDisplayName: string | null
@@ -41,6 +20,8 @@ interface ChatsListProps {
   accessibleBotShareNames: string[]
   setCurrentTimezoneAbbr: (abbr: string) => void
   setCurrentBotNameToDisplay: (name: string | null) => void
+  bots: Bot[]
+  totalCount: number
 }
 
 const PAGE_SIZE = 50
@@ -48,7 +29,6 @@ const PAGE_SIZE = 50
 export default function ChatsList({
   selectedBot,
   isSuperAdmin = false,
-  onRefresh,
   initialThreads,
   initialTotalThreads,
   initialBotDisplayName,
@@ -56,6 +36,8 @@ export default function ChatsList({
   accessibleBotShareNames,
   setCurrentTimezoneAbbr,
   setCurrentBotNameToDisplay,
+  bots,
+  totalCount,
 }: ChatsListProps) {
   const [threads, setThreads] = useState<Thread[]>(initialThreads)
   const [loading, setLoading] = useState(false)
@@ -66,6 +48,15 @@ export default function ChatsList({
   const [actualTotalThreads, setActualTotalThreads] = useState<number>(initialTotalThreads)
   const [activeFilter, setActiveFilter] = useState<"none" | "callbacks" | "dropped-callbacks">("none")
   const [currentPage, setCurrentPage] = useState(1)
+
+  // Debug logging
+  console.log("[ChatsList] Props received:", {
+    initialThreadsLength: initialThreads?.length || 0,
+    selectedBot,
+    botsLength: bots?.length || 0,
+    selectedTimePeriod,
+    totalCount,
+  })
 
   // Effect to reset page when selectedBot or selectedTimePeriod props change
   useEffect(() => {
@@ -264,7 +255,6 @@ export default function ChatsList({
       if (response.ok) {
         setSelectedThreadsSet(new Set())
         await loadData(currentPage)
-        onRefresh?.()
       } else {
         console.error("Failed to delete threads")
       }
@@ -324,6 +314,18 @@ export default function ChatsList({
 
   const startItem = actualTotalThreads > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0
   const endItem = Math.min(currentPage * PAGE_SIZE, actualTotalThreads)
+
+  // This function would be used to refresh the data
+  const handleRefresh = async () => {
+    setLoading(true)
+    try {
+      // In a real implementation, you would fetch fresh data here
+      // For now, we'll just simulate a delay
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -549,6 +551,15 @@ export default function ChatsList({
           ))}
         </div>
       )}
+
+      <ThreadsView
+        initialThreads={threads}
+        selectedBot={selectedBot}
+        onRefresh={handleRefresh}
+        bots={bots}
+        totalCount={totalCount}
+        selectedTimePeriod={selectedTimePeriod}
+      />
     </div>
   )
 }
