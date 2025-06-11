@@ -1,145 +1,77 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { getThreadsSimple, getThreadsCount } from "@/lib/simple-database"
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const limit = Number.parseInt(searchParams.get("limit") || "20")
     const offset = Number.parseInt(searchParams.get("offset") || "0")
-    const botShareName = searchParams.get("botShareName")
+    const timePeriod = searchParams.get("timePeriod")
 
-    // Get date range if provided
-    let dateRange = null
-    const startDate = searchParams.get("startDate")
-    const endDate = searchParams.get("endDate")
+    console.log("🔍 API: Fetching threads with params:", { limit, offset, timePeriod })
 
-    if (startDate && endDate) {
-      dateRange = {
-        start: new Date(startDate),
-        end: new Date(endDate),
-      }
+    if (!timePeriod) {
+      return NextResponse.json({ error: "Time period is required" }, { status: 400 })
     }
 
-    console.log("🔄 API: Fetching threads with params:", { limit, offset, botShareName, dateRange })
+    // Convert time period to date range
+    let dateRange: { start: Date; end: Date } | null = null
+    const now = new Date()
 
-    // Use the existing getThreadsSimple function but we need to modify it to support offset
-    const threads = await getThreadsSimpleWithOffset(limit, offset, botShareName, dateRange)
+    switch (timePeriod) {
+      case "today":
+        dateRange = {
+          start: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+          end: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59),
+        }
+        break
+      case "last7days":
+        dateRange = {
+          start: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+          end: now,
+        }
+        break
+      case "last30days":
+        dateRange = {
+          start: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+          end: now,
+        }
+        break
+      case "last90days":
+        dateRange = {
+          start: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000),
+          end: now,
+        }
+        break
+      case "all":
+        dateRange = null // No date filter for "all time"
+        break
+      default:
+        return NextResponse.json({ error: "Invalid time period" }, { status: 400 })
+    }
 
-    console.log("✅ API: Fetched", threads.length, "threads")
+    // Get threads with pagination
+    const threads = await getThreadsSimple(limit + offset, null, dateRange)
+
+    // Slice to get only the requested page
+    const paginatedThreads = threads.slice(offset, offset + limit)
+
+    // Get total count for the time period
+    const totalCount = await getThreadsCount(null, dateRange)
+
+    // Check if there are more threads available
+    const hasMore = threads.length > offset + limit
+
+    console.log("✅ API: Returning", paginatedThreads.length, "threads, hasMore:", hasMore, "totalCount:", totalCount)
 
     return NextResponse.json({
-      threads,
-      hasMore: threads.length === limit,
+      threads: paginatedThreads,
+      hasMore,
+      totalCount,
+      timePeriod,
     })
-  } catch (error: any) {
-    console.error("❌ API Error fetching threads:", error)
-    return NextResponse.json({ error: "Failed to fetch threads", details: error.message }, { status: 500 })
+  } catch (error) {
+    console.error("❌ API Error:", error)
+    return NextResponse.json({ error: "Failed to fetch threads" }, { status: 500 })
   }
-}
-
-// Modified version of getThreadsSimple that supports offset
-async function getThreadsSimpleWithOffset(
-  limit = 50,
-  offset = 0,
-  botShareName?: string | null,
-  dateRange?: { start: Date; end: Date } | null,
-) {
-  const { supabase } = await import("@/lib/supabase/client")
-
-  console.log("🧵 Fetching threads for bot_share_name:", botShareName || "ALL")
-  console.log("🧵 Date range:", dateRange)
-  console.log("🧵 Limit:", limit, "Offset:", offset)
-
-  // Get user's accessible bots
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user?.id) {
-    console.log("❌ No authenticated user")
-    return []
-  }
-
-  console.log("🔐 Getting bot access for user ID:", user.id)
-
-  // Get user's bot access using FK relationship
-  const { data: botUsers, error: accessError } = await supabase
-    .from("bot_users")
-    .select("role, bot_share_name")
-    .eq("user_id", user.id)
-    .eq("is_active", true)
-
-  if (accessError || !botUsers || botUsers.length === 0) {
-    console.log("❌ No bot access for user:", accessError?.message || "No records found")
-    return []
-  }
-
-  console.log("🔐 Bot users found:", botUsers)
-
-  // Check if user is superadmin
-  const isSuperAdmin = botUsers.some((bu) => bu.role === "superadmin")
-
-  let accessibleBots: string[] = []
-
-  if (isSuperAdmin) {
-    console.log("🔐 User is superadmin - getting all bots")
-    const { data: allBots } = await supabase.from("bots").select("bot_share_name").not("bot_share_name", "is", null)
-    accessibleBots = allBots?.map((b) => b.bot_share_name).filter(Boolean) || []
-  } else {
-    accessibleBots = botUsers
-      .filter((bu) => bu.bot_share_name)
-      .map((bu) => bu.bot_share_name)
-      .filter(Boolean)
-  }
-
-  console.log("🔐 Accessible bots:", accessibleBots)
-
-  if (accessibleBots.length === 0) {
-    console.log("❌ No accessible bots found")
-    return []
-  }
-
-  let query = supabase
-    .from("threads")
-    .select(`
-      *,
-      callbacks!callbacks_id_fkey(
-        user_name,
-        user_first_name,
-        user_surname,
-        user_email
-      )
-    `)
-    .order("created_at", { ascending: false })
-    .gt("count", 0)
-    .range(offset, offset + limit - 1)
-
-  // Filter by bot if specified
-  if (botShareName) {
-    if (accessibleBots.includes(botShareName)) {
-      console.log("🔍 Filtering threads by bot_share_name:", botShareName)
-      query = query.eq("bot_share_name", botShareName)
-    } else {
-      console.log("❌ User doesn't have access to bot:", botShareName)
-      return []
-    }
-  } else {
-    console.log("🔍 Filtering threads by accessible bots:", accessibleBots)
-    query = query.in("bot_share_name", accessibleBots)
-  }
-
-  // Apply date range filter if provided
-  if (dateRange) {
-    console.log("📅 Applying date range filter:", dateRange.start, "to", dateRange.end)
-    query = query.gte("created_at", dateRange.start.toISOString()).lte("created_at", dateRange.end.toISOString())
-  }
-
-  const { data, error } = await query
-
-  if (error) {
-    console.error("❌ Error fetching threads:", error)
-    throw new Error(`Failed to fetch threads: ${error.message}`)
-  }
-
-  console.log("✅ Successfully fetched", data?.length || 0, "threads")
-  return data || []
 }
