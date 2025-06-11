@@ -21,7 +21,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Loading from "@/components/loading"
 
-type TimePeriod = "today" | "last7days" | "last30days" | "alltime" | "custom"
+type TimePeriod = "today" | "last7days" | "last30days" | "last90days" | "alltime" | "custom"
 
 interface DashboardMetrics {
   totalChats: number
@@ -263,6 +263,8 @@ export default function Dashboard() {
         return "Last 7 days"
       case "last30days":
         return "Last 30 days"
+      case "last90days":
+        return "Last 90 days"
       case "alltime":
         return "All time"
       case "custom":
@@ -356,6 +358,7 @@ export default function Dashboard() {
                 <SelectItem value="today">Today</SelectItem>
                 <SelectItem value="last7days">Last 7 days</SelectItem>
                 <SelectItem value="last30days">Last 30 days</SelectItem>
+                <SelectItem value="last90days">Last 90 days</SelectItem>
                 <SelectItem value="alltime">All time</SelectItem>
               </SelectContent>
             </Select>
