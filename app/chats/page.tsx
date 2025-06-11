@@ -1,106 +1,95 @@
 import { Suspense } from "react"
-import { redirect } from "next/navigation"
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import ChatsPageClient from "./chats-page-client"
-import { getThreadsSimple, getThreadsCount } from "@/lib/simple-database"
+import { getThreadsSimple, getThreadsCount, getBots } from "@/lib/simple-database"
 import { calculateDateRangeForQuery } from "@/lib/time-utils"
 import { getTimezoneAbbreviation } from "@/lib/timezone-utils"
 
-export const dynamic = "force-dynamic"
+const DEFAULT_TIME_PERIOD = "last30days"
+const PAGE_SIZE = 50
 
 export default async function ChatsPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined }
+  searchParams: { bot?: string; timePeriod?: string; page?: string }
 }) {
   const supabase = createServerComponentClient({ cookies })
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
 
-  if (!session) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
     redirect("/auth/login")
   }
 
-  const userId = session.user.id
+  // Get URL parameters
+  const selectedBot = searchParams.bot || null
+  const selectedTimePeriod = searchParams.timePeriod || DEFAULT_TIME_PERIOD
+  const currentPage = Number.parseInt(searchParams.page || "1", 10)
 
-  // Get user's bot access
-  const { data: userBots, error: userBotsError } = await supabase
-    .from("bot_users")
-    .select("bot_share_name, role")
-    .eq("user_id", userId)
-    .eq("is_active", true)
+  console.log("🔍 ChatsPage server params:", { selectedBot, selectedTimePeriod, currentPage })
 
-  if (!userBots || userBots.length === 0) {
-    return (
-      <div className="container mx-auto p-4">
-        <div className="text-center py-8">
-          <h1 className="text-2xl font-bold mb-4">No Access</h1>
-          <p className="text-gray-600">You don't have access to any bots.</p>
-        </div>
-      </div>
+  try {
+    // Get accessible bots
+    const bots = await getBots(user.id)
+    const accessibleBotShareNames = bots.map((bot) => bot.bot_share_name)
+
+    // Calculate date range for the selected time period
+    const { startDate, endDate } = calculateDateRangeForQuery(selectedTimePeriod)
+
+    // Get total count for the selected time period and bot
+    const totalCount = await getThreadsCount(user.id, selectedBot, startDate, endDate)
+
+    // Get paginated threads
+    const threads = await getThreadsSimple(
+      user.id,
+      selectedBot,
+      startDate,
+      endDate,
+      (currentPage - 1) * PAGE_SIZE,
+      PAGE_SIZE,
     )
-  }
 
-  // Get the selected bot from URL or default to null (all bots)
-  const selectedBot = typeof searchParams.bot === "string" ? searchParams.bot : null
+    // Get bot display information
+    const selectedBotObj = bots.find((bot) => bot.bot_share_name === selectedBot)
+    const botDisplayName = selectedBotObj?.client_name || selectedBotObj?.bot_display_name || selectedBot
+    const timezone = selectedBotObj?.timezone || "Asia/Bangkok"
+    const timezoneAbbr = getTimezoneAbbreviation(timezone)
 
-  // Get the selected time period from URL or default to "last30days"
-  const selectedTimePeriod = typeof searchParams.timePeriod === "string" ? searchParams.timePeriod : "last30days"
+    console.log("📊 ChatsPage data:", {
+      threadsCount: threads.length,
+      totalCount,
+      selectedTimePeriod,
+      dateRange: { startDate, endDate },
+    })
 
-  console.log("🔍 ChatsPage: selectedBot =", selectedBot)
-  console.log("🕐 ChatsPage: selectedTimePeriod =", selectedTimePeriod)
-
-  // Calculate date range based on selected time period
-  const { startDate, endDate } = calculateDateRangeForQuery(selectedTimePeriod)
-  const dateRange = startDate && endDate ? { start: new Date(startDate), end: new Date(endDate) } : null
-
-  console.log("📅 ChatsPage: dateRange =", dateRange)
-
-  // Get threads for display (limited to 50)
-  const threads = await getThreadsSimple(50, selectedBot, dateRange)
-
-  // Get ACTUAL count of threads matching the filter
-  const actualTotalCount = await getThreadsCount(selectedBot, dateRange)
-
-  console.log("✅ ChatsPage: fetched", threads.length, "threads for display")
-  console.log("🔢 ChatsPage: actual total count =", actualTotalCount)
-
-  // Get bot display information
-  let botDisplayName: string | null = null
-  let botTimezone = "UTC"
-
-  if (selectedBot) {
-    const { data: botDetails } = await supabase
-      .from("bots")
-      .select("bot_display_name, client_name, timezone")
-      .eq("bot_share_name", selectedBot)
-      .single()
-
-    if (botDetails) {
-      botDisplayName = botDetails.bot_display_name || botDetails.client_name || selectedBot
-      botTimezone = botDetails.timezone || "UTC"
-    }
-  } else {
-    botDisplayName = "All Accessible Bots"
-  }
-
-  const timezoneAbbr = getTimezoneAbbreviation(botTimezone)
-
-  return (
-    <div className="container mx-auto p-4">
-      <Suspense fallback={<div>Loading...</div>}>
+    return (
+      <Suspense fallback={<div>Loading chats...</div>}>
         <ChatsPageClient
           initialThreads={threads}
           selectedBot={selectedBot}
           selectedTimePeriod={selectedTimePeriod}
-          actualTotalCount={actualTotalCount}
+          totalCount={totalCount}
           botDisplayName={botDisplayName}
           timezoneAbbr={timezoneAbbr}
-          accessibleBotShareNames={userBots.map((bot) => bot.bot_share_name)}
+          accessibleBotShareNames={accessibleBotShareNames}
+          currentPage={currentPage}
+          pageSize={PAGE_SIZE}
         />
       </Suspense>
-    </div>
-  )
+    )
+  } catch (error) {
+    console.error("❌ Error in ChatsPage:", error)
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold text-red-600 mb-4">Error Loading Chats</h1>
+          <p className="text-gray-600">There was an error loading your chats. Please try again.</p>
+        </div>
+      </div>
+    )
+  }
 }
