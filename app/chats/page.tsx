@@ -1,124 +1,138 @@
+"use client"
+
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import ChatsPageClient from "./chats-page-client"
-import { ChatsHeader } from "./chats-header"
+import { TIME_PERIODS } from "@/lib/time-utils"
 
-export default async function ChatsPage() {
+export default async function ChatsPage({
+  searchParams,
+}: {
+  searchParams: { timePeriod?: string }
+}) {
   const supabase = createServerComponentClient({ cookies })
 
-  // Check if user is authenticated
   const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  if (!session) {
-    redirect("/login")
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect("/auth/login")
   }
 
-  // Get user's email and ID for debugging
-  const userEmail = session.user.email
-  const userId = session.user.id
+  // Get time period from URL or default to last 30 days
+  const selectedTimePeriod = searchParams.timePeriod || "last30days"
+  const timePeriodLabel = TIME_PERIODS.find((period) => period.value === selectedTimePeriod)?.label || "All Time"
 
-  console.log("🔍 CHATS DEBUG: User email:", userEmail)
-  console.log("🔍 CHATS DEBUG: User ID:", userId)
+  // Calculate date range based on selected time period
+  let startDate: string | undefined
+  const endDate = new Date().toISOString()
 
-  // Check if user is superadmin - check if their ID exists in bot_super_users table
-  console.log("🔍 CHATS DEBUG: Checking superadmin status...")
-  const { data: superAdminCheck, error: superAdminError } = await supabase
-    .from("bot_super_users")
-    .select("id")
-    .eq("id", userId) // Check if the user's ID exists as a record
-    .single()
-
-  console.log("🔍 CHATS DEBUG: Superadmin query error:", superAdminError)
-  console.log("🔍 CHATS DEBUG: Superadmin query data:", superAdminCheck)
-
-  const isSuperAdmin = !!superAdminCheck
-  console.log("🔍 CHATS DEBUG: Is superadmin:", isSuperAdmin)
-
-  // Also check what's in the bot_super_users table
-  const { data: allSuperAdmins, error: allSuperAdminsError } = await supabase.from("bot_super_users").select("*")
-
-  console.log("🔍 CHATS DEBUG: All superadmins:", allSuperAdmins)
-  console.log("🔍 CHATS DEBUG: All superadmins error:", allSuperAdminsError)
-
-  // Get bots the user has access to using user_id (not email)
-  const { data: userBots, error: userBotsError } = await supabase
-    .from("bot_users")
-    .select("bot_share_name")
-    .eq("user_id", userId)
-    .eq("is_active", true)
-
-  console.log("🔍 CHATS DEBUG: bot_users query error:", userBotsError)
-  console.log("🔍 CHATS DEBUG: bot_users data:", userBots)
-
-  if (!userBots || userBots.length === 0) {
-    console.log("🔍 CHATS DEBUG: No bot access found")
-    return (
-      <div className="container mx-auto p-6">
-        <h1 className="text-2xl font-bold mb-6">Chats</h1>
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-md">
-          You don't have access to any bots yet. Please contact an administrator.
-          <div className="mt-2 text-xs">
-            Debug: User ID: {userId}, Email: {userEmail}, SuperAdmin: {isSuperAdmin.toString()}
-          </div>
-        </div>
-      </div>
-    )
+  if (selectedTimePeriod === "last7days") {
+    const date = new Date()
+    date.setDate(date.getDate() - 7)
+    startDate = date.toISOString()
+  } else if (selectedTimePeriod === "last30days") {
+    const date = new Date()
+    date.setDate(date.getDate() - 30)
+    startDate = date.toISOString()
+  } else if (selectedTimePeriod === "today") {
+    const date = new Date()
+    date.setHours(0, 0, 0, 0)
+    startDate = date.toISOString()
   }
+  // For "all" time period, startDate remains undefined
 
-  // Get bot share names the user has access to
-  const botShareNames = userBots.map((bot) => bot.bot_share_name)
-  console.log("🔍 CHATS DEBUG: Accessible bot share names:", botShareNames)
-
-  // Get threads for these bots
-  const { data: threads, error } = await supabase
+  // Build query
+  let query = supabase
     .from("threads")
-    .select(`
+    .select(
+      `
       id,
-      created_at,
-      bot_share_name,
       thread_id,
+      created_at,
       updated_at,
-      duration,
       message_preview,
-      sentiment_score,
-      cb_requested,
       count,
-      bots(client_name)
-    `)
-    .in("bot_share_name", botShareNames)
+      bot_share_name,
+      bots(bot_display_name, client_name)
+    `,
+      { count: "exact" },
+    )
     .gt("count", 0)
-    .order("updated_at", { ascending: false })
-    .limit(50)
 
-  console.log("🔍 CHATS DEBUG: threads query error:", error)
-  console.log("🔍 CHATS DEBUG: threads data:", threads)
-  console.log("🔍 CHATS DEBUG: threads count:", threads?.length || 0)
+  // Apply date filter if needed
+  if (startDate) {
+    query = query.gte("created_at", startDate).lte("created_at", endDate)
+  }
+
+  // Execute query
+  const { data: threads, error, count } = await query.order("updated_at", { ascending: false }).limit(50)
 
   if (error) {
     console.error("Error fetching threads:", error)
   }
 
   return (
-    <div className="container mx-auto p-4">
-      <ChatsHeader />
-      <div className="mb-4 p-4 bg-gray-100 rounded text-xs">
-        <strong>Debug Info:</strong>
-        <br />
-        User ID: {userId}
-        <br />
-        Bot Access: {botShareNames.join(", ")}
-        <br />
-        Threads Found: {threads?.length || 0}
-        <br />
-        SuperAdmin: {isSuperAdmin.toString()}
-        <br />
-        SuperAdmin Check Error: {superAdminError?.message || "none"}
-        <br />
-        SuperAdmin Data: {JSON.stringify(superAdminCheck)}
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-6">
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-2xl font-semibold text-gray-900">Chats</h1>
+
+          <div className="flex items-center space-x-2">
+            <label htmlFor="timePeriod" className="text-sm text-gray-600">
+              Time period:
+            </label>
+            <select
+              id="timePeriod"
+              className="border border-gray-300 rounded-md text-sm p-1"
+              onChange={(e) => {
+                const url = new URL(window.location.href)
+                url.searchParams.set("timePeriod", e.target.value)
+                window.location.href = url.toString()
+              }}
+              defaultValue={selectedTimePeriod}
+            >
+              {TIME_PERIODS.map((period) => (
+                <option key={period.value} value={period.value}>
+                  {period.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <p className="text-gray-600 mt-1">
+          Showing threads from {timePeriodLabel} ({count || 0} {count === 1 ? "thread" : "threads"})
+        </p>
       </div>
-      <ChatsPageClient threads={threads || []} isSuperAdmin={isSuperAdmin} />
+
+      <div className="space-y-4">
+        {threads && threads.length > 0 ? (
+          threads.map((thread) => (
+            <div
+              key={thread.id}
+              className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+            >
+              <div className="flex justify-between items-start mb-2">
+                <h3 className="font-medium text-gray-900">Thread {thread.thread_id || thread.id.slice(0, 8)}</h3>
+                <span className="text-sm text-gray-500">{new Date(thread.updated_at).toLocaleDateString()}</span>
+              </div>
+
+              <p className="text-gray-600 text-sm mb-2">{thread.message_preview || "No preview available"}</p>
+
+              <div className="flex justify-between items-center text-xs text-gray-500">
+                <span>{thread.count} messages</span>
+                <span>{thread.bots?.client_name || thread.bots?.bot_display_name || thread.bot_share_name}</span>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-gray-500">No chats found</p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
