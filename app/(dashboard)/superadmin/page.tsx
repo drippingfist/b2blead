@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/lib/supabase/client"
 import { getUserBotAccess } from "@/lib/database"
 import { timezones } from "@/lib/timezones"
-import { Upload, Save, Loader2, ImageIcon } from "lucide-react"
+import { Upload, Save, ImageIcon } from "lucide-react"
+import Loading from "@/components/loading"
 
 interface BotSettings {
   timezone: string
@@ -308,14 +309,7 @@ export default function SuperAdminPage() {
   }
 
   if (loading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin" />
-          <span className="ml-2">Loading bot settings...</span>
-        </div>
-      </div>
-    )
+    return <Loading message="Loading bot settings..." />
   }
 
   if (error) {
@@ -339,7 +333,7 @@ export default function SuperAdminPage() {
           <Button onClick={handleSave} disabled={saving} className="bg-[#038a71] hover:bg-[#038a71]/90">
             {saving ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <Loading size="sm" className="mr-2" />
                 Saving All...
               </>
             ) : (
@@ -387,7 +381,7 @@ export default function SuperAdminPage() {
               >
                 {savingSection === "Basic Settings" ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <Loading size="sm" className="mr-2" />
                     Saving...
                   </>
                 ) : (
@@ -494,7 +488,7 @@ export default function SuperAdminPage() {
               >
                 {savingSection === "AI Configuration" ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <Loading size="sm" className="mr-2" />
                     Saving...
                   </>
                 ) : (
@@ -563,7 +557,7 @@ export default function SuperAdminPage() {
               >
                 {savingSection === "Visual Settings" ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <Loading size="sm" className="mr-2" />
                     Saving...
                   </>
                 ) : (

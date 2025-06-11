@@ -3,7 +3,6 @@
 import { getMessagesByThreadId } from "@/lib/database"
 import { supabase } from "@/lib/supabase/client"
 import { notFound, useRouter } from "next/navigation"
-import Link from "next/link"
 import { ArrowLeft, Clock, MessageSquare, Phone, Timer, Star } from "lucide-react"
 import { useState, useEffect } from "react"
 
@@ -24,7 +23,7 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
       // If bot selection changes and we have thread data, check if thread belongs to new bot
       if (thread && thread.bot_share_name !== newBotSelection) {
         console.log("🔄 Thread Detail: Thread belongs to different bot, redirecting to chats")
-        router.push("/")
+        router.push("/chats")
       }
 
       setSelectedBot(newBotSelection)
@@ -72,7 +71,7 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
       const currentSelectedBot = localStorage.getItem("selectedBot")
       if (currentSelectedBot && currentSelectedBot !== "null" && threadData.bot_share_name !== currentSelectedBot) {
         console.log("🔄 Thread Detail: Thread doesn't belong to selected bot, redirecting")
-        router.push("/")
+        router.push("/chats")
         return
       }
 
@@ -154,10 +153,10 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
       {/* Left Panel - Thread Information */}
       <div className="w-1/3 border-r border-[#e0e0e0] bg-white overflow-y-auto">
         <div className="p-6">
-          <Link href="/" className="flex items-center text-[#616161] hover:text-[#212121] mb-6">
+          <button onClick={() => router.back()} className="flex items-center text-[#616161] hover:text-[#212121] mb-6">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to chats
-          </Link>
+            Back
+          </button>
 
           <h1 className="text-xl font-semibold text-[#212121] mb-6">Thread Details</h1>
 

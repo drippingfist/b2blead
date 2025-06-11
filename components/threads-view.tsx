@@ -20,6 +20,7 @@ import {
   Timer,
   User,
   Check,
+  Calendar,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -29,7 +30,6 @@ import { formatTimeInTimezone, formatDateOnlyInTimezone, getTimezoneAbbreviation
 import { refreshSentimentAnalysis } from "@/lib/actions"
 import { toggleThreadStarred } from "@/lib/simple-database"
 import { supabase } from "@/lib/supabase/client"
-import { TIME_PERIODS } from "@/lib/time-utils"
 
 interface ThreadsViewProps {
   initialThreads: Thread[]
@@ -50,7 +50,16 @@ interface ThreadWithMessageCount extends Thread {
   } | null
 }
 
+type TimePeriod = "today" | "last7days" | "last30days" | "last90days" | "alltime"
 type DateFilter = "today" | "last7days" | "last30days" | "alltime"
+
+const TIME_PERIOD_OPTIONS = [
+  { value: "today" as TimePeriod, label: "Today" },
+  { value: "last7days" as TimePeriod, label: "Last 7 days" },
+  { value: "last30days" as TimePeriod, label: "Last 30 days" },
+  { value: "last90days" as TimePeriod, label: "Last 90 days" },
+  { value: "alltime" as TimePeriod, label: "All Time" },
+]
 
 export default function ThreadsView({
   initialThreads = [], // Add default value to prevent undefined
@@ -84,38 +93,109 @@ export default function ThreadsView({
   const [dateDropdownOpen, setDateDropdownOpen] = useState(false)
   const dateDropdownRef = useRef<HTMLDivElement>(null)
 
-  // Safely access TIME_PERIODS with fallback
-  const dateFilterOptions = TIME_PERIODS
-    ? [
-        { value: "today" as DateFilter, label: TIME_PERIODS.find((p) => p.value === "today")?.label || "Today" },
-        {
-          value: "last7days" as DateFilter,
-          label: TIME_PERIODS.find((p) => p.value === "last7days")?.label || "Last 7 days",
-        },
-        {
-          value: "last30days" as DateFilter,
-          label: TIME_PERIODS.find((p) => p.value === "last30days")?.label || "Last 30 days",
-        },
-        { value: "alltime" as DateFilter, label: TIME_PERIODS.find((p) => p.value === "all")?.label || "All Time" },
-      ]
-    : [
-        { value: "today" as DateFilter, label: "Today" },
-        { value: "last7days" as DateFilter, label: "Last 7 days" },
-        { value: "last30days" as DateFilter, label: "Last 30 days" },
-        { value: "alltime" as DateFilter, label: "All Time" },
-      ]
+  // NEW: Time Period Selector State
+  const [currentTimePeriod, setCurrentTimePeriod] = useState<TimePeriod>("last30days")
+  const [timePeriodDropdownOpen, setTimePeriodDropdownOpen] = useState(false)
+  const [currentThreadCount, setCurrentThreadCount] = useState(0)
+  const timePeriodDropdownRef = useRef<HTMLDivElement>(null)
 
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dateDropdownRef.current && !dateDropdownRef.current.contains(event.target as Node)) {
         setDateDropdownOpen(false)
+      }
+      if (timePeriodDropdownRef.current && !timePeriodDropdownRef.current.contains(event.target as Node)) {
+        setTimePeriodDropdownOpen(false)
       }
     }
 
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
+
+  // NEW: Function to build date filter for SQL query
+  const getDateFilterForPeriod = (period: TimePeriod): string | null => {
+    const now = new Date()
+
+    switch (period) {
+      case "today":
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        return today.toISOString()
+      case "last7days":
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        return sevenDaysAgo.toISOString()
+      case "last30days":
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+        return thirtyDaysAgo.toISOString()
+      case "last90days":
+        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+        return ninetyDaysAgo.toISOString()
+      case "alltime":
+        return null
+      default:
+        return null
+    }
+  }
+
+  // NEW: Function to reload threads based on time period and bot selection
+  const reloadThreadsForTimePeriod = async (period: TimePeriod) => {
+    setLoading(true)
+    console.log("🔄 Reloading threads for period:", period, "and bot:", selectedBot || "ALL")
+
+    try {
+      // Build the query
+      let query = supabase.from("threads").select("*").order("updated_at", { ascending: false }).limit(50)
+
+      // Apply bot filter if selected
+      if (selectedBot) {
+        query = query.eq("bot_share_name", selectedBot)
+      }
+
+      // Apply time period filter
+      const dateFilter = getDateFilterForPeriod(period)
+      if (dateFilter) {
+        query = query.gte("created_at", dateFilter)
+      }
+
+      console.log("📊 Executing query with filters:", {
+        bot: selectedBot || "ALL",
+        period,
+        dateFilter,
+      })
+
+      const { data, error } = await query
+
+      if (error) {
+        console.error("❌ Error fetching threads:", error)
+        setThreads([])
+        setCurrentThreadCount(0)
+        return
+      }
+
+      console.log("✅ Successfully fetched", data?.length || 0, "threads")
+      setThreads(data || [])
+      setCurrentThreadCount(data?.length || 0)
+    } catch (error) {
+      console.error("❌ Exception while fetching threads:", error)
+      setThreads([])
+      setCurrentThreadCount(0)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // NEW: Handle time period change
+  const handleTimePeriodChange = async (period: TimePeriod) => {
+    setCurrentTimePeriod(period)
+    setTimePeriodDropdownOpen(false)
+    await reloadThreadsForTimePeriod(period)
+  }
+
+  // Initialize with current time period on mount
+  useEffect(() => {
+    reloadThreadsForTimePeriod(currentTimePeriod)
+  }, [selectedBot]) // Reload when bot changes
 
   const filterThreadsByDate = (threads: ThreadWithMessageCount[], filter: DateFilter): ThreadWithMessageCount[] => {
     if (!threads) return [] // Safety check
@@ -143,13 +223,7 @@ export default function ThreadsView({
 
   // Calculate the count based on the selected date filter
   const getFilteredCount = (): number => {
-    if (dateFilter === "alltime") {
-      return totalCount || threads.length
-    }
-
-    // For other date filters, count the filtered threads
-    const filteredThreads = filterThreadsByDate(threads, dateFilter)
-    return filteredThreads.length
+    return currentThreadCount // Use the actual count from the SQL query
   }
 
   const handleSort = (column: string) => {
@@ -211,19 +285,19 @@ export default function ThreadsView({
   }
 
   // Process threads when initialThreads changes
-  useEffect(() => {
-    if (!initialThreads) {
-      console.warn("[ThreadsView] initialThreads is undefined, setting empty array")
-      setThreads([])
-      return
-    }
+  // useEffect(() => {
+  //   if (!initialThreads) {
+  //     console.warn("[ThreadsView] initialThreads is undefined, setting empty array")
+  //     setThreads([])
+  //     return
+  //   }
 
-    // Sort threads by created_at in descending order (newest first)
-    const sortedThreads = [...initialThreads].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    )
-    setThreads(sortedThreads)
-  }, [initialThreads, bots, selectedBot])
+  //   // Sort threads by created_at in descending order (newest first)
+  //   const sortedThreads = [...initialThreads].sort(
+  //     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  //   )
+  //   setThreads(sortedThreads)
+  // }, [initialThreads, bots, selectedBot])
 
   // Get timezone for the selected bot or default to Asia/Bangkok for superadmin
   const getSelectedBotTimezone = (): string | undefined => {
@@ -235,9 +309,8 @@ export default function ThreadsView({
   const displayTimezone = getSelectedBotTimezone()
   const timezoneAbbr = getTimezoneAbbreviation(displayTimezone)
 
-  // Apply date filter, then sorting, then grouping
-  const dateFilteredThreads = filterThreadsByDate(threads || [], dateFilter)
-  const sortedThreads = sortThreads(dateFilteredThreads)
+  // Apply sorting and grouping to current threads
+  const sortedThreads = sortThreads(threads || [])
 
   // Safety check before grouping
   const groupedThreads = sortedThreads
@@ -252,16 +325,16 @@ export default function ThreadsView({
       }, {})
     : {}
 
-  // Filter threads based on search query (apply to date-filtered threads)
+  // Filter threads based on search query
   const filteredThreads =
-    searchQuery && dateFilteredThreads
-      ? dateFilteredThreads.filter(
+    searchQuery && sortedThreads
+      ? sortedThreads.filter(
           (thread) =>
             thread.message_preview?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             thread.thread_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             thread.sentiment_justification?.toLowerCase().includes(searchQuery.toLowerCase()),
         )
-      : dateFilteredThreads || []
+      : sortedThreads || []
 
   const getSentimentEmoji = (sentiment?: number) => {
     if (sentiment === undefined || sentiment === null) return "😐"
@@ -345,6 +418,9 @@ export default function ThreadsView({
       } finally {
         setRefreshing(false)
       }
+    } else {
+      // If no onRefresh prop, reload with current settings
+      await reloadThreadsForTimePeriod(currentTimePeriod)
     }
   }
 
@@ -450,16 +526,16 @@ export default function ThreadsView({
     )
   }
 
-  const getCurrentDateFilterLabel = () => {
-    return dateFilterOptions.find((option) => option.value === dateFilter)?.label || "Last 30 days"
+  const getCurrentTimePeriodLabel = () => {
+    return TIME_PERIOD_OPTIONS.find((option) => option.value === currentTimePeriod)?.label || "Last 30 days"
   }
 
   // Get the time period label from TIME_PERIODS
-  const getTimePeriodLabel = () => {
-    if (!TIME_PERIODS) return "Last 30 days"
-    const period = TIME_PERIODS.find((p) => p.value === selectedTimePeriod)
-    return period?.label || "Last 30 days"
-  }
+  // const getTimePeriodLabel = () => {
+  //   if (!TIME_PERIODS) return "Last 30 days"
+  //   const period = TIME_PERIODS.find((p) => p.value === selectedTimePeriod)
+  //   return period?.label || "Last 30 days"
+  // }
 
   return (
     <div className="p-4 md:p-8 pt-0 relative">
@@ -476,19 +552,73 @@ export default function ThreadsView({
         </div>
       )}
 
+      {/* NEW: Debug Box */}
+      <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+        <h3 className="text-sm font-semibold text-blue-800 mb-2">🔍 Debug Information</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+          <div>
+            <span className="font-medium text-blue-700">Selected Bot:</span>
+            <span className="ml-2 text-blue-600">{selectedBot || "All Bots"}</span>
+          </div>
+          <div>
+            <span className="font-medium text-blue-700">Time Period:</span>
+            <span className="ml-2 text-blue-600">{getCurrentTimePeriodLabel()}</span>
+          </div>
+          <div>
+            <span className="font-medium text-blue-700">Query Result Count:</span>
+            <span className="ml-2 text-blue-600">{currentThreadCount} threads</span>
+          </div>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 space-y-4 md:space-y-0">
         <div className="mb-6">
           <p className="text-[#616161]">
-            {selectedBot ? `Showing threads for ${selectedBotName}` : "Showing threads"} from {getTimePeriodLabel()} (
-            {totalCount || 0} total)
+            {selectedBot ? `Showing threads for ${selectedBotName}` : "Showing threads"} from{" "}
+            {getCurrentTimePeriodLabel()} ({currentThreadCount} total)
             <span className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded">Times in {timezoneAbbr}</span>
           </p>
         </div>
         <div className="flex space-x-2">
-          <Button onClick={handleRefresh} disabled={refreshing} variant="outline" className="w-full md:w-auto">
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-            {refreshing ? "Refreshing..." : "Refresh"}
+          {/* NEW: Time Period Selector */}
+          <div className="relative" ref={timePeriodDropdownRef}>
+            <button
+              onClick={() => setTimePeriodDropdownOpen(!timePeriodDropdownOpen)}
+              className="flex items-center border border-[#e0e0e0] rounded-md px-4 py-2 bg-white hover:bg-gray-50 transition-colors"
+            >
+              <Calendar className="h-4 w-4 text-[#616161] mr-2" />
+              <span className="text-sm text-[#212121]">{getCurrentTimePeriodLabel()}</span>
+              <ChevronDown className="h-4 w-4 text-[#616161] ml-2" />
+            </button>
+
+            {timePeriodDropdownOpen && (
+              <div className="absolute z-50 mt-1 right-0 bg-white border border-[#e0e0e0] rounded-md shadow-lg min-w-[150px]">
+                {TIME_PERIOD_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => handleTimePeriodChange(option.value)}
+                    disabled={loading}
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between disabled:opacity-50 ${
+                      currentTimePeriod === option.value ? "bg-[#038a71]/10 text-[#038a71]" : "text-[#212121]"
+                    }`}
+                  >
+                    <span>{option.label}</span>
+                    {currentTimePeriod === option.value && <Check className="h-4 w-4 text-[#038a71]" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Button
+            onClick={handleRefresh}
+            disabled={refreshing || loading}
+            variant="outline"
+            className="w-full md:w-auto"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing || loading ? "animate-spin" : ""}`} />
+            {refreshing || loading ? "Loading..." : "Refresh"}
           </Button>
           <Button className="bg-[#038a71] hover:bg-[#038a71]/90 w-full md:w-auto">Export</Button>
         </div>
@@ -515,7 +645,7 @@ export default function ThreadsView({
           </div>
 
           {/* Date Filter Dropdown */}
-          <div className="relative" ref={dateDropdownRef}>
+          {/* <div className="relative" ref={dateDropdownRef}>
             <button
               onClick={() => setDateDropdownOpen(!dateDropdownOpen)}
               className="flex items-center border border-[#e0e0e0] rounded-md px-3 py-2 hover:bg-gray-50 transition-colors"
@@ -543,7 +673,7 @@ export default function ThreadsView({
                 ))}
               </div>
             )}
-          </div>
+          </div> */}
 
           <div className="hidden sm:flex items-center space-x-4">
             <div className="text-sm text-[#616161]">
@@ -579,7 +709,7 @@ export default function ThreadsView({
       {loading && (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#038a71]"></div>
-          <span className="ml-2 text-[#616161]">Loading...</span>
+          <span className="ml-2 text-[#616161]">Loading threads...</span>
         </div>
       )}
 

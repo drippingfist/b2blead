@@ -19,6 +19,7 @@ import {
   getInvitableBots,
 } from "@/lib/user-actions"
 import { DeleteUserModal } from "@/components/delete-user-modal"
+import Loading from "@/components/loading"
 
 interface UserData {
   id: string
@@ -512,14 +513,7 @@ export default function SettingsPage() {
 
   // Show loading screen while initial data loads
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#038a71] mx-auto mb-4"></div>
-          <p className="text-[#616161]">Loading settings...</p>
-        </div>
-      </div>
-    )
+    return <Loading message="Loading settings..." />
   }
 
   return (
@@ -849,7 +843,7 @@ export default function SettingsPage() {
                           </div>
                         ) : (
                           <div className="flex items-center justify-between">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
                               <div>
                                 <p className="text-sm font-medium text-[#212121]">
                                   {user.first_name} {user.surname}
@@ -859,10 +853,6 @@ export default function SettingsPage() {
                               <div>
                                 <p className="text-xs text-[#616161] uppercase tracking-wider">Role</p>
                                 <p className="text-sm text-[#212121] capitalize">{user.role}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-[#616161] uppercase tracking-wider">Bot Access</p>
-                                <p className="text-sm text-[#212121]">{user.bot_share_name}</p>
                               </div>
                             </div>
                             <div className="flex items-center space-x-2 ml-4">
@@ -894,7 +884,7 @@ export default function SettingsPage() {
                     {invitedUsers.map((invitation) => (
                       <div key={invitation.id} className="p-4 border border-[#e0e0e0] rounded-lg bg-yellow-50">
                         <div className="flex items-center justify-between">
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
                             <div>
                               <p className="text-sm font-medium text-[#212121]">
                                 {invitation.first_name} {invitation.surname}
@@ -907,10 +897,6 @@ export default function SettingsPage() {
                             <div>
                               <p className="text-xs text-[#616161] uppercase tracking-wider">Role</p>
                               <p className="text-sm text-[#212121] capitalize">{invitation.role}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-[#616161] uppercase tracking-wider">Bot Access</p>
-                              <p className="text-sm text-[#212121]">{invitation.bot_share_name}</p>
                             </div>
                             <div>
                               <p className="text-xs text-[#616161] uppercase tracking-wider">Invited</p>

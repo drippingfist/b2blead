@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase/client"
 interface Bot {
   id: string
   client_name: string
+  bot_share_name: string
 }
 
 interface BotSelectorProps {
@@ -29,8 +30,8 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
 
         const { data, error, count } = await supabase
           .from("bots")
-          .select("id, bot_share_name", { count: "exact" })
-          .order("bot_share_name", { ascending: true })
+          .select("id, bot_share_name, client_name", { count: "exact" })
+          .order("client_name", { ascending: true })
 
         console.log("📊 Total bots found:", count)
         console.log("📊 Bots data:", data)
@@ -43,6 +44,21 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
 
         setBots(data || [])
         console.log(`✅ Successfully loaded ${data?.length || 0} bots`)
+
+        // Auto-select the single bot if there's only one and nothing is selected
+        if (data && data.length === 1) {
+          const storedBot = localStorage.getItem("selectedBot")
+          if (!storedBot || storedBot === "null") {
+            console.log("🤖 Auto-selecting the only available bot:", data[0].bot_share_name)
+            localStorage.setItem("selectedBot", data[0].bot_share_name)
+            // Dispatch event without page refresh
+            window.dispatchEvent(new CustomEvent("botSelectionChanged", { detail: data[0].bot_share_name }))
+            // Call the onSelectBot prop if provided
+            if (onSelectBot) {
+              onSelectBot(data[0].bot_share_name)
+            }
+          }
+        }
       } catch (error: any) {
         console.error("❌ Exception loading bots:", error)
         setError(`Exception: ${error.message}`)
@@ -52,7 +68,7 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
     }
 
     loadBots()
-  }, [])
+  }, [onSelectBot])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -68,10 +84,22 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
 
   // Find the currently selected bot
   const currentBot = bots.find((bot) => bot.bot_share_name === selectedBot)
-  const displayName = selectedBot === null ? "All Bots" : currentBot?.bot_share_name || "Select Bot"
+  const displayName = selectedBot === null ? "All Bots" : currentBot?.client_name || "Select Bot"
 
   const handleBotSelection = (botShareName: string | null) => {
     console.log("🤖 Bot selector: Selecting bot:", botShareName)
+
+    // Store current sidebar state before refresh
+    const sidebarElement = document.getElementById("mobile-sidebar")
+    const isSidebarOpen = sidebarElement && !sidebarElement.classList.contains("-translate-x-full")
+
+    if (isSidebarOpen) {
+      localStorage.setItem("sidebarWasOpen", "true")
+      console.log("💾 Sidebar was open, storing state")
+    } else {
+      localStorage.removeItem("sidebarWasOpen")
+      console.log("💾 Sidebar was closed, removing state")
+    }
 
     // Update localStorage immediately
     if (botShareName) {
@@ -87,18 +115,52 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
       onSelectBot(botShareName)
     }
 
-    // BRUTE FORCE APPROACH: Create a form and submit it to force a full page refresh
-    const form = document.createElement("form")
-    form.method = "GET"
-    form.action = window.location.href
-    document.body.appendChild(form)
-    form.submit()
+    // Dispatch custom event for other components
+    window.dispatchEvent(new CustomEvent("botSelectionChanged", { detail: botShareName }))
+
+    // GUARANTEED FORCE REFRESH - Multiple approaches for maximum reliability
+    console.log("🔄 FORCING PAGE REFRESH...")
+
+    // Approach 1: window.location.reload()
+    window.location.reload()
+
+    // Approach 2: Form submission (backup if reload is prevented)
+    // This will only execute if reload is somehow prevented
+    setTimeout(() => {
+      try {
+        const form = document.createElement("form")
+        form.method = "GET"
+        form.action = window.location.href
+        document.body.appendChild(form)
+        form.submit()
+        console.log("🔄 Form submission refresh triggered")
+      } catch (e) {
+        console.error("Form submission failed, trying direct location assign")
+        window.location.href = window.location.href
+      }
+    }, 100)
   }
 
   if (loading) {
     return (
       <div className="w-full px-3 py-2 text-sm border border-[#e0e0e0] rounded-md bg-gray-50 text-[#616161]">
         Loading bots...
+      </div>
+    )
+  }
+
+  // If only one bot, show simple display instead of dropdown
+  if (bots.length === 1) {
+    const singleBot = bots[0]
+    return (
+      <div className="space-y-2">
+        <div className="w-full px-3 py-2 text-sm font-medium bg-gray-50 border border-[#e0e0e0] rounded-md text-[#212121]">
+          {singleBot.client_name}
+        </div>
+        <div className="text-xs text-gray-500">
+          <div>Found: 1 bot</div>
+          <div>Selected: {singleBot.client_name}</div>
+        </div>
       </div>
     )
   }
@@ -131,7 +193,7 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
               {selectedBot === null && <Check className="h-4 w-4 text-[#038a71]" />}
             </button>
 
-            {/* Individual bot options - showing bot_share_name */}
+            {/* Individual bot options - showing client_name */}
             {bots.map((bot) => (
               <button
                 key={bot.id}
@@ -144,7 +206,7 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
                   bot.bot_share_name === selectedBot ? "bg-[#038a71]/10 text-[#038a71]" : "text-[#212121]"
                 }`}
               >
-                <span className="truncate">{bot.bot_share_name}</span>
+                <span className="truncate">{bot.client_name}</span>
                 {bot.bot_share_name === selectedBot && <Check className="h-4 w-4 text-[#038a71]" />}
               </button>
             ))}
@@ -159,7 +221,7 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
       {/* Debug info */}
       <div className="text-xs text-gray-500">
         <div>Found: {bots.length} bots</div>
-        <div>Selected: {selectedBot || "All Bots"}</div>
+        <div>Selected: {selectedBot ? currentBot?.client_name : "All Bots"}</div>
         {error && <div className="text-red-500">Error: {error}</div>}
       </div>
     </div>

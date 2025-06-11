@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useActionState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { signIn } from "@/lib/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -98,6 +99,15 @@ export default function LoginForm({ isHidden = false }: LoginFormProps) {
         >
           Forgot your password?
         </button>
+      </div>
+
+      <div className="text-center mt-6 pt-6 border-t border-[#e0e0e0]">
+        <p className="text-sm text-[#616161]">
+          Don't have an account?{" "}
+          <Link href="/auth/sign-up" className="text-[#038a71] hover:text-[#038a71]/80 hover:underline">
+            Sign up
+          </Link>
+        </p>
       </div>
     </div>
   )

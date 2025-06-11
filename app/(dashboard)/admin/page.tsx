@@ -4,9 +4,10 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Save, X, CreditCard, Receipt, Users, Info, Shield } from "lucide-react"
+import { Save, X, CreditCard, Receipt, Users, Info, Shield } from "lucide-react"
 import { supabase } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
+import Loading from "@/components/loading"
 
 export default function AdminPage() {
   const router = useRouter()
@@ -162,11 +163,7 @@ export default function AdminPage() {
 
   if (loading) {
     console.log("Admin page is loading...")
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-[#038a71]" />
-      </div>
-    )
+    return <Loading message="Loading admin panel..." />
   }
 
   console.log("Admin page loaded, isSuperAdmin:", isSuperAdmin)
@@ -209,7 +206,7 @@ export default function AdminPage() {
             disabled={saving || loading}
             className="bg-[#038a71] hover:bg-[#038a71]/90 flex items-center"
           >
-            {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+            {saving ? <Loading size="sm" className="mr-2" /> : <Save className="h-4 w-4 mr-2" />}
             Save Changes
           </Button>
         </div>
