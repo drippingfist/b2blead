@@ -54,6 +54,8 @@ export default function ChatsPageClient() {
   const [hoveredSentiment, setHoveredSentiment] = useState<string | null>(null)
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
   const itemsPerPage = 100
+  const [sortField, setSortField] = useState<string | null>("created_at")
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
 
   // Listen for bot selection changes
   useEffect(() => {
@@ -241,7 +243,7 @@ export default function ChatsPageClient() {
           `)
           .eq("bot_share_name", selectedBot)
           .gt("count", 0)
-          .order("created_at", { ascending: false })
+          .order(sortField || "created_at", { ascending: sortDirection === "asc" })
 
         // Apply date filter
         if (startDate) {
@@ -296,7 +298,7 @@ export default function ChatsPageClient() {
     }
 
     loadThreads()
-  }, [selectedBot, filter, timePeriod, currentPage])
+  }, [selectedBot, filter, timePeriod, currentPage, sortField, sortDirection])
 
   const handleStarToggle = async (threadId: string) => {
     try {
@@ -430,6 +432,30 @@ export default function ChatsPageClient() {
   const totalPages = Math.ceil(totalCount / itemsPerPage)
   const startItem = totalCount === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1
   const endItem = Math.min(currentPage * itemsPerPage, totalCount)
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      // If already sorting by this field, toggle direction
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
+    } else {
+      // New sort field, default to descending
+      setSortField(field)
+      setSortDirection("desc")
+    }
+    // Reset to first page when sort changes
+    setCurrentPage(1)
+  }
+
+  const getSortIndicator = (field: string) => {
+    if (sortField !== field) {
+      return <span className="text-gray-300 ml-1">↕</span>
+    }
+    return sortDirection === "asc" ? (
+      <span className="text-blue-600 ml-1">↑</span>
+    ) : (
+      <span className="text-blue-600 ml-1">↓</span>
+    )
+  }
 
   if (!selectedBot) {
     return (
@@ -587,25 +613,55 @@ export default function ChatsPageClient() {
               <thead className="bg-gray-50 border-b border-[#e0e0e0]">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                    Start Time
+                    <button
+                      onClick={() => handleSort("created_at")}
+                      className="flex items-center hover:text-blue-600 transition-colors"
+                    >
+                      Start Time {getSortIndicator("created_at")}
+                    </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                     Callback
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                    Sentiment
+                    <button
+                      onClick={() => handleSort("sentiment_score")}
+                      className="flex items-center hover:text-blue-600 transition-colors"
+                    >
+                      Sentiment {getSortIndicator("sentiment_score")}
+                    </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                    Message Preview
+                    <button
+                      onClick={() => handleSort("message_preview")}
+                      className="flex items-center hover:text-blue-600 transition-colors"
+                    >
+                      Message Preview {getSortIndicator("message_preview")}
+                    </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                    Messages
+                    <button
+                      onClick={() => handleSort("count")}
+                      className="flex items-center hover:text-blue-600 transition-colors"
+                    >
+                      Messages {getSortIndicator("count")}
+                    </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                    Duration
+                    <button
+                      onClick={() => handleSort("duration")}
+                      className="flex items-center hover:text-blue-600 transition-colors"
+                    >
+                      Duration {getSortIndicator("duration")}
+                    </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                    Avg. Response Time
+                    <button
+                      onClick={() => handleSort("mean_response_time")}
+                      className="flex items-center hover:text-blue-600 transition-colors"
+                    >
+                      Avg. Response Time {getSortIndicator("mean_response_time")}
+                    </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                     Actions
