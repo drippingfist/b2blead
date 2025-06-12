@@ -18,6 +18,12 @@ export async function GET(request: NextRequest) {
     searchParams: Object.fromEntries(requestUrl.searchParams),
   })
 
+  // For password reset flows, we need to redirect to the reset page and let it handle the hash fragments
+  if (next === "/auth/reset-password") {
+    console.log("🔐 Password reset flow detected, redirecting to reset password page")
+    return NextResponse.redirect(new URL("/auth/reset-password", request.url))
+  }
+
   if (code) {
     const cookieStore = cookies()
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
@@ -28,23 +34,10 @@ export async function GET(request: NextRequest) {
 
       if (error) {
         console.error("❌ Error exchanging code for session:", error)
-
-        // If this is a password reset flow, redirect to reset page with error
-        if (next === "/auth/reset-password") {
-          return NextResponse.redirect(new URL("/auth/reset-password?error=Invalid reset link", request.url))
-        }
-
-        // Otherwise treat as invitation error
         return NextResponse.redirect(new URL("/auth/login?error=Invalid invitation link", request.url))
       }
 
       console.log("✅ Session created for user:", data.user?.email)
-
-      // If this is a password reset flow, redirect to the reset password page
-      if (next === "/auth/reset-password") {
-        console.log("🔐 Password reset flow, redirecting to reset password page")
-        return NextResponse.redirect(new URL("/auth/reset-password", request.url))
-      }
 
       // Check if this is an invitation acceptance
       if (type === "invite" || setup === "true") {
@@ -71,17 +64,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL("/", request.url))
     } catch (error) {
       console.error("❌ Unexpected error in auth callback:", error)
-
-      // If this is a password reset flow, redirect to reset page with error
-      if (next === "/auth/reset-password") {
-        return NextResponse.redirect(new URL("/auth/reset-password?error=Authentication failed", request.url))
-      }
-
       return NextResponse.redirect(new URL("/auth/login?error=Authentication failed", request.url))
     }
   }
 
-  // No code provided
+  // No code provided - this might be a password reset flow that will be handled by hash fragments
   console.log("❌ No auth code provided")
   return NextResponse.redirect(new URL("/auth/login?error=No authentication code", request.url))
 }

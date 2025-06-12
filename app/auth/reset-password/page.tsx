@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase/client"
 import { Loader2, Check, X, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -10,7 +10,6 @@ import { Label } from "@/components/ui/label"
 
 export default function ResetPasswordPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [step, setStep] = useState<"loading" | "password" | "processing" | "success" | "error">("loading")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -20,18 +19,55 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    const checkSession = async () => {
+    const handlePasswordReset = async () => {
       try {
-        // Check for error from callback
-        const callbackError = searchParams.get("error")
-        if (callbackError) {
-          console.error("❌ Callback error:", callbackError)
-          throw new Error(callbackError)
+        console.log("🔗 Processing password reset...")
+
+        // Check for hash fragments first (standard Supabase flow)
+        if (window.location.hash) {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1))
+          const accessToken = hashParams.get("access_token")
+          const refreshToken = hashParams.get("refresh_token")
+          const type = hashParams.get("type")
+          const error = hashParams.get("error")
+          const errorDescription = hashParams.get("error_description")
+
+          console.log("🔗 Hash parameters found:", {
+            hasAccessToken: !!accessToken,
+            hasRefreshToken: !!refreshToken,
+            type,
+            error,
+            errorDescription,
+          })
+
+          // Check for errors in hash
+          if (error) {
+            console.error("❌ Error in hash parameters:", error, errorDescription)
+            throw new Error(errorDescription || error)
+          }
+
+          // If we have recovery tokens, set the session
+          if (accessToken && refreshToken && type === "recovery") {
+            console.log("🔐 Setting session from recovery tokens...")
+
+            const { error: sessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            })
+
+            if (sessionError) {
+              console.error("❌ Error setting session:", sessionError)
+              throw new Error("Failed to authenticate with reset link")
+            }
+
+            console.log("✅ Session set successfully from recovery tokens")
+            setStep("password")
+            return
+          }
         }
 
-        console.log("🔗 Checking for active session...")
-
-        // Check if we have an active session
+        // If no hash parameters, check for existing session
+        console.log("🔗 Checking for existing session...")
         const {
           data: { session },
           error: sessionError,
@@ -54,17 +90,17 @@ export default function ResetPasswordPage() {
           return
         }
 
-        // If no session, this means the callback didn't work properly
-        throw new Error("No valid session found - please request a new password reset link")
+        // If we get here, we don't have valid authentication
+        throw new Error("Invalid or expired password reset link. Please request a new one.")
       } catch (err: any) {
-        console.error("❌ Error checking session:", err)
+        console.error("❌ Error processing password reset:", err)
         setError(err.message || "Invalid password reset link")
         setStep("error")
       }
     }
 
-    checkSession()
-  }, [searchParams])
+    handlePasswordReset()
+  }, [])
 
   const handlePasswordUpdate = async () => {
     if (password.length < 6) {
@@ -238,12 +274,20 @@ export default function ResetPasswordPage() {
           </div>
           <h1 className="text-xl font-semibold text-[#212121] mb-2">Reset Error</h1>
           <p className="text-red-600 mb-4">{error}</p>
-          <button
-            onClick={() => router.push("/auth/login")}
-            className="bg-[#038a71] hover:bg-[#038a71]/90 text-white px-4 py-2 rounded-md"
-          >
-            Go to Login
-          </button>
+          <div className="space-y-2">
+            <button
+              onClick={() => router.push("/auth/forgot-password")}
+              className="bg-[#038a71] hover:bg-[#038a71]/90 text-white px-4 py-2 rounded-md mr-2"
+            >
+              Request New Reset Link
+            </button>
+            <button
+              onClick={() => router.push("/auth/login")}
+              className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md"
+            >
+              Go to Login
+            </button>
+          </div>
         </div>
       </div>
     )
