@@ -87,16 +87,10 @@ export default function LoginForm() {
       </form>
 
       <div className="text-center mt-6 pt-6 border-t border-[#e0e0e0]">
-        <p className="text-sm text-[#616161] mb-3">
+        <p className="text-sm text-[#616161]">
           Forgot your password?{" "}
           <Link href="/auth/magic-link" className="text-[#038a71] hover:text-[#038a71]/80 hover:underline">
             Get a magic link
-          </Link>
-        </p>
-        <p className="text-sm text-[#616161]">
-          Don't have an account?{" "}
-          <Link href="/auth/sign-up" className="text-[#038a71] hover:text-[#038a71]/80 hover:underline">
-            Sign up
           </Link>
         </p>
       </div>

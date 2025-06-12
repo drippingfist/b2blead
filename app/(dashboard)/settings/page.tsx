@@ -620,34 +620,77 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-3">
-              <h3 className="text-md font-medium text-[#212121]">Email frequency</h3>
+              <h3 className="text-md font-medium text-[#212121]">Chat Transcripts</h3>
 
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
-                  <input type="checkbox" id="daily-summary" className="rounded border-gray-300" />
-                  <label htmlFor="daily-summary" className="text-sm text-[#212121]">
-                    Daily summary
+                  <input
+                    type="radio"
+                    id="chat-daily"
+                    name="chat-transcripts"
+                    value="daily"
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="chat-daily" className="text-sm text-[#212121]">
+                    Daily
                   </label>
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  <input type="checkbox" id="weekly-report" className="rounded border-gray-300" />
-                  <label htmlFor="weekly-report" className="text-sm text-[#212121]">
-                    Weekly report
+                  <input
+                    type="radio"
+                    id="chat-weekly"
+                    name="chat-transcripts"
+                    value="weekly"
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="chat-weekly" className="text-sm text-[#212121]">
+                    Weekly
                   </label>
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  <input type="checkbox" id="monthly-analytics" className="rounded border-gray-300" />
-                  <label htmlFor="monthly-analytics" className="text-sm text-[#212121]">
-                    Monthly analytics
+                  <input
+                    type="radio"
+                    id="chat-monthly"
+                    name="chat-transcripts"
+                    value="monthly"
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="chat-monthly" className="text-sm text-[#212121]">
+                    Monthly
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-md font-medium text-[#212121]">Callbacks Report</h3>
+
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    id="callbacks-weekly"
+                    name="callbacks-report"
+                    value="weekly"
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="callbacks-weekly" className="text-sm text-[#212121]">
+                    Weekly
                   </label>
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  <input type="checkbox" id="urgent-alerts" className="rounded border-gray-300" defaultChecked />
-                  <label htmlFor="urgent-alerts" className="text-sm text-[#212121]">
-                    Urgent alerts
+                  <input
+                    type="radio"
+                    id="callbacks-monthly"
+                    name="callbacks-report"
+                    value="monthly"
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="callbacks-monthly" className="text-sm text-[#212121]">
+                    Monthly
                   </label>
                 </div>
               </div>
