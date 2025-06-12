@@ -1,15 +1,16 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase/client"
-import { Loader2, Check, X, Eye, EyeOff } from 'lucide-react'
+import { Loader2, Check, X, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 export default function ResetPasswordPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [step, setStep] = useState<"loading" | "password" | "processing" | "success" | "error">("loading")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -21,27 +22,34 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     const handlePasswordReset = async () => {
       try {
-        console.log("🔗 Processing password reset from URL hash...")
+        console.log("🔗 Processing password reset...")
 
+        // Check for error from callback
+        const errorParam = searchParams.get("error")
+        if (errorParam === "invalid_link") {
+          throw new Error("Invalid or expired password reset link. Please request a new one.")
+        }
+
+        // Check for hash fragments first (direct Supabase flow)
         if (window.location.hash) {
           const hashParams = new URLSearchParams(window.location.hash.substring(1))
           const accessToken = hashParams.get("access_token")
           const refreshToken = hashParams.get("refresh_token")
           const type = hashParams.get("type")
-          const errorParam = hashParams.get("error") // Renamed to avoid conflict with state variable
+          const hashError = hashParams.get("error")
           const errorDescription = hashParams.get("error_description")
 
           console.log("🔗 Hash parameters found:", {
             hasAccessToken: !!accessToken,
             hasRefreshToken: !!refreshToken,
             type,
-            error: errorParam,
+            error: hashError,
             errorDescription,
           })
 
-          if (errorParam) {
-            console.error("❌ Error in hash parameters:", errorParam, errorDescription)
-            throw new Error(errorDescription || errorParam)
+          if (hashError) {
+            console.error("❌ Error in hash parameters:", hashError, errorDescription)
+            throw new Error(errorDescription || hashError)
           }
 
           if (accessToken && refreshToken && type === "recovery") {
@@ -63,7 +71,32 @@ export default function ResetPasswordPage() {
             return
           }
         }
-        // If no valid hash parameters with recovery tokens are found
+
+        // Check for existing session (from callback flow)
+        console.log("🔗 Checking for existing session...")
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession()
+
+        console.log("🔗 Session check result:", {
+          hasSession: !!session,
+          hasUser: !!session?.user,
+          error: sessionError,
+        })
+
+        if (sessionError) {
+          console.error("❌ Session error:", sessionError)
+          throw new Error("Failed to verify session")
+        }
+
+        if (session && session.user) {
+          console.log("✅ Valid session found, proceeding to password reset")
+          setStep("password")
+          return
+        }
+
+        // If we get here, we don't have valid authentication
         throw new Error("Invalid or expired password reset link. Please request a new one.")
       } catch (err: any) {
         console.error("❌ Error processing password reset:", err)
@@ -73,7 +106,7 @@ export default function ResetPasswordPage() {
     }
 
     handlePasswordReset()
-  }, [router]) // Added router to dependency array
+  }, [router, searchParams])
 
   const handlePasswordUpdate = async () => {
     if (password.length < 6) {
