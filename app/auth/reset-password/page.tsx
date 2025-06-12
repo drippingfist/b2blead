@@ -21,74 +21,29 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     const handlePasswordReset = async () => {
       try {
-        console.log("🔗 Processing password reset...")
+        // Get the hash parameters from the URL
+        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const accessToken = hashParams.get("access_token")
+        const refreshToken = hashParams.get("refresh_token")
+        const type = hashParams.get("type")
 
-        // Check if we have hash fragments in the URL
-        if (window.location.hash) {
-          console.log("🔗 Found hash fragments in URL")
-          const hashParams = new URLSearchParams(window.location.hash.substring(1))
-          const accessToken = hashParams.get("access_token")
-          const refreshToken = hashParams.get("refresh_token")
-          const type = hashParams.get("type")
-          const errorParam = hashParams.get("error")
-          const errorDescription = hashParams.get("error_description")
+        console.log("🔗 Processing password reset:", { accessToken: !!accessToken, refreshToken: !!refreshToken, type })
 
-          console.log("🔗 Hash parameters:", {
-            hasAccessToken: !!accessToken,
-            hasRefreshToken: !!refreshToken,
-            type,
-            hasError: !!errorParam,
-          })
-
-          // Check for errors in the hash
-          if (errorParam) {
-            console.error("❌ Error in hash parameters:", errorParam, errorDescription)
-            throw new Error(errorDescription || errorParam)
-          }
-
-          // Check if we have valid recovery tokens
-          if (accessToken && refreshToken && type === "recovery") {
-            console.log("🔐 Setting session from recovery tokens...")
-            const { error: sessionError } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            })
-
-            if (sessionError) {
-              console.error("❌ Error setting session:", sessionError)
-              throw new Error("Failed to authenticate with reset link tokens.")
-            }
-
-            console.log("✅ Session set successfully from recovery tokens.")
-            setStep("password")
-
-            // Clear the hash from the URL now that we've used it
-            window.history.replaceState({}, document.title, window.location.pathname)
-            return
-          }
+        if (!accessToken || !refreshToken || type !== "recovery") {
+          throw new Error("Invalid password reset link")
         }
 
-        // If we get here, check if we already have a valid session
-        console.log("🔗 Checking for existing session...")
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession()
-        console.log("🔗 Session check result:", { hasSession: !!session, hasError: !!sessionError })
+        // Set the session to allow password update
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        })
 
         if (sessionError) {
-          console.error("❌ Session check error:", sessionError)
-          throw new Error("Failed to check authentication status.")
+          throw sessionError
         }
 
-        if (session) {
-          console.log("✅ Found existing session, allowing password reset.")
-          setStep("password")
-          return
-        }
-
-        // If no hash fragments and no session, show error
-        throw new Error("Invalid or expired password reset link. Please request a new one.")
+        setStep("password")
       } catch (err: any) {
         console.error("❌ Error processing password reset:", err)
         setError(err.message || "Invalid password reset link")
@@ -123,7 +78,6 @@ export default function ResetPasswordPage() {
       })
 
       if (passwordError) {
-        console.error("❌ Password update error:", passwordError)
         throw passwordError
       }
 
@@ -131,12 +85,13 @@ export default function ResetPasswordPage() {
 
       setStep("success")
       setTimeout(() => {
-        router.push("/auth/login")
+        router.push("/")
       }, 2000)
     } catch (err: any) {
       console.error("❌ Error updating password:", err)
       setError(err.message || "Failed to update password")
-      setStep("password") // Go back to password form
+      setStep("error")
+    } finally {
       setLoading(false)
     }
   }
@@ -158,7 +113,7 @@ export default function ResetPasswordPage() {
       <div className="flex min-h-screen items-center justify-center bg-[#fdfdfd] px-4 py-12 sm:px-6 lg:px-8">
         <div className="w-full max-w-md space-y-8">
           <div className="text-center">
-            <img src="/logo.svg" alt="b2blead.ai" className="h-12 w-auto mx-auto mb-8" />
+            <img src="/logo.svg" alt="b2bLEAD.ai" className="h-12 w-auto mx-auto mb-8" />
             <h1 className="text-2xl font-semibold text-[#212121] mb-2">Set New Password</h1>
             <p className="text-[#616161]">Enter your new password below.</p>
           </div>
@@ -256,7 +211,7 @@ export default function ResetPasswordPage() {
             <Check className="h-8 w-8 text-green-600" />
           </div>
           <h1 className="text-xl font-semibold text-[#212121] mb-2">Password Updated Successfully!</h1>
-          <p className="text-[#616161] mb-4">Your password has been updated. Redirecting to login...</p>
+          <p className="text-[#616161] mb-4">Your password has been updated. Redirecting to your dashboard...</p>
         </div>
       </div>
     )
@@ -271,17 +226,12 @@ export default function ResetPasswordPage() {
           </div>
           <h1 className="text-xl font-semibold text-[#212121] mb-2">Reset Error</h1>
           <p className="text-red-600 mb-4">{error}</p>
-          <div className="flex flex-col sm:flex-row justify-center gap-2">
-            <Button
-              onClick={() => router.push("/auth/forgot-password")}
-              className="bg-[#038a71] hover:bg-[#038a71]/90 text-white"
-            >
-              Request New Reset Link
-            </Button>
-            <Button onClick={() => router.push("/auth/login")} className="bg-gray-500 hover:bg-gray-600 text-white">
-              Go to Login
-            </Button>
-          </div>
+          <button
+            onClick={() => router.push("/auth/login")}
+            className="bg-[#038a71] hover:bg-[#038a71]/90 text-white px-4 py-2 rounded-md"
+          >
+            Go to Login
+          </button>
         </div>
       </div>
     )

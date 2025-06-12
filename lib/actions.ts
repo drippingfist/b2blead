@@ -1,6 +1,5 @@
 "use server"
 
-
 import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
@@ -128,10 +127,14 @@ export async function refreshSentimentAnalysis(threadId: string) {
 
 // New server action to send password reset email
 export async function sendPasswordReset(prevState: any, formData: FormData) {
+  // Check if formData is valid
   if (!formData) {
     return { error: "Form data is missing" }
   }
+
   const email = formData.get("email")
+
+  // Validate required fields
   if (!email) {
     return { error: "Email is required" }
   }
@@ -139,26 +142,18 @@ export async function sendPasswordReset(prevState: any, formData: FormData) {
   const cookieStore = cookies()
   const supabase = createServerActionClient({ cookies: () => cookieStore })
 
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '')
-  const redirectToUrl = `${siteUrl}/auth/reset-password`
-
-  console.log(`[sendPasswordReset V2] Requesting password reset for: ${email}`)
-  console.log(`[sendPasswordReset V2] Constructed redirectTo URL: ${redirectToUrl}`)
-
   try {
     const { error } = await supabase.auth.resetPasswordForEmail(email.toString(), {
-      redirectTo: redirectToUrl,
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`,
     })
 
     if (error) {
-      console.error("[sendPasswordReset V2] Supabase error:", error)
       return { error: error.message }
     }
 
-    console.log(`[sendPasswordReset V2] Password reset email sent successfully to ${email}`)
     return { success: "Check your email for a password reset link." }
   } catch (error) {
-    console.error("[sendPasswordReset V2] Catch block error:", error)
+    console.error("Password reset error:", error)
     return { error: "An unexpected error occurred. Please try again." }
   }
 }

@@ -7,13 +7,11 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get("code")
   const setup = requestUrl.searchParams.get("setup")
   const type = requestUrl.searchParams.get("type")
-  const next = requestUrl.searchParams.get("next") // For password reset redirects
 
   console.log("🔗 Auth callback received:", {
     code: !!code,
     setup,
     type,
-    next,
     fullUrl: request.url,
     searchParams: Object.fromEntries(requestUrl.searchParams),
   })
@@ -28,22 +26,10 @@ export async function GET(request: NextRequest) {
 
       if (error) {
         console.error("❌ Error exchanging code for session:", error)
-
-        // If this is a password reset flow, redirect to reset page with error
-        if (next === "/auth/reset-password") {
-          return NextResponse.redirect(new URL("/auth/reset-password?error=invalid_link", request.url))
-        }
-
         return NextResponse.redirect(new URL("/auth/login?error=Invalid invitation link", request.url))
       }
 
       console.log("✅ Session created for user:", data.user?.email)
-
-      // If this is a password reset flow, redirect to reset password page
-      if (next === "/auth/reset-password") {
-        console.log("🔐 Password reset flow detected, redirecting to reset password page")
-        return NextResponse.redirect(new URL("/auth/reset-password", request.url))
-      }
 
       // Check if this is an invitation acceptance
       if (type === "invite" || setup === "true") {
@@ -74,13 +60,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // No code provided - this might be a password reset flow that will be handled by hash fragments
+  // No code provided
   console.log("❌ No auth code provided")
-
-  // If this was meant to be a password reset, redirect there anyway
-  if (next === "/auth/reset-password") {
-    return NextResponse.redirect(new URL("/auth/reset-password", request.url))
-  }
-
   return NextResponse.redirect(new URL("/auth/login?error=No authentication code", request.url))
 }

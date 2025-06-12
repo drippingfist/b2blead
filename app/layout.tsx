@@ -7,9 +7,9 @@ const defaultUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` 
 
 export const metadata = {
   metadataBase: new URL(defaultUrl),
-  title: "b2blead.ai - Admin Panel",
+  title: "B2B Lead Management",
   description: "Manage your B2B leads and conversations efficiently",
-  generator: "v0.dev",
+    generator: 'v0.dev'
 }
 
 export default function RootLayout({
