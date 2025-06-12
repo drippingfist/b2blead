@@ -143,8 +143,9 @@ export async function sendPasswordReset(prevState: any, formData: FormData) {
   const supabase = createServerActionClient({ cookies: () => cookieStore })
 
   try {
+    // Point directly to the update-password page instead of going through the callback
     const { error } = await supabase.auth.resetPasswordForEmail(email.toString(), {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback?next=/auth/reset-password`,
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/update-password`,
     })
 
     if (error) {
