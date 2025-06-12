@@ -7,11 +7,13 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get("code")
   const setup = requestUrl.searchParams.get("setup")
   const type = requestUrl.searchParams.get("type")
+  const next = requestUrl.searchParams.get("next") // For password reset redirects
 
   console.log("🔗 Auth callback received:", {
     code: !!code,
     setup,
     type,
+    next,
     fullUrl: request.url,
     searchParams: Object.fromEntries(requestUrl.searchParams),
   })
@@ -26,10 +28,23 @@ export async function GET(request: NextRequest) {
 
       if (error) {
         console.error("❌ Error exchanging code for session:", error)
+
+        // If this is a password reset flow, redirect to reset page with error
+        if (next === "/auth/reset-password") {
+          return NextResponse.redirect(new URL("/auth/reset-password?error=Invalid reset link", request.url))
+        }
+
+        // Otherwise treat as invitation error
         return NextResponse.redirect(new URL("/auth/login?error=Invalid invitation link", request.url))
       }
 
       console.log("✅ Session created for user:", data.user?.email)
+
+      // If this is a password reset flow, redirect to the reset password page
+      if (next === "/auth/reset-password") {
+        console.log("🔐 Password reset flow, redirecting to reset password page")
+        return NextResponse.redirect(new URL("/auth/reset-password", request.url))
+      }
 
       // Check if this is an invitation acceptance
       if (type === "invite" || setup === "true") {
@@ -56,6 +71,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL("/", request.url))
     } catch (error) {
       console.error("❌ Unexpected error in auth callback:", error)
+
+      // If this is a password reset flow, redirect to reset page with error
+      if (next === "/auth/reset-password") {
+        return NextResponse.redirect(new URL("/auth/reset-password?error=Authentication failed", request.url))
+      }
+
       return NextResponse.redirect(new URL("/auth/login?error=Authentication failed", request.url))
     }
   }

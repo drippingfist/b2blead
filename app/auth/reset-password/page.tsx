@@ -22,6 +22,13 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     const checkSession = async () => {
       try {
+        // Check for error from callback
+        const callbackError = searchParams.get("error")
+        if (callbackError) {
+          console.error("❌ Callback error:", callbackError)
+          throw new Error(callbackError)
+        }
+
         console.log("🔗 Checking for active session...")
 
         // Check if we have an active session
@@ -47,33 +54,8 @@ export default function ResetPasswordPage() {
           return
         }
 
-        // If no session, check for recovery parameters in URL
-        const type = searchParams.get("type")
-        const accessToken = searchParams.get("access_token")
-        const refreshToken = searchParams.get("refresh_token")
-
-        console.log("🔗 URL parameters:", { type, hasAccessToken: !!accessToken, hasRefreshToken: !!refreshToken })
-
-        if (type === "recovery" && accessToken && refreshToken) {
-          console.log("🔗 Setting session from URL parameters...")
-
-          const { error: setSessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          })
-
-          if (setSessionError) {
-            console.error("❌ Error setting session:", setSessionError)
-            throw new Error("Failed to set session from recovery link")
-          }
-
-          console.log("✅ Session set successfully")
-          setStep("password")
-          return
-        }
-
-        // If we get here, we don't have a valid session or recovery parameters
-        throw new Error("Invalid password reset link - please request a new one")
+        // If no session, this means the callback didn't work properly
+        throw new Error("No valid session found - please request a new password reset link")
       } catch (err: any) {
         console.error("❌ Error checking session:", err)
         setError(err.message || "Invalid password reset link")
