@@ -127,14 +127,10 @@ export async function refreshSentimentAnalysis(threadId: string) {
 
 // New server action to send password reset email
 export async function sendPasswordReset(prevState: any, formData: FormData) {
-  // Check if formData is valid
   if (!formData) {
     return { error: "Form data is missing" }
   }
-
   const email = formData.get("email")
-
-  // Validate required fields
   if (!email) {
     return { error: "Email is required" }
   }
@@ -142,22 +138,26 @@ export async function sendPasswordReset(prevState: any, formData: FormData) {
   const cookieStore = cookies()
   const supabase = createServerActionClient({ cookies: () => cookieStore })
 
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '')
+  const redirectToUrl = `${siteUrl}/auth/reset-password`
+
+  console.log(`[sendPasswordReset V2] Requesting password reset for: ${email}`)
+  console.log(`[sendPasswordReset V2] Constructed redirectTo URL: ${redirectToUrl}`)
+
   try {
-    console.log(`[sendPasswordReset] Requesting password reset for ${email}`)
-    console.log(`[sendPasswordReset] Redirect URL will be: ${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`)
     const { error } = await supabase.auth.resetPasswordForEmail(email.toString(), {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`, // Ensure single slash and direct to reset page
+      redirectTo: redirectToUrl,
     })
 
     if (error) {
-      console.error("[sendPasswordReset] Supabase error:", error)
+      console.error("[sendPasswordReset V2] Supabase error:", error)
       return { error: error.message }
     }
 
-    console.log(`[sendPasswordReset] Password reset email sent successfully to ${email}`)
+    console.log(`[sendPasswordReset V2] Password reset email sent successfully to ${email}`)
     return { success: "Check your email for a password reset link." }
   } catch (error) {
-    console.error("[sendPasswordReset] Catch block error:", error)
+    console.error("[sendPasswordReset V2] Catch block error:", error)
     return { error: "An unexpected error occurred. Please try again." }
   }
 }
