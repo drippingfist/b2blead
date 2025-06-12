@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase/client"
 import { Loader2, Check, X, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 
 export default function ResetPasswordPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [step, setStep] = useState<"loading" | "password" | "processing" | "success" | "error">("loading")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -21,29 +22,65 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     const handlePasswordReset = async () => {
       try {
-        // Get the hash parameters from the URL
-        const hashParams = new URLSearchParams(window.location.hash.substring(1))
-        const accessToken = hashParams.get("access_token")
-        const refreshToken = hashParams.get("refresh_token")
-        const type = hashParams.get("type")
+        console.log("🔗 Processing password reset...")
 
-        console.log("🔗 Processing password reset:", { accessToken: !!accessToken, refreshToken: !!refreshToken, type })
+        // First, try to get parameters from URL hash (new format)
+        let accessToken: string | null = null
+        let refreshToken: string | null = null
+        let type: string | null = null
 
-        if (!accessToken || !refreshToken || type !== "recovery") {
-          throw new Error("Invalid password reset link")
+        if (window.location.hash) {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1))
+          accessToken = hashParams.get("access_token")
+          refreshToken = hashParams.get("refresh_token")
+          type = hashParams.get("type")
+          console.log("🔗 Found hash parameters:", { accessToken: !!accessToken, refreshToken: !!refreshToken, type })
         }
 
-        // Set the session to allow password update
-        const { error: sessionError } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        })
+        // If no hash parameters, try query parameters (older format)
+        if (!accessToken || !refreshToken) {
+          const code = searchParams.get("code")
+          console.log("🔗 Found query code parameter:", code)
 
-        if (sessionError) {
-          throw sessionError
+          if (code) {
+            // Exchange the code for session tokens
+            const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+
+            if (exchangeError) {
+              console.error("❌ Error exchanging code for session:", exchangeError)
+              throw new Error("Invalid or expired reset link")
+            }
+
+            if (data.session) {
+              console.log("✅ Successfully exchanged code for session")
+              setStep("password")
+              return
+            } else {
+              throw new Error("No session received from code exchange")
+            }
+          }
         }
 
-        setStep("password")
+        // If we have hash parameters, use them directly
+        if (accessToken && refreshToken && type === "recovery") {
+          console.log("🔗 Using hash parameters for session")
+
+          // Set the session to allow password update
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          })
+
+          if (sessionError) {
+            throw sessionError
+          }
+
+          setStep("password")
+          return
+        }
+
+        // If we get here, we don't have valid parameters
+        throw new Error("Invalid password reset link - missing required parameters")
       } catch (err: any) {
         console.error("❌ Error processing password reset:", err)
         setError(err.message || "Invalid password reset link")
@@ -52,7 +89,7 @@ export default function ResetPasswordPage() {
     }
 
     handlePasswordReset()
-  }, [])
+  }, [searchParams])
 
   const handlePasswordUpdate = async () => {
     if (password.length < 6) {
