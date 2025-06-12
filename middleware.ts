@@ -8,9 +8,11 @@ export async function middleware(request: NextRequest) {
   if (
     pathname.startsWith("/api/") ||
     pathname.startsWith("/auth/reset-password") ||
-    pathname.startsWith("/app/auth/reset-password") || // Add this line to handle the /app prefix
+    pathname.startsWith("/app/auth/reset-password") ||
     pathname.startsWith("/auth/forgot-password") ||
-    pathname.startsWith("/app/auth/forgot-password") // Add this line too for consistency
+    pathname.startsWith("/app/auth/forgot-password") ||
+    pathname.startsWith("/_next/") ||
+    pathname.startsWith("/favicon.ico")
   ) {
     console.log(`[Middleware] Skipping auth check for excluded path: ${pathname}`)
     return NextResponse.next()
@@ -20,7 +22,6 @@ export async function middleware(request: NextRequest) {
   return await updateSession(request)
 }
 
-// This matcher is still needed but we'll handle the exclusions in the middleware function
 export const config = {
   matcher: [
     /*

@@ -1,203 +1,291 @@
 "use client"
+
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation" // Using next/navigation
-import { supabase } from "@/lib/supabase/client" // Ensure this is your v2 client
-import Image from "next/image"
-
-// --- Helper Components (for illustration) ---
-const LoadingScreen = () => <div>Loading...</div>;
-const ErrorScreen = ({ message }: { message: string }) => <div>Error: {message}</div>;
-
-// Dummy PasswordForm for now
-const PasswordForm = ({ onSubmit, loading }: { onSubmit: (password: string) => Promise<void>, loading: boolean }) => {
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [formError, setFormError] = useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password !== confirmPassword) {
-      setFormError("Passwords do not match.");
-      return;
-    }
-    if (password.length < 6) { // Example: Add basic validation
-        setFormError("Password must be at least 6 characters.");
-        return;
-    }
-    setFormError('');
-    onSubmit(password);
-  };
-
-  return (
-    <form onSubmit={handleSubmit}>
-      <h2>Set New Password</h2>
-      <div>
-        <label htmlFor="new-password">New Password:</label>
-        <input
-          id="new-password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-      </div>
-      <div>
-        <label htmlFor="confirm-password">Confirm New Password:</label>
-        <input
-          id="confirm-password"
-          type="password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          required
-        />
-      </div>
-      {formError && <p style={{ color: 'red' }}>{formError}</p>}
-      <button type="submit" disabled={loading}>
-        {loading ? "Updating..." : "Update Password"}
-      </button>
-    </form>
-  );
-};
-
-const SuccessScreen = ({ message }: { message: string }) => <div>{message}</div>;
-// --- End Helper Components ---
-
+import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabase/client"
+import { Loader2, Check, X, Eye, EyeOff } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 export default function ResetPasswordPage() {
-  const router = useRouter();
-  const [step, setStep] = useState<"loading" | "password" | "processing" | "success" | "error">("loading");
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null); // For success messages
-  const [isSessionReadyForUpdate, setIsSessionReadyForUpdate] = useState(false);
+  const router = useRouter()
+  const [step, setStep] = useState<"loading" | "password" | "processing" | "success" | "error">("loading")
+  const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    console.log("[ResetPasswordPage] Mounted. Setting up auth listener.");
-    setStep("loading"); // Start in loading state
+    const handlePasswordReset = async () => {
+      try {
+        console.log("🔗 Processing password reset...")
 
-    // Check for explicit errors in URL from Supabase redirect
-    const hashParams = new URLSearchParams(window.location.hash.slice(1));
-    const errorCode = hashParams.get("error");
-    const errorDescription = hashParams.get("error_description");
+        // Check if we have hash fragments in the URL
+        if (window.location.hash) {
+          console.log("🔗 Found hash fragments in URL")
+          const hashParams = new URLSearchParams(window.location.hash.substring(1))
+          const accessToken = hashParams.get("access_token")
+          const refreshToken = hashParams.get("refresh_token")
+          const type = hashParams.get("type")
+          const errorParam = hashParams.get("error")
+          const errorDescription = hashParams.get("error_description")
 
-    if (errorCode) {
-      console.error("[ResetPasswordPage] Error in URL hash:", errorDescription || errorCode);
-      setError(errorDescription || `An error occurred: ${errorCode}. Please try requesting a new link.`);
-      setStep("error");
-      // Clean the hash
-      window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-      return; // Stop further processing
-    }
+          console.log("🔗 Hash parameters:", {
+            hasAccessToken: !!accessToken,
+            hasRefreshToken: !!refreshToken,
+            type,
+            hasError: !!errorParam,
+          })
 
-    // If no explicit error, listen for Supabase to process the recovery token
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log(`[ResetPasswordPage] Auth event: ${event}`);
-      if (session) {
-        console.log("[ResetPasswordPage] Session details:", session.user?.id, session.expires_at);
-      }
+          // Check for errors in the hash
+          if (errorParam) {
+            console.error("❌ Error in hash parameters:", errorParam, errorDescription)
+            throw new Error(errorDescription || errorParam)
+          }
 
+          // Check if we have valid recovery tokens
+          if (accessToken && refreshToken && type === "recovery") {
+            console.log("🔐 Setting session from recovery tokens...")
+            const { error: sessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            })
 
-      if (event === "PASSWORD_RECOVERY") {
-        console.log("[ResetPasswordPage] PASSWORD_RECOVERY event received. Ready for password update.");
-        setIsSessionReadyForUpdate(true);
-        setStep("password");
-        // It's good practice to remove the hash from the URL now.
-        window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-      } else if (event === "SIGNED_IN" && session && isSessionReadyForUpdate) {
-        // This might fire after PASSWORD_RECOVERY if a full session is established.
-        // The important part is that `isSessionReadyForUpdate` was set by PASSWORD_RECOVERY.
-        console.log("[ResetPasswordPage] SIGNED_IN after PASSWORD_RECOVERY. Still good.");
-      } else if (event === "INITIAL_SESSION") {
-        // This might fire if there's no recovery token or an existing session.
-        // We need to check if the hash *looks* like a recovery attempt.
-        if (window.location.hash.includes("type=recovery")) {
-            console.log("[ResetPasswordPage] INITIAL_SESSION, but URL hash has type=recovery. Waiting for PASSWORD_RECOVERY event.");
-            // Keep loading, Supabase should process it soon.
-        } else if (session) {
-            console.warn("[ResetPasswordPage] User is already signed in and not in recovery mode. Redirecting...");
-            // Optionally redirect if user is already signed in and not in recovery mode
-            // router.push('/dashboard');
-            setError("You are already logged in. If you want to change your password, go to account settings.");
-            setStep("error");
-        } else {
-            console.warn("[ResetPasswordPage] No recovery token found in URL, and no active session.");
-            setError("Invalid or expired password reset link. Please request a new one.");
-            setStep("error");
+            if (sessionError) {
+              console.error("❌ Error setting session:", sessionError)
+              throw new Error("Failed to authenticate with reset link tokens.")
+            }
+
+            console.log("✅ Session set successfully from recovery tokens.")
+            setStep("password")
+
+            // Clear the hash from the URL now that we've used it
+            window.history.replaceState({}, document.title, window.location.pathname)
+            return
+          }
         }
-      }
-    });
 
-    // Initial check: if after a short delay, no PASSWORD_RECOVERY and hash had type=recovery
-    // it likely means the token was invalid/expired right away.
-    const timer = setTimeout(() => {
-        if (step === "loading" && window.location.hash.includes("type=recovery") && !isSessionReadyForUpdate) {
-            console.warn("[ResetPasswordPage] Timeout: Still loading and no PASSWORD_RECOVERY event, but URL had recovery type. Link might be invalid.");
-            setError("Invalid or expired password reset link. It might have been used already or is too old. Please request a new one.");
-            setStep("error");
-            window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-        } else if (step === "loading" && !window.location.hash.includes("type=recovery")) {
-            // If there's no recovery hash at all
-             console.warn("[ResetPasswordPage] Timeout: Still loading and no recovery type in URL.");
-             setError("No password reset information found in the link. Please request a new one.");
-             setStep("error");
+        // If we get here, check if we already have a valid session
+        console.log("🔗 Checking for existing session...")
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession()
+        console.log("🔗 Session check result:", { hasSession: !!session, hasError: !!sessionError })
+
+        if (sessionError) {
+          console.error("❌ Session check error:", sessionError)
+          throw new Error("Failed to check authentication status.")
         }
-    }, 3000); // 3-second timeout for Supabase to process the token
 
+        if (session) {
+          console.log("✅ Found existing session, allowing password reset.")
+          setStep("password")
+          return
+        }
 
-    return () => {
-      console.log("[ResetPasswordPage] Unmounting. Unsubscribing auth listener.");
-      authListener?.subscription.unsubscribe();
-      clearTimeout(timer);
-    };
-  }, [router]); // router added to dependency array just in case of future use, not strictly needed for current logic
-
-  const handlePasswordUpdate = async (newPassword: string) => {
-    if (!isSessionReadyForUpdate) {
-      setError("Session is not ready for password update. Please ensure you've used a valid, recent link.");
-      setStep("error");
-      return;
-    }
-
-    setStep("processing");
-    setError(null);
-
-    const { error: updateError, data } = await supabase.auth.updateUser({
-      password: newPassword,
-    });
-
-    if (updateError) {
-      console.error("[ResetPasswordPage] Error updating password:", updateError);
-      let friendlyMessage = "Failed to update password. Please try again.";
-      if (updateError.message.includes("same as the old")) {
-        friendlyMessage = "New password cannot be the same as the old password.";
-      } else if (updateError.message.toLowerCase().includes("recently used")) {
-        friendlyMessage = "This password has been used recently. Please choose a different one.";
-      } else if (updateError.message.toLowerCase().includes("security policy")) {
-         friendlyMessage = "Password does not meet security requirements (e.g., too short, too common)."
+        // If no hash fragments and no session, show error
+        throw new Error("Invalid or expired password reset link. Please request a new one.")
+      } catch (err: any) {
+        console.error("❌ Error processing password reset:", err)
+        setError(err.message || "Invalid password reset link")
+        setStep("error")
       }
-      setError(friendlyMessage);
-      setStep("password"); // Go back to password form to allow re-entry
-    } else {
-      console.log("[ResetPasswordPage] Password updated successfully:", data.user);
-      setMessage("Your password has been successfully updated! You can now log in with your new password.");
-      setStep("success");
-      // Optional: Sign the user out explicitly after password change for security
-      // await supabase.auth.signOut();
-      // router.push("/login"); // Redirect to login
     }
-  };
 
-  if (step === "loading") return <LoadingScreen />;
-  if (step === "error") return <ErrorScreen message={error || "An unknown error occurred."} />;
-  if (step === "success") return <SuccessScreen message={message || "Operation successful."} />;
-  if (step === "password" || step === "processing") {
-    return (
-      <div>
-        <PasswordForm onSubmit={handlePasswordUpdate} loading={step === "processing"} />
-        {/* Render any top-level error messages here if PasswordForm doesn't handle them all */}
-        {step === "password" && error && <p style={{color: 'red', marginTop: '10px'}}>Error: {error}</p>}
-      </div>
-    );
+    handlePasswordReset()
+  }, [])
+
+  const handlePasswordUpdate = async () => {
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long")
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match")
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+    setStep("processing")
+
+    try {
+      console.log("🔐 Updating user password...")
+
+      // Update the user's password
+      const { error: passwordError } = await supabase.auth.updateUser({
+        password: password,
+      })
+
+      if (passwordError) {
+        console.error("❌ Password update error:", passwordError)
+        throw passwordError
+      }
+
+      console.log("✅ Password updated successfully")
+
+      setStep("success")
+      setTimeout(() => {
+        router.push("/auth/login")
+      }, 2000)
+    } catch (err: any) {
+      console.error("❌ Error updating password:", err)
+      setError(err.message || "Failed to update password")
+      setStep("password") // Go back to password form
+      setLoading(false)
+    }
   }
 
-  return <ErrorScreen message="Invalid application state." />; // Fallback
+  if (step === "loading") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#fdfdfd]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-[#038a71] mx-auto mb-4" />
+          <h1 className="text-xl font-semibold text-[#212121] mb-2">Verifying reset link...</h1>
+          <p className="text-[#616161]">Please wait while we verify your password reset link.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (step === "password") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#fdfdfd] px-4 py-12 sm:px-6 lg:px-8">
+        <div className="w-full max-w-md space-y-8">
+          <div className="text-center">
+            <img src="/logo.svg" alt="b2blead.ai" className="h-12 w-auto mx-auto mb-8" />
+            <h1 className="text-2xl font-semibold text-[#212121] mb-2">Set New Password</h1>
+            <p className="text-[#616161]">Enter your new password below.</p>
+          </div>
+
+          <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 text-sm">{error}</div>
+            )}
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="password">New Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your new password"
+                    className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] pr-10"
+                    disabled={loading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#616161] hover:text-[#212121]"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                <div className="relative">
+                  <Input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm your new password"
+                    className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] pr-10"
+                    disabled={loading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#616161] hover:text-[#212121]"
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <Button
+                onClick={handlePasswordUpdate}
+                disabled={loading || !password || !confirmPassword}
+                className="w-full bg-[#038a71] hover:bg-[#038a71]/90 text-white py-3 text-base font-medium h-12"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Updating password...
+                  </>
+                ) : (
+                  "Update Password"
+                )}
+              </Button>
+            </div>
+
+            <p className="text-xs text-[#616161] text-center mt-4">Password must be at least 6 characters long.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (step === "processing") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#fdfdfd]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-[#038a71] mx-auto mb-4" />
+          <h1 className="text-xl font-semibold text-[#212121] mb-2">Updating your password...</h1>
+          <p className="text-[#616161]">Please wait while we update your password.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (step === "success") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#fdfdfd]">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Check className="h-8 w-8 text-green-600" />
+          </div>
+          <h1 className="text-xl font-semibold text-[#212121] mb-2">Password Updated Successfully!</h1>
+          <p className="text-[#616161] mb-4">Your password has been updated. Redirecting to login...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (step === "error") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#fdfdfd]">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <X className="h-8 w-8 text-red-600" />
+          </div>
+          <h1 className="text-xl font-semibold text-[#212121] mb-2">Reset Error</h1>
+          <p className="text-red-600 mb-4">{error}</p>
+          <div className="flex flex-col sm:flex-row justify-center gap-2">
+            <Button
+              onClick={() => router.push("/auth/forgot-password")}
+              className="bg-[#038a71] hover:bg-[#038a71]/90 text-white"
+            >
+              Request New Reset Link
+            </Button>
+            <Button onClick={() => router.push("/auth/login")} className="bg-gray-500 hover:bg-gray-600 text-white">
+              Go to Login
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return null
 }
