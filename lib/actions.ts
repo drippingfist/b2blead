@@ -143,17 +143,23 @@ export async function sendPasswordReset(prevState: any, formData: FormData) {
   const supabase = createServerActionClient({ cookies: () => cookieStore })
 
   try {
+    // The redirectTo should point to the page where the user can reset their password.
     const { error } = await supabase.auth.resetPasswordForEmail(email.toString(), {
       redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`,
     })
 
     if (error) {
-      return { error: error.message }
+      // Don't expose detailed errors for security.
+      // But for debugging, we can check the error message.
+      console.error("Password reset error:", error.message)
+      // Return a generic success message regardless, to prevent email enumeration.
+      return { success: "If an account with that email exists, a password reset link has been sent." }
     }
 
-    return { success: "Check your email for a password reset link." }
+    return { success: "If an account with that email exists, a password reset link has been sent." }
   } catch (error) {
     console.error("Password reset error:", error)
-    return { error: "An unexpected error occurred. Please try again." }
+    // Also return a generic success message here.
+    return { success: "If an account with that email exists, a password reset link has been sent." }
   }
 }
