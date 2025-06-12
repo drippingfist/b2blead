@@ -18,12 +18,6 @@ export async function GET(request: NextRequest) {
     searchParams: Object.fromEntries(requestUrl.searchParams),
   })
 
-  // For password reset flows, we need to redirect to the reset page and let it handle the hash fragments
-  if (next === "/auth/reset-password") {
-    console.log("🔐 Password reset flow detected, redirecting to reset password page")
-    return NextResponse.redirect(new URL("/auth/reset-password", request.url))
-  }
-
   if (code) {
     const cookieStore = cookies()
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
