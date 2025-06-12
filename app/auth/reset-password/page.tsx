@@ -43,19 +43,39 @@ export default function ResetPasswordPage() {
           console.log("🔗 Found query code parameter:", code)
 
           if (code) {
+            console.log("🔗 Attempting to exchange code for session...")
+
             // Exchange the code for session tokens
             const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
 
+            console.log("🔗 Exchange result:", {
+              hasData: !!data,
+              hasSession: !!data?.session,
+              hasUser: !!data?.user,
+              error: exchangeError,
+            })
+
             if (exchangeError) {
               console.error("❌ Error exchanging code for session:", exchangeError)
-              throw new Error("Invalid or expired reset link")
+              console.error("❌ Error details:", {
+                message: exchangeError.message,
+                name: exchangeError.name,
+                status: exchangeError.status,
+              })
+              throw new Error(`Code exchange failed: ${exchangeError.message}`)
             }
 
             if (data.session) {
               console.log("✅ Successfully exchanged code for session")
+              console.log("✅ Session details:", {
+                hasAccessToken: !!data.session.access_token,
+                hasRefreshToken: !!data.session.refresh_token,
+                expiresAt: data.session.expires_at,
+              })
               setStep("password")
               return
             } else {
+              console.error("❌ No session received from code exchange")
               throw new Error("No session received from code exchange")
             }
           }
