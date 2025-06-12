@@ -125,41 +125,29 @@ export async function refreshSentimentAnalysis(threadId: string) {
   }
 }
 
-// New server action to send password reset email
-export async function sendPasswordReset(prevState: any, formData: FormData) {
-  // Check if formData is valid
-  if (!formData) {
-    return { error: "Form data is missing" }
-  }
+import { cookies } from "next/headers"
+import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
 
-  const email = formData.get("email")
-
-  // Validate required fields
+export async function sendPasswordReset(formData: FormData) {
+  // Grab and validate email
+  const email = formData.get("email")?.toString().trim()
   if (!email) {
-    return { error: "Email is required" }
+    return { error: "Email is required." }
   }
 
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
+  // Init Supabase with Next’s cookies helper
+  const supabase = createServerActionClient({ cookies })
 
-  try {
-    // The redirectTo should point to the page where the user can reset their password.
-    const { error } = await supabase.auth.resetPasswordForEmail(email.toString(), {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`,
-    })
+  // Fire off the reset email
+  const { error } = await supabase.auth.resetPasswordForEmail(email)
+  if (error) {
+    console.error("Supabase reset error:", error.message)
+    // don’t reveal to client—just log it
+  }
 
-    if (error) {
-      // Don't expose detailed errors for security.
-      // But for debugging, we can check the error message.
-      console.error("Password reset error:", error.message)
-      // Return a generic success message regardless, to prevent email enumeration.
-      return { success: "If an account with that email exists, a password reset link has been sent." }
-    }
-
-    return { success: "If an account with that email exists, a password reset link has been sent." }
-  } catch (error) {
-    console.error("Password reset error:", error)
-    // Also return a generic success message here.
-    return { success: "If an account with that email exists, a password reset link has been sent." }
+  // Always return the same success message
+  return {
+    success:
+      "If an account with that email exists, a password reset link has been sent.",
   }
 }
