@@ -48,8 +48,12 @@ export default function SettingsPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [emailSaving, setEmailSaving] = useState(false)
+  const [timezoneSaving, setTimezoneSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [emailSuccess, setEmailSuccess] = useState(false)
+  const [timezoneSuccess, setTimezoneSuccess] = useState(false)
   const [usersLoading, setUsersLoading] = useState(false)
   const [users, setUsers] = useState<UserData[]>([])
   const [invitedUsers, setInvitedUsers] = useState<InvitedUser[]>([])
@@ -83,9 +87,13 @@ export default function SettingsPage() {
   const [botSettings, setBotSettings] = useState<{
     bot_share_name: string
     client_email: string
+    transcript_email: string
+    callback_email: string
   }>({
     bot_share_name: "",
     client_email: "",
+    transcript_email: "never",
+    callback_email: "never",
   })
   const [botSettingsLoading, setBotSettingsLoading] = useState(false)
   const [botSettingsSaving, setBotSettingsSaving] = useState(false)
@@ -171,14 +179,19 @@ export default function SettingsPage() {
         // Get bot details and set initial state
         let userTimezone = "Asia/Bangkok"
         let clientNameValue = ""
-        let botSettingsValue = { bot_share_name: "", client_email: "" }
+        let botSettingsValue = {
+          bot_share_name: "",
+          client_email: "",
+          transcript_email: "never",
+          callback_email: "",
+        }
 
         if (botUser?.bot_share_name) {
           console.log("⚙️ Settings Page: Loading bot details for:", botUser.bot_share_name)
 
           const { data: bot, error: botError } = await supabase
             .from("bots")
-            .select("timezone, client_name, client_email")
+            .select("timezone, client_name, client_email, transcript_email, callback_email")
             .eq("bot_share_name", botUser.bot_share_name)
             .single()
 
@@ -191,6 +204,8 @@ export default function SettingsPage() {
               botSettingsValue = {
                 bot_share_name: botUser.bot_share_name,
                 client_email: bot.client_email || "",
+                transcript_email: bot.transcript_email || "never",
+                callback_email: bot.callback_email || "never",
               }
             }
           }
@@ -283,14 +298,18 @@ export default function SettingsPage() {
     }
   }
 
-  const handleSaveBotSettings = async () => {
+  const handleSaveEmailSettings = async () => {
     try {
-      setBotSettingsSaving(true)
+      setEmailSaving(true)
       setError(null)
 
       const { error: updateError } = await supabase
         .from("bots")
-        .update({ client_email: botSettings.client_email })
+        .update({
+          client_email: botSettings.client_email,
+          transcript_email: botSettings.transcript_email,
+          callback_email: botSettings.callback_email,
+        })
         .eq("bot_share_name", botSettings.bot_share_name)
 
       if (updateError) {
@@ -298,52 +317,20 @@ export default function SettingsPage() {
       }
 
       setEditingEmail(false)
-      setSuccess(true)
-      setTimeout(() => setSuccess(false), 3000)
+      setEmailSuccess(true)
+      setTimeout(() => setEmailSuccess(false), 3000)
     } catch (err: any) {
-      console.error("Error saving bot settings:", err)
-      setError(err.message || "Failed to save bot settings")
+      console.error("Error saving email settings:", err)
+      setError(err.message || "Failed to save email settings")
     } finally {
-      setBotSettingsSaving(false)
+      setEmailSaving(false)
     }
   }
 
-  const handleChange = (field: string, value: string) => {
-    setUserData((prev) => ({
-      ...prev,
-      [field]: value,
-    }))
-    if (success) setSuccess(false)
-  }
-
-  const handleUserEdit = (userId: string, field: string, value: string) => {
-    setUsers((prev) => prev.map((user) => (user.id === userId ? { ...user, [field]: value } : user)))
-  }
-
-  const handleNewUserChange = (field: string, value: string) => {
-    setNewUser((prev) => ({ ...prev, [field]: value }))
-  }
-
-  const handleCancel = () => {
-    router.push("/dashboard")
-  }
-
-  const handleSave = async () => {
+  const handleSaveTimezoneSettings = async () => {
     try {
-      setSaving(true)
+      setTimezoneSaving(true)
       setError(null)
-      setSuccess(false)
-
-      // Update user profile
-      const { error: updateError } = await supabase.from("user_profiles").upsert({
-        id: userData.id,
-        first_name: userData.firstName,
-        surname: userData.surname,
-      })
-
-      if (updateError) {
-        throw new Error(updateError.message)
-      }
 
       // Update timezone only for the currently selected bot
       if (selectedBot) {
@@ -378,6 +365,60 @@ export default function SettingsPage() {
             throw new Error(botsUpdateError.message)
           }
         }
+      }
+
+      setTimezoneSuccess(true)
+      setTimeout(() => setTimezoneSuccess(false), 3000)
+    } catch (err: any) {
+      console.error("Error saving timezone settings:", err)
+      setError(err.message || "Failed to save timezone settings")
+    } finally {
+      setTimezoneSaving(false)
+    }
+  }
+
+  const handleChange = (field: string, value: string) => {
+    setUserData((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
+    if (success) setSuccess(false)
+  }
+
+  const handleBotSettingsChange = (field: string, value: string) => {
+    setBotSettings((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
+  }
+
+  const handleUserEdit = (userId: string, field: string, value: string) => {
+    setUsers((prev) => prev.map((user) => (user.id === userId ? { ...user, [field]: value } : user)))
+  }
+
+  const handleNewUserChange = (field: string, value: string) => {
+    setNewUser((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleCancel = () => {
+    router.push("/dashboard")
+  }
+
+  const handleSave = async () => {
+    try {
+      setSaving(true)
+      setError(null)
+      setSuccess(false)
+
+      // Update user profile
+      const { error: updateError } = await supabase.from("user_profiles").upsert({
+        id: userData.id,
+        first_name: userData.firstName,
+        surname: userData.surname,
+      })
+
+      if (updateError) {
+        throw new Error(updateError.message)
       }
 
       setSuccess(true)
@@ -539,7 +580,7 @@ export default function SettingsPage() {
             className="bg-[#038a71] hover:bg-[#038a71]/90 flex items-center"
           >
             {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-            Save Changes
+            Save Profile
           </Button>
         </div>
       </div>
@@ -548,14 +589,31 @@ export default function SettingsPage() {
 
       {success && (
         <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-6">
-          Your settings have been saved successfully.
+          Your profile has been saved successfully.
         </div>
       )}
 
       <div className="w-[60%] space-y-6">
         {/* Email Settings Section */}
         <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121] mb-4">Email Settings</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-medium text-[#212121]">Email Settings</h2>
+            <Button
+              onClick={handleSaveEmailSettings}
+              disabled={emailSaving}
+              className="bg-[#038a71] hover:bg-[#038a71]/90 flex items-center"
+              size="sm"
+            >
+              {emailSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+              Save Email Settings
+            </Button>
+          </div>
+
+          {emailSuccess && (
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-4">
+              Email settings saved successfully.
+            </div>
+          )}
 
           <div className="space-y-4">
             <div className="space-y-2">
@@ -565,89 +623,126 @@ export default function SettingsPage() {
                   id="clientEmail"
                   type="email"
                   value={botSettings.client_email}
-                  onChange={(e) => setBotSettings((prev) => ({ ...prev, client_email: e.target.value }))}
+                  onChange={(e) => handleBotSettingsChange("client_email", e.target.value)}
                   placeholder="Enter client email address"
-                  disabled={botSettingsLoading || botSettingsSaving || !editingEmail}
+                  disabled={botSettingsLoading || emailSaving}
                   className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] flex-1"
                 />
-                {!editingEmail ? (
-                  <Button
-                    onClick={() => setEditingEmail(true)}
-                    variant="outline"
-                    size="sm"
-                    disabled={botSettingsLoading}
-                    className="px-3"
-                  >
-                    Edit
-                  </Button>
-                ) : (
-                  <div className="flex space-x-1">
-                    <Button
-                      onClick={handleSaveBotSettings}
-                      disabled={botSettingsSaving}
-                      size="sm"
-                      className="bg-[#038a71] hover:bg-[#038a71]/90 px-3"
-                    >
-                      {botSettingsSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        setEditingEmail(false)
-                        // Reset to original value by reloading bot settings
-                        if (selectedBot) {
-                          supabase
-                            .from("bots")
-                            .select("client_email")
-                            .eq("bot_share_name", selectedBot)
-                            .single()
-                            .then(({ data }) => {
-                              if (data) {
-                                setBotSettings((prev) => ({ ...prev, client_email: data.client_email || "" }))
-                              }
-                            })
-                        }
-                      }}
-                      variant="outline"
-                      size="sm"
-                      disabled={botSettingsSaving}
-                      className="px-3"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                )}
               </div>
             </div>
 
             <div className="space-y-3">
-              <h3 className="text-md font-medium text-[#212121]">Email frequency</h3>
+              <h3 className="text-md font-medium text-[#212121]">Chat Transcripts</h3>
 
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
-                  <input type="checkbox" id="daily-summary" className="rounded border-gray-300" />
-                  <label htmlFor="daily-summary" className="text-sm text-[#212121]">
-                    Daily summary
+                  <input
+                    type="radio"
+                    id="chat-daily"
+                    name="chat-transcripts"
+                    value="daily"
+                    checked={botSettings.transcript_email === "daily"}
+                    onChange={() => handleBotSettingsChange("transcript_email", "daily")}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="chat-daily" className="text-sm text-[#212121]">
+                    Daily
                   </label>
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  <input type="checkbox" id="weekly-report" className="rounded border-gray-300" />
-                  <label htmlFor="weekly-report" className="text-sm text-[#212121]">
-                    Weekly report
+                  <input
+                    type="radio"
+                    id="chat-weekly"
+                    name="chat-transcripts"
+                    value="weekly"
+                    checked={botSettings.transcript_email === "weekly"}
+                    onChange={() => handleBotSettingsChange("transcript_email", "weekly")}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="chat-weekly" className="text-sm text-[#212121]">
+                    Weekly
                   </label>
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  <input type="checkbox" id="monthly-analytics" className="rounded border-gray-300" />
-                  <label htmlFor="monthly-analytics" className="text-sm text-[#212121]">
-                    Monthly analytics
+                  <input
+                    type="radio"
+                    id="chat-monthly"
+                    name="chat-transcripts"
+                    value="monthly"
+                    checked={botSettings.transcript_email === "monthly"}
+                    onChange={() => handleBotSettingsChange("transcript_email", "monthly")}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="chat-monthly" className="text-sm text-[#212121]">
+                    Monthly
                   </label>
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  <input type="checkbox" id="urgent-alerts" className="rounded border-gray-300" defaultChecked />
-                  <label htmlFor="urgent-alerts" className="text-sm text-[#212121]">
-                    Urgent alerts
+                  <input
+                    type="radio"
+                    id="chat-never"
+                    name="chat-transcripts"
+                    value="never"
+                    checked={botSettings.transcript_email === "never"}
+                    onChange={() => handleBotSettingsChange("transcript_email", "never")}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="chat-never" className="text-sm text-[#212121]">
+                    Never
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-md font-medium text-[#212121]">Callbacks Report</h3>
+
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    id="callbacks-weekly"
+                    name="callbacks-report"
+                    value="weekly"
+                    checked={botSettings.callback_email === "weekly"}
+                    onChange={() => handleBotSettingsChange("callback_email", "weekly")}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="callbacks-weekly" className="text-sm text-[#212121]">
+                    Weekly
+                  </label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    id="callbacks-monthly"
+                    name="callbacks-report"
+                    value="monthly"
+                    checked={botSettings.callback_email === "monthly"}
+                    onChange={() => handleBotSettingsChange("callback_email", "monthly")}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="callbacks-monthly" className="text-sm text-[#212121]">
+                    Monthly
+                  </label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    id="callbacks-never"
+                    name="callbacks-report"
+                    value="never"
+                    checked={botSettings.callback_email === "never"}
+                    onChange={() => handleBotSettingsChange("callback_email", "never")}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="callbacks-never" className="text-sm text-[#212121]">
+                    Never
                   </label>
                 </div>
               </div>
@@ -657,14 +752,31 @@ export default function SettingsPage() {
 
         {/* Timezone Settings */}
         <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121] mb-4">Timezone Settings</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-medium text-[#212121]">Timezone Settings</h2>
+            <Button
+              onClick={handleSaveTimezoneSettings}
+              disabled={timezoneSaving}
+              className="bg-[#038a71] hover:bg-[#038a71]/90 flex items-center"
+              size="sm"
+            >
+              {timezoneSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+              Save Timezone
+            </Button>
+          </div>
+
+          {timezoneSuccess && (
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-4">
+              Timezone settings saved successfully.
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="timezone">Timezone</Label>
             <Select
               value={userData.timezone}
               onValueChange={(value) => handleChange("timezone", value)}
-              disabled={loading || saving}
+              disabled={loading || timezoneSaving}
             >
               <SelectTrigger className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]">
                 <SelectValue placeholder="Select your timezone" />

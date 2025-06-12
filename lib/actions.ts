@@ -125,8 +125,8 @@ export async function refreshSentimentAnalysis(threadId: string) {
   }
 }
 
-// New server action to send password reset email
-export async function sendPasswordReset(prevState: any, formData: FormData) {
+// New server action to send magic link
+export async function sendMagicLink(prevState: any, formData: FormData) {
   // Check if formData is valid
   if (!formData) {
     return { error: "Form data is missing" }
@@ -143,17 +143,19 @@ export async function sendPasswordReset(prevState: any, formData: FormData) {
   const supabase = createServerActionClient({ cookies: () => cookieStore })
 
   try {
-    const { error } = await supabase.auth.resetPasswordForEmail(email.toString(), {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`,
+    // Send magic link - Supabase handles everything
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.toString(),
     })
 
     if (error) {
-      return { error: error.message }
+      console.error("Magic link error:", error.message)
     }
 
-    return { success: "Check your email for a password reset link." }
+    // Always return success message to prevent email enumeration
+    return { success: "If an account with that email exists, we've sent you a magic link." }
   } catch (error) {
-    console.error("Password reset error:", error)
-    return { error: "An unexpected error occurred. Please try again." }
+    console.error("Magic link error:", error)
+    return { success: "If an account with that email exists, we've sent you a magic link." }
   }
 }
