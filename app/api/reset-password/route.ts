@@ -1,87 +1,95 @@
-import { createServerClient } from "@supabase/ssr"
-import { cookies } from "next/headers"
-import { type NextRequest, NextResponse } from "next/server"
+// app/api/reset-password/route.ts
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
-  console.log("[API /api/reset-password V3] Received request.")
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+  // 1) Always log that we landed here
+  console.log("[API /api/reset-password V4] 👉 POST", request.url);
 
-  console.log(`[API V3] SUPABASE_URL: ${supabaseUrl}`)
-  console.log(`[API V3] SUPABASE_ANON_KEY: ${supabaseAnonKey ? "Exists" : "MISSING!"}`)
-  console.log(`[API V3] SITE_URL: ${siteUrl}`)
+  // 2) Grab and log env
+  const supabaseUrl     = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const siteUrl         = process.env.NEXT_PUBLIC_SITE_URL;
+
+  console.log("[API V4] ENV:", {
+    SUPA_URL:    supabaseUrl ? "OK" : "MISSING",
+    SUPA_ANON:   supabaseAnonKey ? "OK" : "MISSING",
+    SITE_URL:    siteUrl ? siteUrl : "MISSING",
+  });
 
   if (!supabaseUrl || !supabaseAnonKey || !siteUrl) {
-    console.error("[API V3] Missing critical environment variables.")
-    return NextResponse.json(
-      { success: false, error: "Server configuration error.", message: "Server configuration error." },
-      { status: 500 },
-    )
+    console.error("[API V4] Missing critical env vars!");
+    return NextResponse.json({
+      success: false,
+      error:   "Server configuration error.",
+    }, { status: 500 });
   }
 
-  let email: string | null = null
+  // 3) Parse email out of either JSON or form-data
+  let email: string | null = null;
   try {
-    const formData = await request.formData()
-    email = formData.get("email") as string
+    const ct = request.headers.get("content-type") || "";
+    if (ct.includes("application/json")) {
+      const body = await request.json();
+      console.log("[API V4] JSON payload:", body);
+      email = typeof body.email === "string" ? body.email : null;
+    } else {
+      const form = await request.formData();
+      email = form.get("email") as string;
+      console.log("[API V4] formData email:", email);
+    }
 
     if (!email) {
-      console.log("[API V3] Email not provided in form data.")
-      return NextResponse.json(
-        { success: false, error: "Email is required.", message: "Email is required." },
-        { status: 400 },
-      )
-    }
-    console.log(`[API V3] Attempting password reset for: ${email}`)
-
-    // Create a Supabase client instance directly for this request
-    const cookieStore = cookies()
-    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    })
-    console.log("[API V3] Supabase client instance created for reset.")
-
-    // Use the callback approach since we've fixed the callback route
-    const redirectTo = `${siteUrl}/auth/callback?next=/auth/reset-password`
-    console.log(`[API V3] Redirect URL for Supabase: ${redirectTo}`)
-
-    const { error: supabaseError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: redirectTo,
-    })
-
-    if (supabaseError) {
-      console.error(`[API V3] Supabase resetPasswordForEmail error: ${supabaseError.message}`, supabaseError)
-      return NextResponse.json(
-        {
-          success: true, // For security, don't reveal if email exists
-          message: "If an account with that email exists, we've sent a password reset link.",
-          debug_error_message: supabaseError.message,
-          debug_error_name: supabaseError.name,
-          debug_error_status: supabaseError.status,
-        },
-        { status: 200 },
-      )
-    }
-
-    console.log(`[API V3] Supabase resetPasswordForEmail call successful for ${email}.`)
-    return NextResponse.json(
-      { success: true, message: "If an account with that email exists, we've sent a password reset link." },
-      { status: 200 },
-    )
-  } catch (e: any) {
-    console.error(`[API V3] UNEXPECTED CRITICAL ERROR for email ${email}: ${e.message}`, e)
-    return NextResponse.json(
-      {
+      console.warn("[API V4] No email provided.");
+      return NextResponse.json({
         success: false,
-        error: "Unexpected server error.",
-        message: "An unexpected server error occurred.",
-        debug_critical: e.message,
-      },
-      { status: 500 },
-    )
+        error:   "Email is required.",
+      }, { status: 400 });
+    }
+  } catch (err: any) {
+    console.error("[API V4] Error parsing request body:", err);
+    return NextResponse.json({
+      success: false,
+      error:   "Invalid request body.",
+      details: err.message,
+    }, { status: 400 });
   }
+
+  // 4) Build Supabase client (server-side)
+  const cookieStore = cookies();
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      get: (name: string) => cookieStore.get(name)?.value,
+    },
+  });
+  console.log("[API V4] Supabase client ready.");
+
+  // 5) Send the reset email, pointing straight at your reset page
+  const resetLink = `${siteUrl}/auth/reset-password`;
+  console.log("[API V4] resetPasswordForEmail redirect_to:", resetLink);
+
+  const { error: supaError } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: resetLink,
+  });
+
+  if (supaError) {
+    console.error("[API V4] supabase.auth.resetPasswordForEmail error:", supaError);
+    // Always return 200 so you don't leak which emails are registered
+    return NextResponse.json({
+      success: true,
+      message: "If that email exists, a reset link has gone out.",
+      debug: {
+        message: supaError.message,
+        name:    supaError.name,
+        status:  supaError.status,
+      }
+    }, { status: 200 });
+  }
+
+  console.log(`[API V4] Reset email sent to ${email}`);
+  return NextResponse.json({
+    success: true,
+    message: "If that email exists, a reset link has gone out."
+  }, { status: 200 });
 }
