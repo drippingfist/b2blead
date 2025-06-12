@@ -1,73 +1,88 @@
-import { createClient } from "@/lib/supabase/server"
+import { createServerClient } from "@supabase/ssr"
+import { cookies } from "next/headers"
 import { type NextRequest, NextResponse } from "next/server"
 
 export async function POST(request: NextRequest) {
-  console.log("🔍 [API] Reset password API called")
-  let email: string | null = null
+  console.log("[API /api/reset-password] Received request.")
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
 
+  console.log(`[API] SUPABASE_URL: ${supabaseUrl}`)
+  console.log(`[API] SUPABASE_ANON_KEY: ${supabaseAnonKey ? "Exists" : "MISSING!"}`)
+  console.log(`[API] SITE_URL: ${siteUrl}`)
+
+  if (!supabaseUrl || !supabaseAnonKey || !siteUrl) {
+    console.error("[API] Missing critical environment variables.")
+    return NextResponse.json(
+      { success: false, error: "Server configuration error.", message: "Server configuration error." },
+      { status: 500 },
+    )
+  }
+
+  let email: string | null = null
   try {
     const formData = await request.formData()
     email = formData.get("email") as string
 
     if (!email) {
-      console.log("❌ [API] No email provided")
+      console.log("[API] Email not provided in form data.")
       return NextResponse.json(
-        { success: false, error: "Email is required", message: "Email is required." },
+        { success: false, error: "Email is required.", message: "Email is required." },
         { status: 400 },
       )
     }
+    console.log(`[API] Attempting password reset for: ${email}`)
 
-    console.log("📧 [API] Processing reset for email:", email)
-    console.log("🌐 [API] Site URL for redirect:", process.env.NEXT_PUBLIC_SITE_URL)
-    console.log("🔑 [API] Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL)
+    // Create a Supabase client instance directly for this request
+    const cookieStore = cookies()
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        // We don't need set/remove for resetPasswordForEmail
+      },
+    })
+    console.log("[API] Supabase client instance created for reset.")
 
-    const supabase = createClient()
-    console.log("✅ [API] Supabase server client created")
+    const redirectTo = `${siteUrl}/auth/reset-password`
+    console.log(`[API] Redirect URL for Supabase: ${redirectTo}`)
 
-    console.log("📤 [API] Attempting supabase.auth.resetPasswordForEmail...")
     const { error: supabaseError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`,
+      redirectTo: redirectTo,
     })
 
     if (supabaseError) {
-      console.error("❌ [API] Supabase resetPasswordForEmail error:", supabaseError.message)
-      console.error("Error Name:", supabaseError.name)
-      console.error("Error Status:", supabaseError.status)
-      console.error("Error Stack:", supabaseError.stack)
-      // Even with a Supabase error, we send a generic success to prevent enumeration
-      // but we can include a debug message for ourselves.
+      console.error(`[API] Supabase resetPasswordForEmail error: ${supabaseError.message}`, supabaseError)
+      // Log more details from the error object
+      console.error(`[API] Supabase error name: ${supabaseError.name}`)
+      console.error(`[API] Supabase error status: ${supabaseError.status}`)
+      // Return a generic success message for security, but include debug info
       return NextResponse.json(
         {
-          success: true, // Important for security
+          success: true, // For security, don't reveal if email exists
           message: "If an account with that email exists, we've sent a password reset link.",
-          debug_error: `Supabase client error: ${supabaseError.message} (Status: ${supabaseError.status})`,
+          debug_error_message: supabaseError.message,
+          debug_error_name: supabaseError.name,
+          debug_error_status: supabaseError.status,
         },
         { status: 200 },
       )
     }
 
-    console.log(
-      "✅ [API] Supabase resetPasswordForEmail call successful (no immediate error). Email sending initiated.",
-    )
+    console.log(`[API] Supabase resetPasswordForEmail call successful for ${email}.`)
     return NextResponse.json(
-      {
-        success: true,
-        message: "If an account with that email exists, we've sent a password reset link.",
-      },
+      { success: true, message: "If an account with that email exists, we've sent a password reset link." },
       { status: 200 },
     )
   } catch (e: any) {
-    console.error("💥 [API] CRITICAL ERROR in reset-password route:", e.message)
-    console.error("Error Type:", typeof e)
-    console.error("Error Stack:", e.stack)
-
-    // This is a fallback for unexpected errors.
-    // Try to return JSON, but if this itself fails, Next.js might send HTML.
+    console.error(`[API] UNEXPECTED CRITICAL ERROR for email ${email}: ${e.message}`, e)
     return NextResponse.json(
       {
-        success: false, // Indicate failure here as it's an unexpected server error
-        error: "Server error during password reset.",
-        message: "An unexpected server error occurred. Please try again later.",
+        success: false,
+        error: "Unexpected server error.",
+        message: "An unexpected server error occurred.",
         debug_critical: e.message,
       },
       { status: 500 },
