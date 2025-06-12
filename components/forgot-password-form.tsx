@@ -1,6 +1,7 @@
 "use client"
-import { useActionState } from "react"
-import { sendPasswordReset } from "@/lib/actions"
+
+import type React from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -8,9 +9,43 @@ import { Loader2, Check } from "lucide-react"
 import Link from "next/link"
 
 export default function ForgotPasswordForm() {
-  const [state, action, isPending] = useActionState(sendPasswordReset, null)
+  const [email, setEmail] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSuccess, setIsSuccess] = useState(false)
+  const [error, setError] = useState("")
 
-  if (state?.success) {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    setError("")
+
+    try {
+      const formData = new FormData()
+      formData.append("email", email)
+
+      const response = await fetch("/api/reset-password", {
+        method: "POST",
+        body: formData,
+      })
+
+      const data = await response.json()
+
+      // The API always returns 200 status code for security reasons
+      // So we check for success property in the response data
+      if (data.success) {
+        setIsSuccess(true)
+      } else {
+        setError(data.error || "An error occurred")
+      }
+    } catch (error) {
+      console.error("Password reset request error:", error)
+      setError("An error occurred. Please try again.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  if (isSuccess) {
     return (
       <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">
         <div className="text-center">
@@ -18,7 +53,9 @@ export default function ForgotPasswordForm() {
             <Check className="h-8 w-8 text-green-600" />
           </div>
           <h1 className="text-xl font-semibold text-[#212121] mb-2">Check Your Email</h1>
-          <p className="text-[#616161] mb-4">If an account with that email exists, we've sent a password reset link</p>
+          <p className="text-[#616161] mb-4">
+            If an account with that email exists, we've sent a password reset link to <strong>{email}</strong>
+          </p>
           <p className="text-sm text-[#616161] mb-6">
             Please check your email and click the link to reset your password.
           </p>
@@ -40,11 +77,11 @@ export default function ForgotPasswordForm() {
         <p className="text-[#616161]">Enter your email address and we'll send you a reset link if an account exists.</p>
       </div>
 
-      {state?.error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 text-sm">{state.error}</div>
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 text-sm">{error}</div>
       )}
 
-      <form action={action} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="email">Email Address</Label>
           <Input
@@ -53,18 +90,19 @@ export default function ForgotPasswordForm() {
             type="email"
             autoComplete="email"
             required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             placeholder="Enter your email address"
             className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
-            disabled={isPending}
           />
         </div>
 
         <Button
           type="submit"
-          disabled={isPending}
+          disabled={isLoading}
           className="w-full bg-[#038a71] hover:bg-[#038a71]/90 text-white py-3 text-base font-medium h-12"
         >
-          {isPending ? (
+          {isLoading ? (
             <>
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
               Sending reset email...

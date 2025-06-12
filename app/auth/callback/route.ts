@@ -7,13 +7,11 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get("code")
   const setup = requestUrl.searchParams.get("setup")
   const type = requestUrl.searchParams.get("type")
-  const next = requestUrl.searchParams.get("next")
 
   console.log("🔗 Auth callback received:", {
     code: !!code,
     setup,
     type,
-    next,
     fullUrl: request.url,
     searchParams: Object.fromEntries(requestUrl.searchParams),
   })
@@ -33,13 +31,6 @@ export async function GET(request: NextRequest) {
 
       console.log("✅ Session created for user:", data.user?.email)
 
-      // CRITICAL: Check if this is a password recovery flow
-      if (type === "recovery") {
-        console.log("🔑 Password recovery flow detected, redirecting to reset password page")
-        // Force redirect to reset password page
-        return NextResponse.redirect(new URL("/auth/reset-password?recovery=true", request.url))
-      }
-
       // Check if this is an invitation acceptance
       if (type === "invite" || setup === "true") {
         console.log("📧 Processing invitation acceptance for:", data.user?.email)
@@ -58,12 +49,6 @@ export async function GET(request: NextRequest) {
           console.log("🔧 New user, redirecting to setup")
           return NextResponse.redirect(new URL("/auth/setup", request.url))
         }
-      }
-
-      // If there's a next parameter, redirect there
-      if (next) {
-        console.log("➡️ Redirecting to specified next URL:", next)
-        return NextResponse.redirect(new URL(next, request.url))
       }
 
       // Regular login, redirect to dashboard
