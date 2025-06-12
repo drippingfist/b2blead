@@ -1,39 +1,25 @@
 "use client"
 
-import type React from "react"
-
 import { useActionState, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { signIn } from "@/lib/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2 } from "lucide-react"
+import { Loader2, Eye, EyeOff } from "lucide-react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { useState } from "react"
 
-interface LoginFormProps {
-  isHidden?: boolean
-}
-
-export default function LoginForm({ isHidden = false }: LoginFormProps) {
+export default function LoginForm() {
   const router = useRouter()
   const [state, action, isPending] = useActionState(signIn, null)
+  const [showPassword, setShowPassword] = useState(false)
 
-  // Handle successful login
   useEffect(() => {
     if (state?.success) {
       router.push("/")
     }
   }, [state?.success, router])
-
-  // Don't render if hidden (during password reset)
-  if (isHidden) {
-    return null
-  }
-
-  const handleForgotPassword = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    e.preventDefault()
-    router.push("/auth/forgot-password")
-  }
 
   return (
     <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">
@@ -48,14 +34,14 @@ export default function LoginForm({ isHidden = false }: LoginFormProps) {
 
       <form action={action} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">Email Address</Label>
           <Input
             id="email"
             name="email"
             type="email"
             autoComplete="email"
             required
-            placeholder="Enter your email"
+            placeholder="Enter your email address"
             className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
             disabled={isPending}
           />
@@ -63,16 +49,25 @@ export default function LoginForm({ isHidden = false }: LoginFormProps) {
 
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            placeholder="Enter your password"
-            className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
-            disabled={isPending}
-          />
+          <div className="relative">
+            <Input
+              id="password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+              required
+              placeholder="Enter your password"
+              className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] pr-10"
+              disabled={isPending}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#616161] hover:text-[#212121]"
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
 
         <Button
@@ -91,13 +86,19 @@ export default function LoginForm({ isHidden = false }: LoginFormProps) {
         </Button>
       </form>
 
-      <div className="text-center mt-4">
-        <button
-          onClick={handleForgotPassword}
-          className="text-sm text-[#038a71] hover:text-[#038a71]/80 hover:underline"
-        >
-          Forgot your password?
-        </button>
+      <div className="text-center mt-6 pt-6 border-t border-[#e0e0e0]">
+        <p className="text-sm text-[#616161] mb-3">
+          Forgot your password?{" "}
+          <Link href="/auth/magic-link" className="text-[#038a71] hover:text-[#038a71]/80 hover:underline">
+            Get a magic link
+          </Link>
+        </p>
+        <p className="text-sm text-[#616161]">
+          Don't have an account?{" "}
+          <Link href="/auth/sign-up" className="text-[#038a71] hover:text-[#038a71]/80 hover:underline">
+            Sign up
+          </Link>
+        </p>
       </div>
     </div>
   )

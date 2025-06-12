@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Loader2, Check } from "lucide-react"
 import Link from "next/link"
 
-export default function ForgotPasswordForm() {
+export default function MagicLinkForm() {
   const [state, action, isPending] = useActionState(sendMagicLink, null)
 
   if (state?.success) {

@@ -7,7 +7,7 @@ const defaultUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` 
 
 export const metadata = {
   metadataBase: new URL(defaultUrl),
-  title: "b2blead.ai",
+  title: "b2blead.ai - more leads, less hassle",
   description: "Get more website leads with our AI. Success guarantee | Risk free trial | No credit card needed",
   generator: "v0.dev",
 }

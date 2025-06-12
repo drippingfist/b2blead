@@ -1,67 +1,43 @@
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse } from "next/server"
 
-// Check if Supabase environment variables are available
-export const isSupabaseConfigured =
-  typeof process.env.NEXT_PUBLIC_SUPABASE_URL === "string" &&
-  process.env.NEXT_PUBLIC_SUPABASE_URL.length > 0 &&
-  typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY === "string" &&
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0
+import type { NextRequest } from "next/server"
 
-export async function updateSession(request: NextRequest) {
-  // If Supabase is not configured, just continue without auth
-  if (!isSupabaseConfigured) {
-    return NextResponse.next({
-      request,
-    })
-  }
-
+export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
-  const requestUrl = new URL(request.url)
-
-  // Create a Supabase client configured to use cookies
-  const supabase = createMiddlewareClient({ req: request, res })
-
-  console.log("🔗 Middleware processing:", {
-    pathname: requestUrl.pathname,
-    searchParams: Object.fromEntries(requestUrl.searchParams),
-  })
-
-  // Check if this is an auth callback with a code
-  const code = requestUrl.searchParams.get("code")
-  const type = requestUrl.searchParams.get("type")
-
-  if (code && requestUrl.pathname === "/auth/callback") {
-    console.log("🔄 Auth callback detected, letting callback route handle it")
-    return res
-  }
-
-  // Refresh session if expired - required for Server Components
+  const supabase = createMiddlewareClient({ req, res })
   await supabase.auth.getSession()
+  return res
+}
 
-  // Protected routes - redirect to login if not authenticated
-  const isAuthRoute =
-    request.nextUrl.pathname.startsWith("/auth/login") ||
-    request.nextUrl.pathname.startsWith("/auth/sign-up") ||
-    request.nextUrl.pathname.startsWith("/auth/forgot-password") ||
-    request.nextUrl.pathname.startsWith("/auth/reset-password") ||
-    request.nextUrl.pathname.startsWith("/auth/set-password") ||
-    request.nextUrl.pathname.startsWith("/auth/accept-invite") ||
-    request.nextUrl.pathname.startsWith("/auth/setup") ||
-    request.nextUrl.pathname.startsWith("/auth/test") ||
-    request.nextUrl.pathname === "/auth/callback"
+export async function updateSession(req: NextRequest) {
+  const res = NextResponse.next()
+  const supabase = createMiddlewareClient({ req, res })
 
-  if (!isAuthRoute) {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
 
-    if (!session) {
-      console.log("🔒 No session found, redirecting to login")
-      const redirectUrl = new URL("/auth/login", request.url)
-      return NextResponse.redirect(redirectUrl)
-    }
+  const publicRoutes = ["/auth/login", "/auth/sign-up", "/auth/forgot-password", "/auth/magic-link"]
+
+  if (!session && !publicRoutes.includes(req.nextUrl.pathname)) {
+    const redirectUrl = req.nextUrl.clone()
+    redirectUrl.pathname = "/auth/login"
+    redirectUrl.searchParams.set(`redirect_to`, req.nextUrl.pathname)
+    return NextResponse.redirect(redirectUrl)
   }
+
+  const isAuthRoute =
+    req.nextUrl.pathname.startsWith("/auth/login") ||
+    req.nextUrl.pathname.startsWith("/auth/sign-up") ||
+    req.nextUrl.pathname.startsWith("/auth/forgot-password") ||
+    req.nextUrl.pathname.startsWith("/auth/magic-link") ||
+    req.nextUrl.pathname.startsWith("/auth/reset-password") ||
+    req.nextUrl.pathname.startsWith("/auth/set-password") ||
+    req.nextUrl.pathname.startsWith("/auth/accept-invite") ||
+    req.nextUrl.pathname.startsWith("/auth/setup") ||
+    req.nextUrl.pathname.startsWith("/auth/test") ||
+    req.nextUrl.pathname === "/auth/callback"
 
   return res
 }

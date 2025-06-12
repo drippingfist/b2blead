@@ -125,29 +125,37 @@ export async function refreshSentimentAnalysis(threadId: string) {
   }
 }
 
-//RESET
-import { cookies } from "next/headers"
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
+// New server action to send magic link
+export async function sendMagicLink(prevState: any, formData: FormData) {
+  // Check if formData is valid
+  if (!formData) {
+    return { error: "Form data is missing" }
+  }
 
-export async function sendPasswordReset(prevState: any, formData: FormData) {
-  // Ignore prevState, grab email
-  const email = formData?.get("email")?.toString().trim()
+  const email = formData.get("email")
+
+  // Validate required fields
   if (!email) {
-    return { error: "Email is required." }
+    return { error: "Email is required" }
   }
 
-  // Init Supabase with Next.js cookies helper
-  const supabase = createServerActionClient({ cookies })
+  const cookieStore = cookies()
+  const supabase = createServerActionClient({ cookies: () => cookieStore })
 
-  // Fire off the reset email and log any error
-  const { error } = await supabase.auth.resetPasswordForEmail(email)
-  if (error) {
-    console.error("Supabase reset error:", error.message)
-  }
+  try {
+    // Send magic link - Supabase handles everything
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.toString(),
+    })
 
-  // Always return the same success message (prevents enumeration)
-  return {
-    success:
-      "If an account with that email exists, a password reset link has been sent.",
+    if (error) {
+      console.error("Magic link error:", error.message)
+    }
+
+    // Always return success message to prevent email enumeration
+    return { success: "If an account with that email exists, we've sent you a magic link." }
+  } catch (error) {
+    console.error("Magic link error:", error)
+    return { success: "If an account with that email exists, we've sent you a magic link." }
   }
 }
