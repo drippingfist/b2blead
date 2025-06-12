@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     })
     console.log("[API] Supabase client instance created for reset.")
 
-    const redirectTo = `${siteUrl}/auth/reset-password`
+    const redirectTo = `${siteUrl}/auth/callback?next=/auth/reset-password`
     console.log(`[API] Redirect URL for Supabase: ${redirectTo}`)
 
     const { error: supabaseError } = await supabase.auth.resetPasswordForEmail(email, {

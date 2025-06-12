@@ -20,95 +20,68 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    const handlePasswordReset = async () => {
+    const checkSession = async () => {
       try {
-        console.log("🔗 Processing password reset...")
+        console.log("🔗 Checking for active session...")
 
-        // First, try to get parameters from URL hash (new format)
-        let accessToken: string | null = null
-        let refreshToken: string | null = null
-        let type: string | null = null
+        // Check if we have an active session
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession()
 
-        if (window.location.hash) {
-          const hashParams = new URLSearchParams(window.location.hash.substring(1))
-          accessToken = hashParams.get("access_token")
-          refreshToken = hashParams.get("refresh_token")
-          type = hashParams.get("type")
-          console.log("🔗 Found hash parameters:", { accessToken: !!accessToken, refreshToken: !!refreshToken, type })
+        console.log("🔗 Session check result:", {
+          hasSession: !!session,
+          hasUser: !!session?.user,
+          error: sessionError,
+        })
+
+        if (sessionError) {
+          console.error("❌ Session error:", sessionError)
+          throw new Error("Failed to verify session")
         }
 
-        // If no hash parameters, try query parameters (older format)
-        if (!accessToken || !refreshToken) {
-          const code = searchParams.get("code")
-          console.log("🔗 Found query code parameter:", code)
-
-          if (code) {
-            console.log("🔗 Attempting to exchange code for session...")
-
-            // Exchange the code for session tokens
-            const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
-
-            console.log("🔗 Exchange result:", {
-              hasData: !!data,
-              hasSession: !!data?.session,
-              hasUser: !!data?.user,
-              error: exchangeError,
-            })
-
-            if (exchangeError) {
-              console.error("❌ Error exchanging code for session:", exchangeError)
-              console.error("❌ Error details:", {
-                message: exchangeError.message,
-                name: exchangeError.name,
-                status: exchangeError.status,
-              })
-              throw new Error(`Code exchange failed: ${exchangeError.message}`)
-            }
-
-            if (data.session) {
-              console.log("✅ Successfully exchanged code for session")
-              console.log("✅ Session details:", {
-                hasAccessToken: !!data.session.access_token,
-                hasRefreshToken: !!data.session.refresh_token,
-                expiresAt: data.session.expires_at,
-              })
-              setStep("password")
-              return
-            } else {
-              console.error("❌ No session received from code exchange")
-              throw new Error("No session received from code exchange")
-            }
-          }
-        }
-
-        // If we have hash parameters, use them directly
-        if (accessToken && refreshToken && type === "recovery") {
-          console.log("🔗 Using hash parameters for session")
-
-          // Set the session to allow password update
-          const { error: sessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          })
-
-          if (sessionError) {
-            throw sessionError
-          }
-
+        if (session && session.user) {
+          console.log("✅ Valid session found, proceeding to password reset")
           setStep("password")
           return
         }
 
-        // If we get here, we don't have valid parameters
-        throw new Error("Invalid password reset link - missing required parameters")
+        // If no session, check for recovery parameters in URL
+        const type = searchParams.get("type")
+        const accessToken = searchParams.get("access_token")
+        const refreshToken = searchParams.get("refresh_token")
+
+        console.log("🔗 URL parameters:", { type, hasAccessToken: !!accessToken, hasRefreshToken: !!refreshToken })
+
+        if (type === "recovery" && accessToken && refreshToken) {
+          console.log("🔗 Setting session from URL parameters...")
+
+          const { error: setSessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          })
+
+          if (setSessionError) {
+            console.error("❌ Error setting session:", setSessionError)
+            throw new Error("Failed to set session from recovery link")
+          }
+
+          console.log("✅ Session set successfully")
+          setStep("password")
+          return
+        }
+
+        // If we get here, we don't have a valid session or recovery parameters
+        throw new Error("Invalid password reset link - please request a new one")
       } catch (err: any) {
-        console.error("❌ Error processing password reset:", err)
+        console.error("❌ Error checking session:", err)
         setError(err.message || "Invalid password reset link")
         setStep("error")
       }
     }
 
-    handlePasswordReset()
+    checkSession()
   }, [searchParams])
 
   const handlePasswordUpdate = async () => {
@@ -170,7 +143,7 @@ export default function ResetPasswordPage() {
       <div className="flex min-h-screen items-center justify-center bg-[#fdfdfd] px-4 py-12 sm:px-6 lg:px-8">
         <div className="w-full max-w-md space-y-8">
           <div className="text-center">
-            <img src="/logo.svg" alt="b2bLEAD.ai" className="h-12 w-auto mx-auto mb-8" />
+            <img src="/logo.svg" alt="b2blead.ai" className="h-12 w-auto mx-auto mb-8" />
             <h1 className="text-2xl font-semibold text-[#212121] mb-2">Set New Password</h1>
             <p className="text-[#616161]">Enter your new password below.</p>
           </div>
