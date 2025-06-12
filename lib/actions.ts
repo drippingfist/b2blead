@@ -125,27 +125,27 @@ export async function refreshSentimentAnalysis(threadId: string) {
   }
 }
 
+//RESET
 import { cookies } from "next/headers"
 import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
 
-export async function sendPasswordReset(formData: FormData) {
-  // Grab and validate email
-  const email = formData.get("email")?.toString().trim()
+export async function sendPasswordReset(prevState: any, formData: FormData) {
+  // Ignore prevState, grab email
+  const email = formData?.get("email")?.toString().trim()
   if (!email) {
     return { error: "Email is required." }
   }
 
-  // Init Supabase with Next’s cookies helper
+  // Init Supabase with Next.js cookies helper
   const supabase = createServerActionClient({ cookies })
 
-  // Fire off the reset email
+  // Fire off the reset email and log any error
   const { error } = await supabase.auth.resetPasswordForEmail(email)
   if (error) {
     console.error("Supabase reset error:", error.message)
-    // don’t reveal to client—just log it
   }
 
-  // Always return the same success message
+  // Always return the same success message (prevents enumeration)
   return {
     success:
       "If an account with that email exists, a password reset link has been sent.",

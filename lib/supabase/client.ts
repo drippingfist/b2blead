@@ -23,7 +23,7 @@ export const supabase = createClientComponentClient({
       // Add retry configuration for auth operations
       retryAttempts: 3,
       // Increase timeout for slow connections
-      flowType: "pkce",
+      flowType: "implicit", // Changed from "pkce" to "implicit" to match Supabase default behavior
     },
     global: {
       // Add custom headers for better error tracking
