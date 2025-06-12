@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase/client"
-import { Loader2, Check, X, Eye, EyeOff } from "lucide-react"
+import { Loader2, Check, X, Eye, EyeOff } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,35 +21,31 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     const handlePasswordReset = async () => {
       try {
-        console.log("🔗 Processing password reset...")
+        console.log("🔗 Processing password reset from URL hash...")
 
-        // Check for hash fragments first (standard Supabase flow)
         if (window.location.hash) {
           const hashParams = new URLSearchParams(window.location.hash.substring(1))
           const accessToken = hashParams.get("access_token")
           const refreshToken = hashParams.get("refresh_token")
           const type = hashParams.get("type")
-          const error = hashParams.get("error")
+          const errorParam = hashParams.get("error") // Renamed to avoid conflict with state variable
           const errorDescription = hashParams.get("error_description")
 
           console.log("🔗 Hash parameters found:", {
             hasAccessToken: !!accessToken,
             hasRefreshToken: !!refreshToken,
             type,
-            error,
+            error: errorParam,
             errorDescription,
           })
 
-          // Check for errors in hash
-          if (error) {
-            console.error("❌ Error in hash parameters:", error, errorDescription)
-            throw new Error(errorDescription || error)
+          if (errorParam) {
+            console.error("❌ Error in hash parameters:", errorParam, errorDescription)
+            throw new Error(errorDescription || errorParam)
           }
 
-          // If we have recovery tokens, set the session
           if (accessToken && refreshToken && type === "recovery") {
             console.log("🔐 Setting session from recovery tokens...")
-
             const { error: sessionError } = await supabase.auth.setSession({
               access_token: accessToken,
               refresh_token: refreshToken,
@@ -57,40 +53,17 @@ export default function ResetPasswordPage() {
 
             if (sessionError) {
               console.error("❌ Error setting session:", sessionError)
-              throw new Error("Failed to authenticate with reset link")
+              throw new Error("Failed to authenticate with reset link tokens.")
             }
 
-            console.log("✅ Session set successfully from recovery tokens")
+            console.log("✅ Session set successfully from recovery tokens.")
             setStep("password")
+            // Clear the hash from the URL now that we've used it
+            router.replace("/auth/reset-password", { scroll: false })
             return
           }
         }
-
-        // If no hash parameters, check for existing session
-        console.log("🔗 Checking for existing session...")
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession()
-
-        console.log("🔗 Session check result:", {
-          hasSession: !!session,
-          hasUser: !!session?.user,
-          error: sessionError,
-        })
-
-        if (sessionError) {
-          console.error("❌ Session error:", sessionError)
-          throw new Error("Failed to verify session")
-        }
-
-        if (session && session.user) {
-          console.log("✅ Valid session found, proceeding to password reset")
-          setStep("password")
-          return
-        }
-
-        // If we get here, we don't have valid authentication
+        // If no valid hash parameters with recovery tokens are found
         throw new Error("Invalid or expired password reset link. Please request a new one.")
       } catch (err: any) {
         console.error("❌ Error processing password reset:", err)
@@ -100,7 +73,7 @@ export default function ResetPasswordPage() {
     }
 
     handlePasswordReset()
-  }, [])
+  }, [router]) // Added router to dependency array
 
   const handlePasswordUpdate = async () => {
     if (password.length < 6) {
