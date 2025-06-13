@@ -133,7 +133,7 @@ export async function refreshSentimentAnalysis(threadId: string) {
   }
 }
 
-// Update the sendMagicLink function to handle redirects
+// Fix the sendMagicLink function to work with the updated form
 export async function sendMagicLink(prevState: any, formData: FormData) {
   // Check if formData is valid
   if (!formData) {

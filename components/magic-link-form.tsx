@@ -1,61 +1,28 @@
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
+import { useFormState } from "react-dom"
+import { sendMagicLink } from "@/lib/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2, Check } from "lucide-react"
 import Link from "next/link"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 
-export default function MagicLinkForm() {
-  const [email, setEmail] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [isSuccess, setIsSuccess] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export default function MagicLinkForm({ redirectTo = "/" }: { redirectTo?: string }) {
+  // Initialize the form state with the sendMagicLink action
+  const [state, formAction] = useFormState(sendMagicLink, null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const supabase = createClientComponentClient()
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    setIsLoading(true)
-    setError(null)
-
-    try {
-      // Get the redirect URL from the current URL
-      const searchParams = new URLSearchParams(window.location.search)
-      const redirectTo = searchParams.get("redirect_to") || "/"
-
-      // Create the callback URL
-      const origin = window.location.origin
-      const callbackUrl = new URL("/auth/callback", origin)
-      callbackUrl.searchParams.set("redirect_to", redirectTo)
-
-      // Send the magic link
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: callbackUrl.toString(),
-        },
-      })
-
-      if (error) {
-        console.error("Magic link error:", error)
-        setError(error.message)
-      } else {
-        setIsSuccess(true)
-      }
-    } catch (err) {
-      console.error("Unexpected error:", err)
-      setError("An unexpected error occurred. Please try again.")
-    } finally {
-      setIsLoading(false)
-    }
+  // Handle form submission
+  const handleSubmit = async (formData: FormData) => {
+    setIsSubmitting(true)
+    // Add the redirect_to parameter to the form data
+    formData.append("redirect_to", redirectTo)
+    // The actual submission is handled by formAction
   }
 
-  if (isSuccess) {
+  if (state?.success) {
     return (
       <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">
         <div className="text-center">
@@ -87,32 +54,34 @@ export default function MagicLinkForm() {
         <p className="text-[#616161]">Enter your email address and we'll send you a magic link to sign in instantly.</p>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 text-sm">{error}</div>
+      {state?.error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 text-sm">{state.error}</div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form action={formAction} onSubmit={handleSubmit} className="space-y-4">
+        {/* Hidden field to pass the redirect_to parameter */}
+        <input type="hidden" name="redirect_to" value={redirectTo} />
+
         <div className="space-y-2">
           <Label htmlFor="email">Email Address</Label>
           <Input
             id="email"
+            name="email"
             type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
             autoComplete="email"
             required
             placeholder="Enter your email address"
             className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
-            disabled={isLoading}
+            disabled={isSubmitting}
           />
         </div>
 
         <Button
           type="submit"
-          disabled={isLoading}
+          disabled={isSubmitting}
           className="w-full bg-[#038a71] hover:bg-[#038a71]/90 text-white py-3 text-base font-medium h-12"
         >
-          {isLoading ? (
+          {isSubmitting ? (
             <>
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
               Sending magic link...
