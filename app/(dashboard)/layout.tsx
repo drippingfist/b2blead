@@ -4,6 +4,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import Sidebar from "@/components/sidebar"
 import MobileHeader from "@/components/mobile-header"
+import { SessionValidator } from "@/components/session-validator"
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -37,6 +38,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         <MobileHeader onMenuClick={() => setSidebarOpen(true)} />
         <main className="flex-1 overflow-auto">{children}</main>
       </div>
+
+      {/* Session validator - doesn't affect layout or rendering */}
+      <SessionValidator />
     </div>
   )
 }

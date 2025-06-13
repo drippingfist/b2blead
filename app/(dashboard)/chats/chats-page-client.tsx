@@ -156,7 +156,8 @@ export default function ChatsPageClient() {
   // Load threads data
   useEffect(() => {
     const loadThreads = async () => {
-      // For superadmins, allow loading all threads when no bot is selected
+      // We now allow loading all threads when no bot is selected
+      // Only return early if we're not a superadmin and no bot is selected
       if (!selectedBot && !isSuperAdmin) {
         setThreads([])
         setTotalCount(0)
@@ -232,13 +233,14 @@ export default function ChatsPageClient() {
           // We'll filter out those with callbacks in the main query
         } else if (filter === "user_messages") {
           // Get thread IDs that have user messages
-          let userMessagesSubQuery = supabase.from("messages").select("thread_id").eq("role", "user")
+          let userMessagesQuery = supabase.from("messages").select("thread_id").eq("role", "user")
 
+          // Only filter by bot if one is selected
           if (selectedBot) {
-            userMessagesSubQuery = userMessagesSubQuery.eq("bot_share_name", selectedBot)
+            userMessagesQuery = userMessagesQuery.eq("bot_share_name", selectedBot)
           }
 
-          const { data: userMessageThreads } = await userMessagesSubQuery
+          const { data: userMessageThreads } = await userMessagesQuery
 
           if (userMessageThreads && userMessageThreads.length > 0) {
             const threadIds = [...new Set(userMessageThreads.map((m) => m.thread_id).filter(Boolean))]
@@ -486,19 +488,7 @@ export default function ChatsPageClient() {
     )
   }
 
-  if (!selectedBot && !isSuperAdmin) {
-    return (
-      <div className="p-4 md:p-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-[#212121] mb-2">Chats</h1>
-          <p className="text-[#616161]">View and manage chat conversations</p>
-        </div>
-        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-          <p className="text-yellow-800">Please select a bot to view chats.</p>
-        </div>
-      </div>
-    )
-  }
+  // We've removed the restriction that prevented viewing chats when "All Bots" is selected
 
   return (
     <div className="p-4 md:p-6 relative">

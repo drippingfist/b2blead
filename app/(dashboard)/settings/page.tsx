@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Save, X, Users, Trash2, UserPlus, Edit } from "lucide-react"
+import { Loader2, Save, X, Users, Trash2, UserPlus, Settings } from "lucide-react"
 import { supabase } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { timezones } from "@/lib/timezones"
@@ -18,7 +18,6 @@ import {
   deleteInvitation,
   getInvitableBots,
 } from "@/lib/user-actions"
-import { DeleteUserModal } from "@/components/delete-user-modal"
 import Loading from "@/components/loading"
 
 interface UserData {
@@ -98,161 +97,31 @@ export default function SettingsPage() {
   const [editingEmail, setEditingEmail] = useState(false)
 
   useEffect(() => {
-    async function loadUserData() {
-      try {
-        setLoading(true)
-        setError(null)
+    // Check localStorage for selected bot first
+    const storedBot = localStorage.getItem("selectedBot")
+    console.log("⚙️ Settings Page: Retrieved bot from localStorage:", storedBot)
+    setSelectedBot(storedBot)
 
-        console.log("⚙️ Settings Page: Starting data load...")
-        const startTime = Date.now()
-
-        // Check localStorage for selected bot first
-        const storedBot = localStorage.getItem("selectedBot")
-        console.log("⚙️ Settings Page: Retrieved bot from localStorage:", storedBot)
-        setSelectedBot(storedBot)
-
-        // Get current user
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser()
-
-        if (userError || !user) {
-          throw new Error(userError?.message || "Failed to load user data")
-        }
-
-        console.log("⚙️ Settings Page: Got user, starting parallel queries...")
-
-        // Run all queries in parallel for faster loading
-        const [profileResult, botUsersResult, availableBotsResult, usersResult, invitationsResult] =
-          await Promise.allSettled([
-            // Get user profile
-            supabase
-              .from("user_profiles")
-              .select("first_name, surname")
-              .eq("id", user.id)
-              .single(),
-
-            // Get user's bot access
-            supabase
-              .from("bot_users")
-              .select("bot_share_name, role")
-              .eq("user_id", user.id)
-              .eq("is_active", true),
-
-            // Get available bots
-            getInvitableBots(),
-
-            // Get users
-            getUsers(storedBot),
-
-            // Get invitations
-            getInvitations(),
-          ])
-
-        // Process profile result
-        let profile = null
-        if (profileResult.status === "fulfilled" && !profileResult.value.error) {
-          profile = profileResult.value.data
-        }
-
-        // Process bot users result
-        let botUsers = []
-        if (botUsersResult.status === "fulfilled" && !botUsersResult.value.error) {
-          botUsers = botUsersResult.value.data || []
-        }
-
-        // Find the appropriate bot user
-        let botUser = null
-        if (botUsers.length > 0) {
-          if (storedBot) {
-            botUser = botUsers.find((bu: any) => bu.bot_share_name === storedBot) || botUsers[0]
-          } else {
-            botUser = botUsers[0]
-          }
-        }
-
-        // Get bot details and set initial state
-        let userTimezone = "Asia/Bangkok"
-        let clientNameValue = ""
-        let botSettingsValue = {
-          bot_share_name: "",
-          client_email: "",
-          transcript_email: "monthly",
-          callback_email: "monthly",
-        }
-
-        if (botUser?.bot_share_name) {
-          console.log("⚙️ Settings Page: Loading bot details for:", botUser.bot_share_name)
-
-          const { data: bot, error: botError } = await supabase
-            .from("bots")
-            .select("timezone, client_name, client_email, transcript_email, callback_email")
-            .eq("bot_share_name", botUser.bot_share_name)
-            .single()
-
-          if (!botError && bot) {
-            userTimezone = bot.timezone || "Asia/Bangkok"
-            clientNameValue = bot.client_name || ""
-
-            // Only load bot settings for admins and superadmins
-            if (botUser.role === "admin" || botUser.role === "superadmin") {
-              botSettingsValue = {
-                bot_share_name: botUser.bot_share_name,
-                client_email: bot.client_email || "",
-                transcript_email: bot.transcript_email || "monthly",
-                callback_email: bot.callback_email || "monthly",
-              }
-            }
-          }
-        }
-
-        // Set all state at once
-        setUserData({
-          id: user.id,
-          email: user.email || "",
-          firstName: profile?.first_name || "",
-          surname: profile?.surname || "",
-          timezone: userTimezone,
-        })
-
-        setClientName(clientNameValue)
-        setBotSettings(botSettingsValue)
-
-        // Process available bots result
-        if (availableBotsResult.status === "fulfilled" && availableBotsResult.value.success) {
-          setAvailableBots(availableBotsResult.value.bots || [])
-        }
-
-        // Process users result
-        if (usersResult.status === "fulfilled" && usersResult.value.success) {
-          setUsers(usersResult.value.users.filter((user: any) => user.role !== "superadmin"))
-        }
-
-        // Process invitations result
-        if (invitationsResult.status === "fulfilled" && invitationsResult.value.success) {
-          setInvitedUsers(invitationsResult.value.invitations || [])
-        }
-
-        const endTime = Date.now()
-        console.log(`⚙️ Settings Page: Data load completed in ${endTime - startTime}ms`)
-      } catch (err: any) {
-        console.error("Error loading user data:", err)
-        setError(err.message || "Failed to load user data")
-      } finally {
-        setLoading(false)
-      }
+    // If a bot is selected, load the data
+    if (storedBot) {
+      loadUserData(storedBot)
+    } else {
+      // If no bot is selected, just set loading to false
+      setLoading(false)
     }
-
-    loadUserData()
 
     // Listen for bot selection changes
     const handleBotChange = (event: CustomEvent) => {
       const newBot = event.detail
       console.log("⚙️ Settings Page: Bot changed to:", newBot)
       setSelectedBot(newBot)
-      // Reload data with new bot
-      loadUserData()
+      // Reload data with new bot if it's not null
+      if (newBot) {
+        loadUserData(newBot)
+      } else {
+        // If "All Bots" is selected, reset loading state
+        setLoading(false)
+      }
     }
 
     window.addEventListener("botSelectionChanged", handleBotChange as EventListener)
@@ -261,6 +130,143 @@ export default function SettingsPage() {
       window.removeEventListener("botSelectionChanged", handleBotChange as EventListener)
     }
   }, []) // Remove selectedBot dependency to prevent infinite loops
+
+  const loadUserData = async (botShareName: string) => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      console.log("⚙️ Settings Page: Starting data load...")
+      const startTime = Date.now()
+
+      // Get current user
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+
+      if (userError || !user) {
+        throw new Error(userError?.message || "Failed to load user data")
+      }
+
+      console.log("⚙️ Settings Page: Got user, starting parallel queries...")
+
+      // Run all queries in parallel for faster loading
+      const [profileResult, botUsersResult, availableBotsResult, usersResult, invitationsResult] =
+        await Promise.allSettled([
+          // Get user profile
+          supabase
+            .from("user_profiles")
+            .select("first_name, surname")
+            .eq("id", user.id)
+            .single(),
+
+          // Get user's bot access
+          supabase
+            .from("bot_users")
+            .select("bot_share_name, role")
+            .eq("user_id", user.id)
+            .eq("is_active", true),
+
+          // Get available bots
+          getInvitableBots(),
+
+          // Get users
+          getUsers(botShareName),
+
+          // Get invitations
+          getInvitations(),
+        ])
+
+      // Process profile result
+      let profile = null
+      if (profileResult.status === "fulfilled" && !profileResult.value.error) {
+        profile = profileResult.value.data
+      }
+
+      // Process bot users result
+      let botUsers = []
+      if (botUsersResult.status === "fulfilled" && !botUsersResult.value.error) {
+        botUsers = botUsersResult.value.data || []
+      }
+
+      // Find the appropriate bot user
+      let botUser = null
+      if (botUsers.length > 0) {
+        botUser = botUsers.find((bu: any) => bu.bot_share_name === botShareName) || botUsers[0]
+      }
+
+      // Get bot details and set initial state
+      let userTimezone = "Asia/Bangkok"
+      let clientNameValue = ""
+      let botSettingsValue = {
+        bot_share_name: "",
+        client_email: "",
+        transcript_email: "monthly",
+        callback_email: "monthly",
+      }
+
+      if (botUser?.bot_share_name) {
+        console.log("⚙️ Settings Page: Loading bot details for:", botUser.bot_share_name)
+
+        const { data: bot, error: botError } = await supabase
+          .from("bots")
+          .select("timezone, client_name, client_email, transcript_email, callback_email")
+          .eq("bot_share_name", botUser.bot_share_name)
+          .single()
+
+        if (!botError && bot) {
+          userTimezone = bot.timezone || "Asia/Bangkok"
+          clientNameValue = bot.client_name || ""
+
+          // Only load bot settings for admins and superadmins
+          if (botUser.role === "admin" || botUser.role === "superadmin") {
+            botSettingsValue = {
+              bot_share_name: botUser.bot_share_name,
+              client_email: bot.client_email || "",
+              transcript_email: bot.transcript_email || "monthly",
+              callback_email: bot.callback_email || "monthly",
+            }
+          }
+        }
+      }
+
+      // Set all state at once
+      setUserData({
+        id: user.id,
+        email: user.email || "",
+        firstName: profile?.first_name || "",
+        surname: profile?.surname || "",
+        timezone: userTimezone,
+      })
+
+      setClientName(clientNameValue)
+      setBotSettings(botSettingsValue)
+
+      // Process available bots result
+      if (availableBotsResult.status === "fulfilled" && availableBotsResult.value.success) {
+        setAvailableBots(availableBotsResult.value.bots || [])
+      }
+
+      // Process users result
+      if (usersResult.status === "fulfilled" && usersResult.value.success) {
+        setUsers(usersResult.value.users.filter((user: any) => user.role !== "superadmin"))
+      }
+
+      // Process invitations result
+      if (invitationsResult.status === "fulfilled" && invitationsResult.value.success) {
+        setInvitedUsers(invitationsResult.value.invitations || [])
+      }
+
+      const endTime = Date.now()
+      console.log(`⚙️ Settings Page: Data load completed in ${endTime - startTime}ms`)
+    } catch (err: any) {
+      console.error("Error loading user data:", err)
+      setError(err.message || "Failed to load user data")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const loadUsers = async () => {
     try {
@@ -443,6 +449,8 @@ export default function SettingsPage() {
     } catch (err: any) {
       console.error("Error saving user:", err)
       setError("Failed to save user changes")
+    } finally {
+      setUserToDelete(null)
     }
   }
 
@@ -542,6 +550,31 @@ export default function SettingsPage() {
       console.error("Error deleting invitation:", err)
       setError("Failed to delete invitation")
     }
+  }
+
+  const handleBotSelection = (botShareName: string | null) => {
+    if (botShareName) {
+      setSelectedBot(botShareName)
+      loadUserData(botShareName)
+    }
+  }
+
+  // Show simple message if no bot is selected (All Bots)
+  if (!selectedBot) {
+    return (
+      <div className="p-4 md:p-8 flex flex-col items-center justify-center h-full">
+        <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm max-w-md w-full text-center">
+          <Settings className="h-12 w-12 text-[#038a71] mx-auto mb-4" />
+          <h1 className="text-2xl font-semibold text-[#212121] mb-2">Select a Bot</h1>
+          <p className="text-[#616161] mb-6">
+            Please select a specific bot from the dropdown menu above to view and manage its settings.
+          </p>
+          <Button onClick={() => router.push("/dashboard")} variant="outline" className="w-full">
+            Return to Dashboard
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   // Show loading screen while initial data loads
@@ -881,177 +914,54 @@ export default function SettingsPage() {
                   </Select>
                 </div>
               </div>
-              <div className="flex items-center space-x-2 mt-4">
+              <div className="flex justify-end mt-4">
                 <Button
                   onClick={handleAddUser}
                   disabled={addingUserLoading}
-                  className="bg-[#038a71] hover:bg-[#038a71]/90"
-                  size="sm"
+                  className="bg-[#038a71] hover:bg-[#038a71]/90 flex items-center"
                 >
-                  {addingUserLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                  Send Invitation
-                </Button>
-                <Button onClick={() => setAddingUser(false)} variant="outline" size="sm">
-                  Cancel
+                  {addingUserLoading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <UserPlus className="h-4 w-4 mr-2" />
+                  )}
+                  Invite
                 </Button>
               </div>
             </div>
           )}
 
-          {usersLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-[#038a71]" />
-              <span className="ml-2 text-[#616161]">Loading users...</span>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Active Users List */}
-              <div>
-                <h3 className="text-sm font-medium text-[#212121] mb-3">Active Users</h3>
-                <div className="space-y-2">
-                  {users.length === 0 ? (
-                    <div className="text-center py-4 text-[#616161] bg-gray-50 rounded-lg">No active users found.</div>
-                  ) : (
-                    users.map((user) => (
-                      <div key={user.id} className="p-4 border border-[#e0e0e0] rounded-lg">
-                        {editingUser === user.id ? (
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="space-y-1">
-                              <Label className="text-xs">First Name</Label>
-                              <Input
-                                value={user.first_name}
-                                onChange={(e) => handleUserEdit(user.id, "first_name", e.target.value)}
-                                className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Surname</Label>
-                              <Input
-                                value={user.surname}
-                                onChange={(e) => handleUserEdit(user.id, "surname", e.target.value)}
-                                className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Role</Label>
-                              <Select value={user.role} onChange={(value) => handleUserEdit(user.id, "role", value)}>
-                                <SelectTrigger className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="member">Member</SelectItem>
-                                  <SelectItem value="admin">Admin</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="flex items-end space-x-2 md:col-span-3">
-                              <Button
-                                onClick={() => handleSaveUser(user.id)}
-                                className="bg-[#038a71] hover:bg-[#038a71]/90"
-                                size="sm"
-                              >
-                                Save
-                              </Button>
-                              <Button onClick={() => setEditingUser(null)} variant="outline" size="sm">
-                                Cancel
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-between">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
-                              <div>
-                                <p className="text-sm font-medium text-[#212121]">
-                                  {user.first_name} {user.surname}
-                                </p>
-                                <p className="text-xs text-[#616161]">{user.email}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-[#616161] uppercase tracking-wider">Role</p>
-                                <p className="text-sm text-[#212121] capitalize">{user.role}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-2 ml-4">
-                              <Button onClick={() => setEditingUser(user.id)} variant="outline" size="sm">
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                onClick={() => handleDeleteUser(user.id)}
-                                variant="outline"
-                                size="sm"
-                                className="text-red-600 hover:text-red-700 hover:border-red-300"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Invited Users List */}
-              {invitedUsers.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-sm font-medium text-[#212121] mb-3">Pending Invitations</h3>
-                  <div className="space-y-2">
-                    {invitedUsers.map((invitation) => (
-                      <div key={invitation.id} className="p-4 border border-[#e0e0e0] rounded-lg bg-yellow-50">
-                        <div className="flex items-center justify-between">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
-                            <div>
-                              <p className="text-sm font-medium text-[#212121]">
-                                {invitation.first_name} {invitation.surname}
-                                <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
-                                  Pending
-                                </span>
-                              </p>
-                              <p className="text-xs text-[#616161]">{invitation.email}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-[#616161] uppercase tracking-wider">Role</p>
-                              <p className="text-sm text-[#212121] capitalize">{invitation.role}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-[#616161] uppercase tracking-wider">Invited</p>
-                              <p className="text-sm text-[#212121]">
-                                {new Date(invitation.created_at).toLocaleDateString()}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2 ml-4">
-                            <Button
-                              onClick={() => handleDeleteInvitation(invitation.id)}
-                              variant="outline"
-                              size="sm"
-                              className="text-red-600 hover:text-red-700 hover:border-red-300"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+          {/* Existing Users List */}
+          <div className="space-y-4">
+            {users.map((user) => (
+              <div
+                key={user.id}
+                className="flex items-center justify-between p-4 border border-[#e0e0e0] rounded-lg bg-gray-50"
+              >
+                <div className="flex items-center space-x-2">
+                  <div className="flex flex-col">
+                    <p className="text-sm font-medium text-[#212121]">
+                      {user.first_name} {user.surname}
+                    </p>
+                    <p className="text-xs text-[#616161]">{user.email}</p>
                   </div>
                 </div>
-              )}
-            </div>
-          )}
+                <div className="flex items-center space-x-2">
+                  <Button
+                    onClick={() => handleDeleteUser(user.id)}
+                    variant="outline"
+                    size="sm"
+                    className="bg-red-500 hover:bg-red-500/90 px-3"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-      {/* Delete User Modal */}
-      <DeleteUserModal
-        isOpen={deleteModalOpen}
-        onClose={() => {
-          setDeleteModalOpen(false)
-          setUserToDelete(null)
-        }}
-        onConfirm={confirmDeleteUser}
-        userName={userToDelete?.name || ""}
-        userEmail={userToDelete?.email || ""}
-      />
     </div>
   )
 }

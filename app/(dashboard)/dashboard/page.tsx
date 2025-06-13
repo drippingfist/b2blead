@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Loading from "@/components/loading"
+import { supabase } from "@/lib/supabase/client"
 
 type TimePeriod = "today" | "last7days" | "last30days" | "last90days" | "alltime" | "custom"
 
@@ -96,6 +97,7 @@ export default function Dashboard() {
     isSuperAdmin: boolean
   } | null>(null)
   const [botSelectionReady, setBotSelectionReady] = useState(false)
+  const [accessibleBotCount, setAccessibleBotCount] = useState(0)
 
   // Initialize user access and bot selection
   useEffect(() => {
@@ -107,6 +109,29 @@ export default function Dashboard() {
         const access = await getUserBotAccess()
         console.log("🔍 Dashboard: User access:", access)
         setUserAccess(access)
+
+        // Get current user
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (!user) {
+          console.error("❌ Dashboard: No authenticated user found")
+          return
+        }
+
+        // Count accessible bots directly from the database
+        const { count, error } = await supabase
+          .from("bot_users")
+          .select("bot_share_name", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+
+        if (error) {
+          console.error("❌ Dashboard: Error counting accessible bots:", error)
+        } else {
+          console.log("🔍 Dashboard: User has access to", count, "bots")
+          setAccessibleBotCount(count || 0)
+        }
 
         // Get stored bots or wait for them to be loaded
         const storedBots = JSON.parse(localStorage.getItem("userBots") || "[]")
@@ -336,7 +361,7 @@ export default function Dashboard() {
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-[#212121]">Dashboard</h1>
         <p className="text-[#616161]">
-          Welcome back, {userEmail}. You have access to {bots.length} bot(s).
+          Welcome back, {userEmail}. You have access to {accessibleBotCount} bot(s).
         </p>
         <p className="text-sm text-[#038a71] mt-1">
           Currently viewing: {currentBotName}

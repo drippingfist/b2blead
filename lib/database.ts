@@ -620,25 +620,23 @@ export async function getDashboardMetrics(
 
   currentResponseTimeQuery = currentResponseTimeQuery.not("mean_response_time", "is", null)
   previousResponseTimeQuery = previousResponseTimeQuery.not("mean_response_time", "is", null)
-
-  // Add filters for non-null response times
   currentGlobalResponseTimeQuery = currentGlobalResponseTimeQuery.not("mean_response_time", "is", null)
   previousGlobalResponseTimeQuery = previousGlobalResponseTimeQuery.not("mean_response_time", "is", null)
 
-  // Execute all queries
+  // Execute all queries in parallel
   const [
     { data: currentThreads },
     { count: currentCallbacks },
     { count: currentCallbackThreads },
-    { data: currentSentimentData },
-    { data: currentResponseTimeData },
+    { data: currentSentiment },
+    { data: currentResponseTime },
     { count: previousThreads },
     { count: previousCallbacks },
     { count: previousCallbackThreads },
-    { data: previousSentimentData },
-    { data: previousResponseTimeData },
-    { data: currentGlobalResponseTimeData },
-    { data: previousGlobalResponseTimeData },
+    { data: previousSentiment },
+    { data: previousResponseTime },
+    { data: currentGlobalResponseTime },
+    { data: previousGlobalResponseTime },
   ] = await Promise.all([
     currentThreadsQuery,
     currentCallbacksQuery,
@@ -654,111 +652,99 @@ export async function getDashboardMetrics(
     previousGlobalResponseTimeQuery,
   ])
 
-  console.log("📊 Current threads with callback=true:", currentCallbackThreads)
-  console.log("📊 Current actual callbacks:", currentCallbacks)
-
-  // Calculate current period metrics
+  // Calculate metrics for current period
   const totalChats = currentThreads?.length || 0
   const totalCallbacks = currentCallbacks || 0
   const callbackPercentage = totalChats > 0 ? ((currentCallbackThreads || 0) / totalChats) * 100 : 0
+  const droppedCallbacks = Math.max(0, (currentCallbackThreads || 0) - (currentCallbacks || 0))
 
-  const averageSentiment = currentSentimentData?.length
-    ? currentSentimentData.reduce((sum, thread) => sum + (thread.sentiment_score || 0), 0) / currentSentimentData.length
-    : 0
-
-  const averageResponseTime = currentResponseTimeData?.length
-    ? currentResponseTimeData.reduce((sum, thread) => sum + (thread.mean_response_time || 0), 0) /
-      currentResponseTimeData.length
-    : 0
+  // Calculate average sentiment
+  const sentimentValues = currentSentiment?.map((t) => t.sentiment_score).filter((s) => s !== null) as number[]
+  const averageSentiment =
+    sentimentValues && sentimentValues.length > 0
+      ? sentimentValues.reduce((sum, score) => sum + score, 0) / sentimentValues.length
+      : 0
 
   // Calculate sentiment distribution
-  const sentimentDistribution = [1, 2, 3, 4, 5].map((score) => ({
-    score,
-    count: currentSentimentData?.filter((thread) => thread.sentiment_score === score).length || 0,
-  }))
-
-  // Calculate previous period metrics
-  const previousTotalChats = previousThreads || 0
-  const previousTotalCallbacks = previousCallbacks || 0
-  const previousCallbackPercentage =
-    previousTotalChats > 0 ? ((previousCallbackThreads || 0) / previousTotalChats) * 100 : 0
-
-  const previousAverageSentiment = previousSentimentData?.length
-    ? previousSentimentData.reduce((sum, thread) => sum + (thread.sentiment_score || 0), 0) /
-      previousSentimentData.length
-    : 0
-
-  const previousAverageResponseTime = previousResponseTimeData?.length
-    ? previousResponseTimeData.reduce((sum, thread) => sum + (thread.mean_response_time || 0), 0) /
-      previousResponseTimeData.length
-    : 0
-
-  // Calculate global average response times
-  const globalAverageResponseTime = currentGlobalResponseTimeData?.length
-    ? currentGlobalResponseTimeData.reduce((sum, thread) => sum + (thread.mean_response_time || 0), 0) /
-      currentGlobalResponseTimeData.length
-    : 0
-
-  const previousGlobalAverageResponseTime = previousGlobalResponseTimeData?.length
-    ? previousGlobalResponseTimeData.reduce((sum, thread) => sum + (thread.mean_response_time || 0), 0) /
-      previousGlobalResponseTimeData.length
-    : 0
-
-  // Calculate dropped callbacks properly
-  let currentDroppedCallbacks = 0
-  let previousDroppedCallbacks = 0
-
-  // Current period: threads requesting callbacks vs actual callback records
-  const currentThreadsRequestingCallbacks = currentCallbackThreads || 0
-  const currentActualCallbacks = currentCallbacks || 0
-  currentDroppedCallbacks = Math.max(0, currentThreadsRequestingCallbacks - currentActualCallbacks)
-
-  // Previous period: threads requesting callbacks vs actual callback records
-  const previousThreadsRequestingCallbacks = previousCallbackThreads || 0
-  const previousActualCallbacks = previousCallbacks || 0
-  previousDroppedCallbacks = Math.max(0, previousThreadsRequestingCallbacks - previousActualCallbacks)
-
-  console.log("📊 SIMPLIFIED CALCULATION:")
-  console.log("📊 Current threads requesting callbacks:", currentThreadsRequestingCallbacks)
-  console.log("📊 Current actual callback records:", currentActualCallbacks)
-  console.log("📊 Current dropped callbacks:", currentDroppedCallbacks)
-
-  console.log("📊 Final metrics:", {
-    totalChats,
-    totalCallbacks,
-    callbackPercentage,
-    droppedCallbacks: currentDroppedCallbacks,
+  const sentimentDistribution = [1, 2, 3, 4, 5].map((score) => {
+    const count = sentimentValues?.filter((s) => Math.round(s) === score).length || 0
+    return { score, count }
   })
+
+  // Calculate average response time
+  const responseTimeValues = currentResponseTime
+    ?.map((t) => t.mean_response_time)
+    .filter((rt) => rt !== null) as number[]
+  const averageResponseTime =
+    responseTimeValues && responseTimeValues.length > 0
+      ? responseTimeValues.reduce((sum, time) => sum + time, 0) / responseTimeValues.length
+      : 0
+
+  // Calculate global average response time
+  const globalResponseTimeValues = currentGlobalResponseTime
+    ?.map((t) => t.mean_response_time)
+    .filter((rt) => rt !== null) as number[]
+  const globalAverageResponseTime =
+    globalResponseTimeValues && globalResponseTimeValues.length > 0
+      ? globalResponseTimeValues.reduce((sum, time) => sum + time, 0) / globalResponseTimeValues.length
+      : 0
+
+  // Calculate metrics for previous period
+  const prevSentimentValues = previousSentiment?.map((t) => t.sentiment_score).filter((s) => s !== null) as number[]
+  const prevAverageSentiment =
+    prevSentimentValues && prevSentimentValues.length > 0
+      ? prevSentimentValues.reduce((sum, score) => sum + score, 0) / prevSentimentValues.length
+      : 0
+
+  const prevResponseTimeValues = previousResponseTime
+    ?.map((t) => t.mean_response_time)
+    .filter((rt) => rt !== null) as number[]
+  const prevAverageResponseTime =
+    prevResponseTimeValues && prevResponseTimeValues.length > 0
+      ? prevResponseTimeValues.reduce((sum, time) => sum + time, 0) / prevResponseTimeValues.length
+      : 0
+
+  const prevGlobalResponseTimeValues = previousGlobalResponseTime
+    ?.map((t) => t.mean_response_time)
+    .filter((rt) => rt !== null) as number[]
+  const prevGlobalAverageResponseTime =
+    prevGlobalResponseTimeValues && prevGlobalResponseTimeValues.length > 0
+      ? prevGlobalResponseTimeValues.reduce((sum, time) => sum + time, 0) / prevGlobalResponseTimeValues.length
+      : 0
+
+  const prevCallbackPercentage = previousThreads > 0 ? ((previousCallbackThreads || 0) / previousThreads) * 100 : 0
+  const prevDroppedCallbacks = Math.max(0, (previousCallbackThreads || 0) - (previousCallbacks || 0))
+
+  console.log("📊 getDashboardMetrics: Calculation complete")
 
   return {
     totalChats,
     totalCallbacks,
     callbackPercentage,
-    droppedCallbacks: currentDroppedCallbacks,
+    droppedCallbacks,
     averageSentiment,
     averageResponseTime,
     globalAverageResponseTime,
     sentimentDistribution,
     previousPeriodComparison: {
-      totalChats: previousTotalChats,
-      totalCallbacks: previousTotalCallbacks,
-      callbackPercentage: previousCallbackPercentage,
-      droppedCallbacks: previousDroppedCallbacks,
-      averageSentiment: previousAverageSentiment,
-      averageResponseTime: previousAverageResponseTime,
-      globalAverageResponseTime: previousGlobalAverageResponseTime,
+      totalChats: previousThreads || 0,
+      totalCallbacks: previousCallbacks || 0,
+      callbackPercentage: prevCallbackPercentage,
+      droppedCallbacks: prevDroppedCallbacks,
+      averageSentiment: prevAverageSentiment,
+      averageResponseTime: prevAverageResponseTime,
+      globalAverageResponseTime: prevGlobalAverageResponseTime,
     },
   }
 }
 
-// Export the getChatMetrics function
 export async function getChatMetrics(
   botShareName?: string | null,
   period: "today" | "last7days" | "last30days" | "alltime" | "custom" = "last30days",
 ) {
   console.log("📊 getChatMetrics: Starting calculation for bot:", botShareName, "period:", period)
 
-  // Calculate date range based on period
+  // Calculate date ranges for current and previous periods
   const now = new Date()
   let currentStartDate: string | null = null
   let previousStartDate: string | null = null
@@ -808,8 +794,8 @@ export async function getChatMetrics(
   }
 
   // Build current period queries
-  let currentThreadsQuery = supabase.from("threads").select("*")
-  let currentMessagesQuery = supabase.from("messages").select("*")
+  let currentThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
+  let currentMessagesQuery = supabase.from("messages").select("*", { count: "exact", head: true })
 
   // Build previous period queries
   let previousThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
@@ -818,10 +804,8 @@ export async function getChatMetrics(
   // Apply bot filter if provided
   if (botShareName) {
     currentThreadsQuery = currentThreadsQuery.eq("bot_share_name", botShareName)
-    // Fix: Use bot_share_name instead of typebot_id for messages
     currentMessagesQuery = currentMessagesQuery.eq("bot_share_name", botShareName)
     previousThreadsQuery = previousThreadsQuery.eq("bot_share_name", botShareName)
-    // Fix: Use bot_share_name instead of typebot_id for messages
     previousMessagesQuery = previousMessagesQuery.eq("bot_share_name", botShareName)
   }
 
@@ -839,37 +823,59 @@ export async function getChatMetrics(
       .lte("created_at", previousEndDate)
   }
 
-  // Execute all queries
-  const [{ data: currentThreads }, { data: currentMessages }, { count: previousThreads }, { count: previousMessages }] =
-    await Promise.all([currentThreadsQuery, currentMessagesQuery, previousThreadsQuery, previousMessagesQuery])
+  // Execute all queries in parallel
+  const [
+    { count: currentThreadsCount },
+    { count: currentMessagesCount },
+    { count: previousThreadsCount },
+    { count: previousMessagesCount },
+  ] = await Promise.all([currentThreadsQuery, currentMessagesQuery, previousThreadsQuery, previousMessagesQuery])
 
-  // Calculate current period metrics
-  const totalThreads = currentThreads?.length || 0
-  const totalMessages = currentMessages?.length || 0
+  // Calculate metrics
+  const totalThreads = currentThreadsCount || 0
+  const totalMessages = currentMessagesCount || 0
   const messagesPerThread = totalThreads > 0 ? totalMessages / totalThreads : 0
 
-  // Calculate previous period metrics
-  const previousTotalThreads = previousThreads || 0
-  const previousTotalMessages = previousMessages || 0
-  const previousMessagesPerThread = previousTotalThreads > 0 ? previousTotalMessages / previousTotalThreads : 0
+  const prevTotalThreads = previousThreadsCount || 0
+  const prevTotalMessages = previousMessagesCount || 0
+  const prevMessagesPerThread = prevTotalThreads > 0 ? prevTotalMessages / prevTotalThreads : 0
 
-  console.log("📊 Chat metrics:", {
-    totalThreads,
-    totalMessages,
-    messagesPerThread,
-    previousTotalThreads,
-    previousTotalMessages,
-    previousMessagesPerThread,
-  })
+  console.log("📊 getChatMetrics: Calculation complete")
 
   return {
     totalThreads,
     totalMessages,
     messagesPerThread,
     previousPeriodComparison: {
-      totalThreads: previousTotalThreads,
-      totalMessages: previousTotalMessages,
-      messagesPerThread: previousMessagesPerThread,
+      totalThreads: prevTotalThreads,
+      totalMessages: prevTotalMessages,
+      messagesPerThread: prevMessagesPerThread,
     },
   }
+}
+
+export async function updateThreadStarred(threadId: string, starred: boolean): Promise<boolean> {
+  console.log("⭐ updateThreadStarred:", threadId, starred)
+
+  const { error } = await supabase.from("threads").update({ starred }).eq("id", threadId)
+
+  if (error) {
+    console.error("❌ Error updating thread starred status:", error)
+    return false
+  }
+
+  return true
+}
+
+export async function updateMessageStarred(messageId: string, starred: boolean): Promise<boolean> {
+  console.log("⭐ updateMessageStarred:", messageId, starred)
+
+  const { error } = await supabase.from("messages").update({ starred }).eq("id", messageId)
+
+  if (error) {
+    console.error("❌ Error updating message starred status:", error)
+    return false
+  }
+
+  return true
 }
