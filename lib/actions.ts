@@ -75,12 +75,20 @@ export async function signUp(prevState: any, formData: FormData) {
   }
 }
 
+// Update the signOut function to ensure proper redirection
 export async function signOut() {
   const cookieStore = cookies()
   const supabase = createServerActionClient({ cookies: () => cookieStore })
 
-  await supabase.auth.signOut()
-  redirect("/auth/login")
+  try {
+    await supabase.auth.signOut()
+    // Make sure we're redirecting to the login page after successful logout
+    return redirect("/auth/login")
+  } catch (error) {
+    console.error("Error during sign out:", error)
+    // Even if there's an error, redirect to login
+    return redirect("/auth/login")
+  }
 }
 
 // New server action to refresh sentiment analysis

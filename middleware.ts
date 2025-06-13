@@ -1,6 +1,7 @@
 import { updateSession } from "@/lib/supabase/middleware"
 import type { NextRequest } from "next/server"
 
+// Add a check for auth session in the middleware
 export async function middleware(request: NextRequest) {
   // Store the full URL that the user was trying to access
   const requestUrl = new URL(request.url)

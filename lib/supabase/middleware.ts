@@ -1,43 +1,36 @@
+// Make sure the updateSession function properly handles session state
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
-import { NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 
-import type { NextRequest } from "next/server"
+export async function updateSession(request: NextRequest) {
+  try {
+    // Create authenticated Supabase Client
+    const supabase = createMiddlewareClient({ request, response: NextResponse.next() })
 
-export async function middleware(req: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
-  await supabase.auth.getSession()
-  return res
-}
+    // Refresh session if expired - this will set the cookie
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
 
-export async function updateSession(req: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
+    // If no session and trying to access protected route, redirect to login
+    const requestUrl = new URL(request.url)
+    const isAuthRoute = requestUrl.pathname.startsWith("/auth/")
+    const isApiRoute = requestUrl.pathname.startsWith("/api/")
+    const isRootRoute = requestUrl.pathname === "/"
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+    if (!session && !isAuthRoute && !isApiRoute && !isRootRoute) {
+      return NextResponse.redirect(new URL("/auth/login", request.url))
+    }
 
-  const publicRoutes = ["/auth/login", "/auth/sign-up", "/auth/forgot-password", "/auth/magic-link"]
+    // If session exists but on auth route (except callbacks), redirect to dashboard
+    if (session && isAuthRoute && !requestUrl.pathname.includes("/callback")) {
+      return NextResponse.redirect(new URL("/dashboard", request.url))
+    }
 
-  if (!session && !publicRoutes.includes(req.nextUrl.pathname)) {
-    const redirectUrl = req.nextUrl.clone()
-    redirectUrl.pathname = "/auth/login"
-    redirectUrl.searchParams.set(`redirect_to`, req.nextUrl.pathname)
-    return NextResponse.redirect(redirectUrl)
+    return NextResponse.next()
+  } catch (e) {
+    // If there's an error, redirect to login as a fallback
+    console.error("Auth middleware error:", e)
+    return NextResponse.redirect(new URL("/auth/login", request.url))
   }
-
-  const isAuthRoute =
-    req.nextUrl.pathname.startsWith("/auth/login") ||
-    req.nextUrl.pathname.startsWith("/auth/sign-up") ||
-    req.nextUrl.pathname.startsWith("/auth/forgot-password") ||
-    req.nextUrl.pathname.startsWith("/auth/magic-link") ||
-    req.nextUrl.pathname.startsWith("/auth/reset-password") ||
-    req.nextUrl.pathname.startsWith("/auth/set-password") ||
-    req.nextUrl.pathname.startsWith("/auth/accept-invite") ||
-    req.nextUrl.pathname.startsWith("/auth/setup") ||
-    req.nextUrl.pathname.startsWith("/auth/test") ||
-    req.nextUrl.pathname === "/auth/callback"
-
-  return res
 }

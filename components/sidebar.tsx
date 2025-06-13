@@ -275,7 +275,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               {userAccess.role && <p className="text-xs text-[#038a71] capitalize">{userAccess.role}</p>}
             </div>
             <form action={signOut}>
-              <button type="submit" className="text-[#616161] hover:text-[#212121] transition-colors">
+              <button
+                type="submit"
+                className="text-[#616161] hover:text-[#212121] transition-colors"
+                aria-label="Sign out"
+              >
                 <LogOut className="h-4 w-4" />
               </button>
             </form>
