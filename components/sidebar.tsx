@@ -274,15 +274,24 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <p className="text-xs text-[#616161] truncate">{userEmail || "user@example.com"}</p>
               {userAccess.role && <p className="text-xs text-[#038a71] capitalize">{userAccess.role}</p>}
             </div>
-            <form action={signOut}>
-              <button
-                type="submit"
-                className="text-[#616161] hover:text-[#212121] transition-colors"
-                aria-label="Sign out"
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
-            </form>
+            <button
+              onClick={async () => {
+                // Clear local storage first to prevent stale UI
+                localStorage.removeItem("selectedBot")
+
+                // Show loading indicator or disable UI interactions here if needed
+
+                // Redirect to login page immediately
+                window.location.href = "/auth/login"
+
+                // Then trigger the server-side logout (this happens in background)
+                await signOut()
+              }}
+              className="text-[#616161] hover:text-[#212121] transition-colors"
+              aria-label="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </div>
