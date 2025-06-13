@@ -1,6 +1,7 @@
 "use server"
 
 import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
+import { createClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 
@@ -125,7 +126,7 @@ export async function refreshSentimentAnalysis(threadId: string) {
   }
 }
 
-// New server action to send magic link
+// Updated to use implicit flow instead of PKCE
 export async function sendMagicLink(prevState: any, formData: FormData) {
   // Check if formData is valid
   if (!formData) {
@@ -139,23 +140,26 @@ export async function sendMagicLink(prevState: any, formData: FormData) {
     return { error: "Email is required" }
   }
 
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
-
   try {
-    // Send magic link - Supabase handles everything
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.toString(),
+    // Create a new Supabase client with implicit flow
+    const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+      auth: { flowType: "implicit" },
+    })
+
+    // Send password reset email
+    const { error } = await supabase.auth.resetPasswordForEmail(email.toString(), {
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`,
     })
 
     if (error) {
-      console.error("Magic link error:", error.message)
+      console.error("Password reset error:", error.message)
+      return { error: error.message }
     }
 
-    // Always return success message to prevent email enumeration
-    return { success: "If an account with that email exists, we've sent you a magic link." }
+    // Return success message
+    return { success: "If an account with that email exists, we've sent you a password reset link." }
   } catch (error) {
-    console.error("Magic link error:", error)
-    return { success: "If an account with that email exists, we've sent you a magic link." }
+    console.error("Password reset error:", error)
+    return { error: "An unexpected error occurred. Please try again." }
   }
 }

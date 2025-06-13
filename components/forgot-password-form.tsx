@@ -9,6 +9,7 @@ import { Loader2, Check } from "lucide-react"
 import Link from "next/link"
 
 export default function ForgotPasswordForm() {
+  // We're still using sendMagicLink but the function now sends a password reset email
   const [state, action, isPending] = useActionState(sendMagicLink, null)
 
   if (state?.success) {
@@ -20,10 +21,10 @@ export default function ForgotPasswordForm() {
           </div>
           <h1 className="text-xl font-semibold text-[#212121] mb-2">Check Your Email</h1>
           <p className="text-[#616161] mb-4">
-            If an account with that email exists, we've sent you a magic link to sign in.
+            If an account with that email exists, we've sent you a password reset link.
           </p>
           <p className="text-sm text-[#616161] mb-6">
-            Please check your email and click the link to sign in instantly.
+            Please check your email and click the link to reset your password.
           </p>
           <Link
             href="/auth/login"
@@ -39,8 +40,8 @@ export default function ForgotPasswordForm() {
   return (
     <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">
       <div className="text-center mb-6">
-        <h1 className="text-2xl font-semibold text-[#212121] mb-2">Get Magic Link</h1>
-        <p className="text-[#616161]">Enter your email address and we'll send you a magic link to sign in instantly.</p>
+        <h1 className="text-2xl font-semibold text-[#212121] mb-2">Request Password Reset</h1>
+        <p className="text-[#616161]">Enter your email address and we'll send you a password reset link.</p>
       </div>
 
       {state?.error && (
@@ -70,10 +71,10 @@ export default function ForgotPasswordForm() {
           {isPending ? (
             <>
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              Sending magic link...
+              Sending reset link...
             </>
           ) : (
-            "Send Magic Link"
+            "Request Password Reset"
           )}
         </Button>
       </form>

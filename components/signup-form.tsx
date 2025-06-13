@@ -1,86 +1,121 @@
 "use client"
 
-import { useActionState } from "react"
-import { useFormStatus } from "react-dom"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Loader2 } from "lucide-react"
-import Link from "next/link"
-import { signUp } from "@/lib/actions"
 import { useState } from "react"
+import { useRouter } from "next/router"
+import Link from "next/link"
 
-// Update the SignUpForm component to accept initialEmail
-export default function SignUpForm({ initialEmail = "" }) {
-  // Initialize with null as the initial state
-  const [state, formAction] = useActionState(signUp, null)
-  const [email, setEmail] = useState(initialEmail)
+const SignupForm = () => {
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
+  const router = useRouter()
 
-  const SubmitButton = () => {
-    const { pending } = useFormStatus()
-    return (
-      <Button type="submit" disabled={pending}>
-        {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-        Sign Up
-      </Button>
-    )
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match")
+      return
+    }
+
+    setLoading(true)
+    setError("")
+
+    try {
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        // Signup successful, redirect to login page or home page
+        router.push("/auth/login")
+      } else {
+        setError(data.message || "Signup failed")
+      }
+    } catch (err) {
+      setError("An unexpected error occurred")
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="w-full space-y-6">
-      <div className="bg-white p-6 md:p-8 shadow-md rounded-lg border border-[#e0e0e0]">
-        <h2 className="text-xl md:text-2xl font-semibold mb-6 text-[#212121]">Create an account</h2>
-
-        <form action={formAction} className="space-y-6">
-          {state?.error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">{state.error}</div>
-          )}
-
-          {state?.success && (
-            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded text-sm">
-              {state.success}
-            </div>
-          )}
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="email" className="block text-sm font-medium text-[#616161]">
-                Email
-              </label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="you@example.com"
-                required
-                className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-12"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="password" className="block text-sm font-medium text-[#616161]">
-                Password
-              </label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                required
-                className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-12"
-              />
-            </div>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+      <div className="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4 w-full max-w-md">
+        <h2 className="text-2xl font-bold mb-6 text-center">Create an Account</h2>
+        {error && <div className="text-red-500 text-sm mb-4">{error}</div>}
+        <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email">
+              Email
+            </label>
+            <input
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              id="email"
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
           </div>
-
-          <SubmitButton />
+          <div className="mb-4">
+            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
+              Password
+            </label>
+            <input
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              id="password"
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+          <div className="mb-6">
+            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="confirmPassword">
+              Confirm Password
+            </label>
+            <input
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              id="confirmPassword"
+              type="password"
+              placeholder="Confirm Password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <button
+              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+              type="submit"
+              disabled={loading}
+            >
+              {loading ? "Signing up..." : "Sign Up"}
+            </button>
+          </div>
         </form>
-      </div>
-
-      <div className="text-center text-[#616161] text-sm">
-        Already have an account?{" "}
-        <Link href="/auth/login" className="text-[#038a71] hover:underline">
-          Sign in
-        </Link>
+        <div className="text-center mt-4">
+          <p className="text-sm text-gray-600">
+            Already have an account?{" "}
+            <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-500">
+              Sign in
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   )
 }
+
+export default SignupForm

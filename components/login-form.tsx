@@ -10,7 +10,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 
-export default function LoginForm() {
+export default function LoginForm({ isHidden = false }) {
   const router = useRouter()
   const [state, action, isPending] = useActionState(signIn, null)
   const [showPassword, setShowPassword] = useState(false)
@@ -20,6 +20,10 @@ export default function LoginForm() {
       router.push("/")
     }
   }, [state?.success, router])
+
+  if (isHidden) {
+    return null
+  }
 
   return (
     <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">
@@ -89,8 +93,8 @@ export default function LoginForm() {
       <div className="text-center mt-6 pt-6 border-t border-[#e0e0e0]">
         <p className="text-sm text-[#616161]">
           Forgot your password?{" "}
-          <Link href="/auth/magic-link" className="text-[#038a71] hover:text-[#038a71]/80 hover:underline">
-            Get a magic link
+          <Link href="/auth/forgot-password" className="text-[#038a71] hover:text-[#038a71]/80 hover:underline">
+            Reset Password
           </Link>
         </p>
       </div>
