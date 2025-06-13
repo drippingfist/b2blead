@@ -7,11 +7,14 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get("code")
   const setup = requestUrl.searchParams.get("setup")
   const type = requestUrl.searchParams.get("type")
+  // Get the redirect_to parameter if it exists
+  const redirectTo = requestUrl.searchParams.get("redirect_to")
 
   console.log("🔗 Auth callback received:", {
     code: !!code,
     setup,
     type,
+    redirectTo,
     fullUrl: request.url,
     searchParams: Object.fromEntries(requestUrl.searchParams),
   })
@@ -49,6 +52,12 @@ export async function GET(request: NextRequest) {
           console.log("🔧 New user, redirecting to setup")
           return NextResponse.redirect(new URL("/auth/setup", request.url))
         }
+      }
+
+      // If we have a redirect_to parameter, use it
+      if (redirectTo) {
+        console.log("🔄 Redirecting to original URL:", redirectTo)
+        return NextResponse.redirect(new URL(redirectTo, request.url))
       }
 
       // Regular login, redirect to dashboard

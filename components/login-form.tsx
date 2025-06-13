@@ -7,19 +7,29 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2, Eye, EyeOff } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useState } from "react"
 
 export default function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectTo = searchParams.get("redirect_to") || "/"
   const [state, action, isPending] = useActionState(signIn, null)
   const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
     if (state?.success) {
-      router.push("/")
+      // If login is successful, redirect to the original URL if available
+      router.push(redirectTo)
     }
-  }, [state?.success, router])
+  }, [state?.success, router, redirectTo])
+
+  // Create a wrapped action that includes the redirect_to parameter
+  const handleSubmit = async (formData: FormData) => {
+    // Add the redirect_to parameter to the form data
+    formData.append("redirect_to", redirectTo)
+    return action(formData)
+  }
 
   return (
     <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">
@@ -32,7 +42,7 @@ export default function LoginForm() {
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 text-sm">{state.error}</div>
       )}
 
-      <form action={action} className="space-y-4">
+      <form action={handleSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="email">Email Address</Label>
           <Input
@@ -89,7 +99,10 @@ export default function LoginForm() {
       <div className="text-center mt-6 pt-6 border-t border-[#e0e0e0]">
         <p className="text-sm text-[#616161]">
           Forgot your password?{" "}
-          <Link href="/auth/magic-link" className="text-[#038a71] hover:text-[#038a71]/80 hover:underline">
+          <Link
+            href={`/auth/magic-link${redirectTo !== "/" ? `?redirect_to=${encodeURIComponent(redirectTo)}` : ""}`}
+            className="text-[#038a71] hover:text-[#038a71]/80 hover:underline"
+          >
             Get a magic link
           </Link>
         </p>
