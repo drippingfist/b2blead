@@ -1,64 +1,116 @@
 "use client"
 
 import { useState } from "react"
-import { useFormState } from "react-dom"
 import { sendMagicLink } from "@/lib/actions"
-import { useSearchParams } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Loader2, Check } from "lucide-react"
+import Link from "next/link"
 
-export default function MagicLinkForm() {
-  const [isLoading, setIsLoading] = useState(false)
-  const searchParams = useSearchParams()
-  const redirectTo = searchParams.get("redirect_to") || "/"
+// Accept redirectTo as a prop instead of using useSearchParams
+export default function MagicLinkForm({ redirectTo = "/" }: { redirectTo?: string }) {
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [formState, setFormState] = useState<{
+    success?: boolean
+    error?: string
+  }>({})
 
-  const [state, formAction] = useFormState(sendMagicLink, {})
+  async function handleSubmit(formData: FormData) {
+    setIsSubmitting(true)
 
-  const handleSubmit = async (formData: FormData) => {
-    setIsLoading(true)
-    // The actual submission is handled by the formAction
+    try {
+      const email = formData.get("email") as string
+      const result = await sendMagicLink(email, redirectTo)
+
+      if (result.error) {
+        setFormState({ error: result.error })
+      } else {
+        setFormState({ success: true })
+      }
+    } catch (error) {
+      setFormState({ error: "An unexpected error occurred. Please try again." })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  if (formState.success) {
+    return (
+      <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Check className="h-8 w-8 text-green-600" />
+          </div>
+          <h1 className="text-xl font-semibold text-[#212121] mb-2">Check Your Email</h1>
+          <p className="text-[#616161] mb-4">
+            If an account with that email exists, we've sent you a magic link to sign in.
+          </p>
+          <p className="text-sm text-[#616161] mb-6">
+            Please check your email and click the link to sign in instantly.
+          </p>
+          <Link
+            href="/auth/login"
+            className="inline-block bg-[#038a71] hover:bg-[#038a71]/90 text-white px-6 py-2 rounded-md text-sm font-medium"
+          >
+            Back to Sign In
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="bg-white p-8 rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold mb-6 text-center">Magic Link</h2>
-      <p className="mb-4 text-gray-600 text-center">
-        Enter your email address and we&apos;ll send you a magic link to sign in.
-      </p>
+    <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">
+      <div className="text-center mb-6">
+        <h1 className="text-2xl font-semibold text-[#212121] mb-2">Get Magic Link</h1>
+        <p className="text-[#616161]">Enter your email address and we'll send you a magic link to sign in instantly.</p>
+      </div>
 
-      <form action={formAction} onSubmit={handleSubmit} className="space-y-4">
-        {/* Hidden field to pass the redirect_to parameter */}
-        <input type="hidden" name="redirect_to" value={redirectTo} />
+      {formState.error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 text-sm">
+          {formState.error}
+        </div>
+      )}
 
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-            Email Address
-          </label>
-          <input
+      <form action={handleSubmit} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="email">Email Address</Label>
+          <Input
             id="email"
             name="email"
             type="email"
+            autoComplete="email"
             required
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-            placeholder="you@example.com"
+            placeholder="Enter your email address"
+            className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
+            disabled={isSubmitting}
           />
         </div>
 
-        <button
+        <Button
           type="submit"
-          disabled={isLoading}
-          className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+          disabled={isSubmitting}
+          className="w-full bg-[#038a71] hover:bg-[#038a71]/90 text-white py-3 text-base font-medium h-12"
         >
-          {isLoading ? "Sending..." : "Send Magic Link"}
-        </button>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              Sending magic link...
+            </>
+          ) : (
+            "Send Magic Link"
+          )}
+        </Button>
       </form>
 
-      {state?.error && <div className="mt-4 text-sm text-red-600">{state.error}</div>}
-
-      {state?.success && <div className="mt-4 text-sm text-green-600">{state.success}</div>}
-
-      <div className="mt-6 text-center">
-        <a href="/auth/login" className="text-sm text-green-600 hover:text-green-500">
-          Back to login
-        </a>
+      <div className="text-center mt-6 pt-6 border-t border-[#e0e0e0]">
+        <p className="text-sm text-[#616161]">
+          Remember your password?{" "}
+          <Link href="/auth/login" className="text-[#038a71] hover:text-[#038a71]/80 hover:underline">
+            Sign in with password
+          </Link>
+        </p>
       </div>
     </div>
   )
