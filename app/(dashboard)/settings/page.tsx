@@ -83,9 +83,13 @@ export default function SettingsPage() {
   const [botSettings, setBotSettings] = useState<{
     bot_share_name: string
     client_email: string
+    transcript_email: string
+    callback_email: string
   }>({
     bot_share_name: "",
     client_email: "",
+    transcript_email: "monthly", // Default value
+    callback_email: "monthly", // Default value
   })
   const [botSettingsLoading, setBotSettingsLoading] = useState(false)
   const [botSettingsSaving, setBotSettingsSaving] = useState(false)
@@ -171,14 +175,19 @@ export default function SettingsPage() {
         // Get bot details and set initial state
         let userTimezone = "Asia/Bangkok"
         let clientNameValue = ""
-        let botSettingsValue = { bot_share_name: "", client_email: "" }
+        let botSettingsValue = {
+          bot_share_name: "",
+          client_email: "",
+          transcript_email: "monthly",
+          callback_email: "monthly",
+        }
 
         if (botUser?.bot_share_name) {
           console.log("⚙️ Settings Page: Loading bot details for:", botUser.bot_share_name)
 
           const { data: bot, error: botError } = await supabase
             .from("bots")
-            .select("timezone, client_name, client_email")
+            .select("timezone, client_name, client_email, transcript_email, callback_email")
             .eq("bot_share_name", botUser.bot_share_name)
             .single()
 
@@ -191,6 +200,8 @@ export default function SettingsPage() {
               botSettingsValue = {
                 bot_share_name: botUser.bot_share_name,
                 client_email: bot.client_email || "",
+                transcript_email: bot.transcript_email || "monthly",
+                callback_email: bot.callback_email || "monthly",
               }
             }
           }
@@ -283,6 +294,16 @@ export default function SettingsPage() {
     }
   }
 
+  const handleTranscriptChange = (value: string) => {
+    setBotSettings((prev) => ({ ...prev, transcript_email: value }))
+    if (success) setSuccess(false)
+  }
+
+  const handleCallbackChange = (value: string) => {
+    setBotSettings((prev) => ({ ...prev, callback_email: value }))
+    if (success) setSuccess(false)
+  }
+
   const handleSaveBotSettings = async () => {
     try {
       setBotSettingsSaving(true)
@@ -290,7 +311,11 @@ export default function SettingsPage() {
 
       const { error: updateError } = await supabase
         .from("bots")
-        .update({ client_email: botSettings.client_email })
+        .update({
+          client_email: botSettings.client_email,
+          transcript_email: botSettings.transcript_email,
+          callback_email: botSettings.callback_email,
+        })
         .eq("bot_share_name", botSettings.bot_share_name)
 
       if (updateError) {
@@ -345,11 +370,15 @@ export default function SettingsPage() {
         throw new Error(updateError.message)
       }
 
-      // Update timezone only for the currently selected bot
+      // Update timezone and email settings for the currently selected bot
       if (selectedBot) {
         const { error: botUpdateError } = await supabase
           .from("bots")
-          .update({ timezone: userData.timezone })
+          .update({
+            timezone: userData.timezone,
+            transcript_email: botSettings.transcript_email,
+            callback_email: botSettings.callback_email,
+          })
           .eq("bot_share_name", selectedBot)
 
         if (botUpdateError) {
@@ -371,7 +400,11 @@ export default function SettingsPage() {
 
           const { error: botsUpdateError } = await supabase
             .from("bots")
-            .update({ timezone: userData.timezone })
+            .update({
+              timezone: userData.timezone,
+              transcript_email: botSettings.transcript_email,
+              callback_email: botSettings.callback_email,
+            })
             .in("bot_share_name", botShareNames)
 
           if (botsUpdateError) {
@@ -626,9 +659,26 @@ export default function SettingsPage() {
                 <div className="flex items-center space-x-2">
                   <input
                     type="radio"
+                    id="chat-never"
+                    name="chat-transcripts"
+                    value="never"
+                    checked={botSettings.transcript_email === "never"}
+                    onChange={() => handleTranscriptChange("never")}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="chat-never" className="text-sm text-[#212121]">
+                    Never
+                  </label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="radio"
                     id="chat-daily"
                     name="chat-transcripts"
                     value="daily"
+                    checked={botSettings.transcript_email === "daily"}
+                    onChange={() => handleTranscriptChange("daily")}
                     className="rounded border-gray-300"
                   />
                   <label htmlFor="chat-daily" className="text-sm text-[#212121]">
@@ -642,6 +692,8 @@ export default function SettingsPage() {
                     id="chat-weekly"
                     name="chat-transcripts"
                     value="weekly"
+                    checked={botSettings.transcript_email === "weekly"}
+                    onChange={() => handleTranscriptChange("weekly")}
                     className="rounded border-gray-300"
                   />
                   <label htmlFor="chat-weekly" className="text-sm text-[#212121]">
@@ -655,6 +707,8 @@ export default function SettingsPage() {
                     id="chat-monthly"
                     name="chat-transcripts"
                     value="monthly"
+                    checked={botSettings.transcript_email === "monthly"}
+                    onChange={() => handleTranscriptChange("monthly")}
                     className="rounded border-gray-300"
                   />
                   <label htmlFor="chat-monthly" className="text-sm text-[#212121]">
@@ -671,9 +725,26 @@ export default function SettingsPage() {
                 <div className="flex items-center space-x-2">
                   <input
                     type="radio"
+                    id="callbacks-never"
+                    name="callbacks-report"
+                    value="never"
+                    checked={botSettings.callback_email === "never"}
+                    onChange={() => handleCallbackChange("never")}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="callbacks-never" className="text-sm text-[#212121]">
+                    Never
+                  </label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="radio"
                     id="callbacks-weekly"
                     name="callbacks-report"
                     value="weekly"
+                    checked={botSettings.callback_email === "weekly"}
+                    onChange={() => handleCallbackChange("weekly")}
                     className="rounded border-gray-300"
                   />
                   <label htmlFor="callbacks-weekly" className="text-sm text-[#212121]">
@@ -687,6 +758,8 @@ export default function SettingsPage() {
                     id="callbacks-monthly"
                     name="callbacks-report"
                     value="monthly"
+                    checked={botSettings.callback_email === "monthly"}
+                    onChange={() => handleCallbackChange("monthly")}
                     className="rounded border-gray-300"
                   />
                   <label htmlFor="callbacks-monthly" className="text-sm text-[#212121]">
