@@ -431,17 +431,17 @@ export default function ChatsPageClient() {
   const getTimePeriodLabel = () => {
     switch (timePeriod) {
       case "today":
-        return "today"
+        return "from today"
       case "last7days":
-        return "the last 7 days"
+        return "from the last 7 days"
       case "last30days":
-        return "the last 30 days"
+        return "from the last 30 days"
       case "last90days":
-        return "the last 90 days"
+        return "from the last 90 days"
       case "alltime":
-        return "all time"
+        return "from all time"
       default:
-        return "the last 30 days"
+        return "from the last 30 days"
     }
   }
 
@@ -579,7 +579,7 @@ export default function ChatsPageClient() {
         {/* Dynamic Subheading */}
         {(botData || (!selectedBot && isSuperAdmin)) && (
           <p className="text-sm text-[#616161]">
-            Showing threads on <span className="font-medium">{botData?.client_name || "All Bots"}</span> in{" "}
+            Showing threads on <span className="font-medium">{botData?.client_name || "All Bots"}</span>{" "}
             {getTimePeriodLabel()}
             {getFilterLabel()} ({totalCount} threads) {botData?.timezone && <span>[Timezone: {botData.timezone}]</span>}
           </p>
