@@ -133,7 +133,7 @@ export async function refreshSentimentAnalysis(threadId: string) {
   }
 }
 
-// Fix the sendMagicLink function to work with the updated form
+// Fix the sendMagicLink function to use the standard server action pattern
 export async function sendMagicLink(prevState: any, formData: FormData) {
   // Check if formData is valid
   if (!formData) {
