@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase/client"
+import { getSupabaseClient } from "@/lib/supabase/client"
 import Loading from "@/components/loading"
 
 interface AuthGuardProps {
@@ -18,6 +18,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
 
   useEffect(() => {
     let isMounted = true
+    const supabase = getSupabaseClient()
 
     const checkAuthAndAccess = async () => {
       try {

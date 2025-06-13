@@ -2,6 +2,7 @@
 
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import React from "react"
+import type { Database } from "@/lib/database"
 
 // Check if Supabase environment variables are available
 export const isSupabaseConfigured =
@@ -14,35 +15,18 @@ export const isSupabaseConfigured =
 let lastAuthRequest = 0
 const AUTH_REQUEST_COOLDOWN = 2000 // 2 seconds between auth requests
 
-// Create a singleton instance of the Supabase client for Client Components with enhanced config
-export const supabase = createClientComponentClient({
-  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  options: {
-    auth: {
-      // Reduce auto-refresh frequency to minimize network calls
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true,
-      // Add retry configuration for auth operations
-      retryAttempts: 1, // Reduced from 3 to prevent rate limiting
-      // Increase timeout for slow connections
-      flowType: "implicit",
-    },
-    global: {
-      // Add custom headers for better error tracking
-      headers: {
-        "X-Client-Info": "supabase-js-web",
-      },
-    },
-    // Configure realtime with better error handling
-    realtime: {
-      params: {
-        eventsPerSecond: 1, // Reduced from 2
-      },
-    },
-  },
-})
+// Create a single instance of the Supabase client
+let supabaseInstance: ReturnType<typeof createClientComponentClient<Database>> | null = null
+
+export function getSupabaseClient() {
+  if (!supabaseInstance) {
+    supabaseInstance = createClientComponentClient<Database>()
+  }
+  return supabaseInstance
+}
+
+// For backward compatibility, export the singleton instance as 'supabase'
+export const supabase = getSupabaseClient()
 
 // Rate-limited auth wrapper
 function withRateLimit<T extends any[], R>(fn: (...args: T) => Promise<R>) {
