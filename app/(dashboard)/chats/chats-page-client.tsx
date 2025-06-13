@@ -579,9 +579,9 @@ export default function ChatsPageClient() {
         {/* Dynamic Subheading */}
         {(botData || (!selectedBot && isSuperAdmin)) && (
           <p className="text-sm text-[#616161]">
-            Showing threads on <span className="font-medium">{botData?.client_name || "All Bots"}</span>{" "}
-            {botData?.timezone && <span>[Timezone: {botData.timezone}]</span>} in {getTimePeriodLabel()}
-            {getFilterLabel()} ({totalCount} threads)
+            Showing threads on <span className="font-medium">{botData?.client_name || "All Bots"}</span> in{" "}
+            {getTimePeriodLabel()}
+            {getFilterLabel()} ({totalCount} threads) {botData?.timezone && <span>[Timezone: {botData.timezone}]</span>}
           </p>
         )}
       </div>
