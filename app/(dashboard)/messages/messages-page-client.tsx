@@ -5,7 +5,7 @@ import { MessagesView } from "@/components/messages-view"
 import { getRecentThreadsWithMessages } from "@/lib/message-actions"
 import { useRouter } from "next/navigation"
 import Loading from "@/components/loading"
-import { supabase } from "@/lib/supabase"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 
 interface Bot {
   bot_share_name: string
@@ -36,6 +36,7 @@ export function MessagesPageClient({
   const [botSelectionReady, setBotSelectionReady] = useState(false)
   const router = useRouter()
   const [botData, setBotData] = useState<any>(null)
+  const supabase = createClientComponentClient()
 
   // Initialize bot selection from localStorage (EXACT SAME AS DASHBOARD)
   useEffect(() => {
