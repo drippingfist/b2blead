@@ -14,10 +14,6 @@ export async function updateSession(request: NextRequest) {
       data: { session },
     } = await supabase.auth.getSession()
 
-    // If no session and trying to access protected route, redirect to login
-    const requestUrl = new URL(request.url)
-    const path = requestUrl.pathname
-
     // Define public routes that don't require authentication
     const publicRoutes = [
       "/auth/login",
@@ -28,25 +24,35 @@ export async function updateSession(request: NextRequest) {
       "/auth/callback",
     ]
 
-    // Check if the current path is a public route or starts with /auth/
-    const isAuthRoute = path.startsWith("/auth/")
-    const isApiRoute = path.startsWith("/api/")
-    const isRootRoute = path === "/"
-    const isPublicRoute = publicRoutes.includes(path) || path.includes("/auth/callback")
+    // Get the path from the URL
+    const path = new URL(request.url).pathname
 
     // Special handling for auth callback routes - always allow these
     if (path.includes("/auth/callback")) {
       return response
     }
 
-    if (!session && !isAuthRoute && !isApiRoute && !isRootRoute) {
+    // Check if the current path is a public route
+    const isPublicRoute = publicRoutes.includes(path)
+    const isAuthRoute = path.startsWith("/auth/")
+    const isApiRoute = path.startsWith("/api/")
+    const isRootRoute = path === "/"
+
+    // If no session and trying to access protected route, redirect to login
+    if (!session && !isAuthRoute && !isApiRoute && !isRootRoute && !isPublicRoute) {
       const redirectUrl = new URL("/auth/login", request.url)
       redirectUrl.searchParams.set("redirect_to", path)
       return NextResponse.redirect(redirectUrl)
     }
 
     // If session exists but on auth route (except callbacks), redirect to dashboard
-    if (session && isAuthRoute && !path.includes("/callback") && !path.includes("/accept-invite")) {
+    if (
+      session &&
+      isAuthRoute &&
+      !path.includes("/callback") &&
+      !path.includes("/accept-invite") &&
+      !path.includes("/setup")
+    ) {
       return NextResponse.redirect(new URL("/dashboard", request.url))
     }
 
