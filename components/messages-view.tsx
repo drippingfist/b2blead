@@ -30,9 +30,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 }) => {
   return (
     <div>
-      {/* Placeholder for MessageThread content */}
-      <p>Thread ID: {thread.id}</p>
-      <p>Bot Timezone: {botTimezone || "Not specified"}</p>
       {messages.map((message, index) => {
         const isUser = ["user", "suggested_button", "menu_button"].includes(message.role)
         const isStarred = starredMessages.has(message.id)
