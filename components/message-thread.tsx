@@ -25,9 +25,11 @@ interface MessageThreadProps {
   thread: Thread
   messages: MessageWithThread[]
   callbacks: Callback[]
+  botTimezone?: string // Add this line
 }
 
-export function MessageThread({ thread, messages, callbacks }: MessageThreadProps) {
+export function MessageThread(props: MessageThreadProps) {
+  const { thread, messages, callbacks } = props
   const [isExpanded, setIsExpanded] = useState(false)
 
   const getSentimentEmoji = (sentiment?: number) => {
@@ -190,7 +192,9 @@ export function MessageThread({ thread, messages, callbacks }: MessageThreadProp
                         <span className="text-sm font-medium text-[#212121]">
                           {message.user_name || message.user_email || "User"}
                         </span>
-                        <span className="text-xs text-[#616161]">{formatTimeInTimezone(message.created_at)}</span>
+                        <span className="text-xs text-[#616161]">
+                          {formatTimeInTimezone(message.created_at, props.botTimezone)}
+                        </span>
                       </div>
                       <div className="bg-blue-50 rounded-lg p-3">
                         <p className="text-sm text-[#212121]">{message.user_message}</p>
@@ -210,7 +214,9 @@ export function MessageThread({ thread, messages, callbacks }: MessageThreadProp
                     <div className="flex-1">
                       <div className="flex items-center space-x-2 mb-1">
                         <span className="text-sm font-medium text-[#212121]">Bot</span>
-                        <span className="text-xs text-[#616161]">{formatTimeInTimezone(message.created_at)}</span>
+                        <span className="text-xs text-[#616161]">
+                          {formatTimeInTimezone(message.created_at, props.botTimezone)}
+                        </span>
                         {message.sentiment_analysis && (
                           <span className="text-xs text-[#616161]">
                             {getSentimentEmoji(message.sentiment_analysis)}

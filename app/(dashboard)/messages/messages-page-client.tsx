@@ -5,6 +5,7 @@ import { MessagesView } from "@/components/messages-view"
 import { getRecentThreadsWithMessages } from "@/lib/message-actions"
 import { useRouter } from "next/navigation"
 import Loading from "@/components/loading"
+import { supabase } from "@/lib/supabase"
 
 interface Bot {
   bot_share_name: string
@@ -34,6 +35,7 @@ export function MessagesPageClient({
   const [loading, setLoading] = useState(true)
   const [botSelectionReady, setBotSelectionReady] = useState(false)
   const router = useRouter()
+  const [botData, setBotData] = useState<any>(null)
 
   // Initialize bot selection from localStorage (EXACT SAME AS DASHBOARD)
   useEffect(() => {
@@ -131,7 +133,22 @@ export function MessagesPageClient({
       }
     }
 
+    const loadBotData = async () => {
+      if (selectedBot) {
+        const { data: bot } = await supabase
+          .from("bots")
+          .select("id, bot_share_name, client_name, timezone")
+          .eq("bot_share_name", selectedBot)
+          .single()
+
+        setBotData(bot)
+      } else {
+        setBotData(null)
+      }
+    }
+
     fetchData()
+    loadBotData()
   }, [selectedBot, selectedDate, botSelectionReady])
 
   if (loading || !botSelectionReady) {
@@ -144,6 +161,7 @@ export function MessagesPageClient({
       bots={bots}
       selectedBot={selectedBot}
       selectedDate={selectedDate}
+      botData={botData}
     />
   )
 }
