@@ -647,7 +647,7 @@ export default function ChatsPageClient() {
                       onClick={() => handleSort("created_at")}
                       className="flex items-center hover:text-blue-600 transition-colors"
                     >
-                      Start Time {getSortIndicator("created_at")}
+                      START TIME {getSortIndicator("created_at")}
                     </button>
                   </th>
                   {!selectedBot && isSuperAdmin && (
@@ -656,19 +656,19 @@ export default function ChatsPageClient() {
                         onClick={() => handleSort("bot_share_name")}
                         className="flex items-center hover:text-blue-600 transition-colors"
                       >
-                        Bot {getSortIndicator("bot_share_name")}
+                        BOT {getSortIndicator("bot_share_name")}
                       </button>
                     </th>
                   )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                    Callback
+                    CALLBACK
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                     <button
                       onClick={() => handleSort("sentiment_score")}
                       className="flex items-center hover:text-blue-600 transition-colors"
                     >
-                      Sentiment {getSortIndicator("sentiment_score")}
+                      SENTIMENT {getSortIndicator("sentiment_score")}
                     </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
@@ -676,7 +676,7 @@ export default function ChatsPageClient() {
                       onClick={() => handleSort("message_preview")}
                       className="flex items-center hover:text-blue-600 transition-colors"
                     >
-                      Message Preview {getSortIndicator("message_preview")}
+                      MESSAGE PREVIEW {getSortIndicator("message_preview")}
                     </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
@@ -684,7 +684,7 @@ export default function ChatsPageClient() {
                       onClick={() => handleSort("count")}
                       className="flex items-center hover:text-blue-600 transition-colors"
                     >
-                      Messages {getSortIndicator("count")}
+                      MESSAGES {getSortIndicator("count")}
                     </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
@@ -692,7 +692,7 @@ export default function ChatsPageClient() {
                       onClick={() => handleSort("duration")}
                       className="flex items-center hover:text-blue-600 transition-colors"
                     >
-                      Duration {getSortIndicator("duration")}
+                      DURATION {getSortIndicator("duration")}
                     </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
@@ -700,11 +700,11 @@ export default function ChatsPageClient() {
                       onClick={() => handleSort("mean_response_time")}
                       className="flex items-center hover:text-blue-600 transition-colors"
                     >
-                      Avg. Response Time {getSortIndicator("mean_response_time")}
+                      AVG. RESPONSE TIME {getSortIndicator("mean_response_time")}
                     </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                    Actions
+                    ACTIONS
                   </th>
                 </tr>
               </thead>
