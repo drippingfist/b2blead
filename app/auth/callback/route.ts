@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   const setup = requestUrl.searchParams.get("setup")
   const type = requestUrl.searchParams.get("type")
   // Get the redirect_to parameter if it exists
-  const redirectTo = requestUrl.searchParams.get("redirect_to")
+  const redirectTo = requestUrl.searchParams.get("redirect_to") || "/"
 
   console.log("🔗 Auth callback received:", {
     code: !!code,
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
       if (error) {
         console.error("❌ Error exchanging code for session:", error)
-        return NextResponse.redirect(new URL("/auth/login?error=Invalid invitation link", request.url))
+        return NextResponse.redirect(new URL("/auth/login?error=Invalid authentication link", request.url))
       }
 
       console.log("✅ Session created for user:", data.user?.email)
@@ -56,8 +56,20 @@ export async function GET(request: NextRequest) {
 
       // If we have a redirect_to parameter, use it
       if (redirectTo) {
-        console.log("🔄 Redirecting to original URL:", redirectTo)
-        return NextResponse.redirect(new URL(redirectTo, request.url))
+        console.log("🔄 Redirecting to:", redirectTo)
+        // Make sure redirectTo is a valid internal URL
+        try {
+          const redirectURL = new URL(redirectTo, request.url)
+          // Only redirect to same origin URLs
+          if (redirectURL.origin === new URL(request.url).origin) {
+            return NextResponse.redirect(redirectURL)
+          }
+        } catch (e) {
+          // If redirectTo is a path and not a full URL, it's safe to redirect
+          if (redirectTo.startsWith("/")) {
+            return NextResponse.redirect(new URL(redirectTo, request.url))
+          }
+        }
       }
 
       // Regular login, redirect to dashboard

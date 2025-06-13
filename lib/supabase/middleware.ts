@@ -16,9 +16,9 @@ export async function updateSession(request: NextRequest) {
 
     // If no session and trying to access protected route, redirect to login
     const requestUrl = new URL(request.url)
-    const isAuthRoute = requestUrl.pathname.startsWith("/auth/")
-    const isApiRoute = requestUrl.pathname.startsWith("/api/")
-    const isRootRoute = requestUrl.pathname === "/"
+    const path = requestUrl.pathname
+
+    // Define public routes that don't require authentication
     const publicRoutes = [
       "/auth/login",
       "/auth/sign-up",
@@ -28,29 +28,31 @@ export async function updateSession(request: NextRequest) {
       "/auth/callback",
     ]
 
-    // Check if the current path is a public route
-    const isPublicRoute = publicRoutes.includes(requestUrl.pathname)
+    // Check if the current path is a public route or starts with /auth/
+    const isAuthRoute = path.startsWith("/auth/")
+    const isApiRoute = path.startsWith("/api/")
+    const isRootRoute = path === "/"
+    const isPublicRoute = publicRoutes.includes(path) || path.includes("/auth/callback")
+
+    // Special handling for auth callback routes - always allow these
+    if (path.includes("/auth/callback")) {
+      return response
+    }
 
     if (!session && !isAuthRoute && !isApiRoute && !isRootRoute) {
       const redirectUrl = new URL("/auth/login", request.url)
-      redirectUrl.searchParams.set("redirect_to", requestUrl.pathname)
+      redirectUrl.searchParams.set("redirect_to", path)
       return NextResponse.redirect(redirectUrl)
     }
 
     // If session exists but on auth route (except callbacks), redirect to dashboard
-    if (
-      session &&
-      isAuthRoute &&
-      !requestUrl.pathname.includes("/callback") &&
-      !requestUrl.pathname.includes("/accept-invite")
-    ) {
+    if (session && isAuthRoute && !path.includes("/callback") && !path.includes("/accept-invite")) {
       return NextResponse.redirect(new URL("/dashboard", request.url))
     }
 
     return response
   } catch (e) {
     // If there's an error, log it but still return the original response
-    // to avoid the "Cannot read properties of undefined (reading 'headers')" error
     console.error("Auth middleware error:", e)
     return response
   }

@@ -133,7 +133,7 @@ export async function refreshSentimentAnalysis(threadId: string) {
   }
 }
 
-// New server action to send magic link
+// Update the sendMagicLink function to handle redirects
 export async function sendMagicLink(prevState: any, formData: FormData) {
   // Check if formData is valid
   if (!formData) {
@@ -141,6 +141,7 @@ export async function sendMagicLink(prevState: any, formData: FormData) {
   }
 
   const email = formData.get("email")
+  const redirectTo = formData.get("redirect_to") || "/"
 
   // Validate required fields
   if (!email) {
@@ -151,19 +152,34 @@ export async function sendMagicLink(prevState: any, formData: FormData) {
   const supabase = createServerActionClient({ cookies: () => cookieStore })
 
   try {
-    // Send magic link - Supabase handles everything
+    // Construct the callback URL with the redirect_to parameter
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
+    const callbackUrl = new URL("/auth/callback", siteUrl)
+
+    // Add the redirect_to parameter to the callback URL
+    if (redirectTo) {
+      callbackUrl.searchParams.set("redirect_to", redirectTo.toString())
+    }
+
+    console.log("🔗 Magic link callback URL:", callbackUrl.toString())
+
+    // Send magic link with the callback URL
     const { error } = await supabase.auth.signInWithOtp({
       email: email.toString(),
+      options: {
+        emailRedirectTo: callbackUrl.toString(),
+      },
     })
 
     if (error) {
-      console.error("Magic link error:", error.message)
+      console.error("❌ Magic link error:", error.message)
+      return { error: error.message }
     }
 
     // Always return success message to prevent email enumeration
     return { success: "If an account with that email exists, we've sent you a magic link." }
   } catch (error) {
-    console.error("Magic link error:", error)
+    console.error("❌ Magic link error:", error)
     return { success: "If an account with that email exists, we've sent you a magic link." }
   }
 }
