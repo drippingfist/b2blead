@@ -1,29 +1,27 @@
 import { updateSession } from "@/lib/supabase/middleware"
 import type { NextRequest } from "next/server"
 
-// Add a check for auth session in the middleware
 export async function middleware(request: NextRequest) {
-  // Store the full URL that the user was trying to access
-  const requestUrl = new URL(request.url)
-  const path = requestUrl.pathname
+  try {
+    // Process the request through Supabase middleware
+    const response = await updateSession(request)
 
-  // Process the request through Supabase middleware
-  const response = await updateSession(request)
-
-  // If the response is a redirect to the login page, add the original path as redirect_to
-  if (response && response.headers.get("location")?.includes("/auth/login")) {
-    const redirectUrl = new URL(response.headers.get("location") || "", request.url)
-
-    // Only add redirect_to for non-auth paths (to avoid redirect loops)
-    if (!path.startsWith("/auth/") && path !== "/") {
-      redirectUrl.searchParams.set("redirect_to", path)
-      response.headers.set("location", redirectUrl.toString())
+    // If the response is a redirect, we don't need to modify it further
+    if (response.headers.get("location")) {
+      return response
     }
 
-    console.log("🔄 Redirecting to login with redirect_to:", path)
-  }
+    // Store the full URL that the user was trying to access
+    const requestUrl = new URL(request.url)
+    const path = requestUrl.pathname
 
-  return response
+    // If we're not redirecting, just return the response
+    return response
+  } catch (error) {
+    console.error("Middleware error:", error)
+    // Return a basic response to avoid crashing
+    return new Response("Internal Server Error", { status: 500 })
+  }
 }
 
 export const config = {
