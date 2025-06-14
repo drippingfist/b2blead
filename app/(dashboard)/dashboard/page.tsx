@@ -46,7 +46,13 @@ interface DashboardMetrics {
 
 export default function Dashboard() {
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
-  const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>("last30days")
+  const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("selectedTimePeriod")
+      return (stored as TimePeriod) || "last30days"
+    }
+    return "last30days"
+  })
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     totalChats: 0,
     totalCallbacks: 0,
@@ -98,6 +104,7 @@ export default function Dashboard() {
   } | null>(null)
   const [botSelectionReady, setBotSelectionReady] = useState(false)
   const [accessibleBotCount, setAccessibleBotCount] = useState(0)
+  const [debugInfo, setDebugInfo] = useState<string>("")
 
   // Initialize user access and bot selection
   useEffect(() => {
@@ -107,7 +114,8 @@ export default function Dashboard() {
 
         // Get user access info
         const access = await getUserBotAccess()
-        console.log("🔍 Dashboard: User access:", access)
+        console.log("🔍 Dashboard: User access received:", access)
+        console.log("🔍 Dashboard: Accessible bots from API:", access.accessibleBots)
         setUserAccess(access)
 
         // Get current user
@@ -135,6 +143,7 @@ export default function Dashboard() {
 
         // Get stored bots or wait for them to be loaded
         const storedBots = JSON.parse(localStorage.getItem("userBots") || "[]")
+        console.log("🔍 Dashboard: Stored bots from localStorage:", storedBots)
         setBots(storedBots)
 
         // Get stored bot selection
@@ -153,27 +162,19 @@ export default function Dashboard() {
             console.log("🔍 Dashboard: Superadmin defaulting to All Bots")
           }
         } else {
-          // Regular user: must select a specific bot, never "All Bots"
+          // Regular user: can also use "All Bots" (null) or specific bot
           if (storedBot && storedBot !== "null" && access.accessibleBots.includes(storedBot)) {
             setSelectedBot(storedBot)
             console.log("🔍 Dashboard: Regular user using stored bot:", storedBot)
-          } else if (storedBots.length > 0) {
-            // Auto-select first available bot for regular users
-            const firstBot = storedBots[0]
-            setSelectedBot(firstBot.bot_share_name)
-            localStorage.setItem("selectedBot", firstBot.bot_share_name)
-            console.log("🔍 Dashboard: Regular user auto-selected first bot:", firstBot.bot_share_name)
-          } else if (access.accessibleBots.length > 0) {
-            // Fallback to first accessible bot from access info
-            const firstAccessibleBot = access.accessibleBots[0]
-            setSelectedBot(firstAccessibleBot)
-            localStorage.setItem("selectedBot", firstAccessibleBot)
-            console.log("🔍 Dashboard: Regular user using first accessible bot:", firstAccessibleBot)
+          } else {
+            // Default to "All Bots" for regular users too
+            setSelectedBot(null)
+            console.log("🔍 Dashboard: Regular user defaulting to All Bots")
           }
         }
 
         setBotSelectionReady(true)
-        console.log("🔍 Dashboard: Bot selection ready")
+        console.log("🔍 Dashboard: Bot selection ready with access:", access)
       } catch (error) {
         console.error("❌ Dashboard: Error initializing user access:", error)
         setBotSelectionReady(true) // Still allow page to load
@@ -213,22 +214,50 @@ export default function Dashboard() {
         return
       }
 
+      // Wait for userAccess to be properly loaded
+      if (!userAccess) {
+        console.log("🔍 Dashboard: Waiting for user access to be loaded...")
+        return
+      }
+
       console.log("🔍 Dashboard: Loading data for bot:", selectedBot, "period:", selectedPeriod)
+      console.log("🔍 Dashboard: User access:", userAccess)
+      console.log("🔍 Dashboard: Accessible bots:", userAccess.accessibleBots)
       setLoading(true)
 
       try {
+        // Get the list of accessible bots for the user
+        const accessibleBots = userAccess.accessibleBots || []
+
+        // If we don't have accessible bots and we're not a superadmin, something is wrong
+        if (accessibleBots.length === 0 && !userAccess.isSuperAdmin) {
+          console.error("❌ Dashboard: No accessible bots found for non-superadmin user")
+          setLoading(false)
+          return
+        }
+
+        console.log("🔍 Dashboard: Using accessible bots:", accessibleBots)
+
+        // For "All Bots" view, pass the accessible bots list
         const [fetchedMetrics, fetchedChatMetrics, fetchedUserEmail] = await Promise.all([
-          getDashboardMetrics(selectedBot, selectedPeriod),
-          getChatMetrics(selectedBot, selectedPeriod),
+          selectedBot === null
+            ? getDashboardMetrics(null, selectedPeriod, accessibleBots)
+            : getDashboardMetrics(selectedBot, selectedPeriod, accessibleBots),
+          selectedBot === null
+            ? getChatMetrics(null, selectedPeriod, accessibleBots)
+            : getChatMetrics(selectedBot, selectedPeriod, accessibleBots),
           getCurrentUserEmailClient(),
         ])
+
+        console.log("🔍 Dashboard: Fetched metrics:", fetchedMetrics)
+        console.log("🔍 Dashboard: Fetched chat metrics:", fetchedChatMetrics)
 
         setMetrics(fetchedMetrics)
         setChatMetrics(fetchedChatMetrics)
         setUserEmail(fetchedUserEmail)
 
         // Set current bot name for display
-        if (selectedBot === null && userAccess?.isSuperAdmin) {
+        if (selectedBot === null) {
           setCurrentBotName("All Bots")
         } else if (selectedBot) {
           const currentBot = bots.find((b) => b.bot_share_name === selectedBot)
@@ -247,6 +276,11 @@ export default function Dashboard() {
 
     fetchData()
   }, [selectedBot, selectedPeriod, botSelectionReady, userAccess, bots])
+
+  // Persist time period selection to localStorage
+  useEffect(() => {
+    localStorage.setItem("selectedTimePeriod", selectedPeriod)
+  }, [selectedPeriod])
 
   const formatPercentageChange = (current: number, previous: number) => {
     if (previous === 0) return current > 0 ? "+100%" : "0%"
@@ -363,10 +397,7 @@ export default function Dashboard() {
         <p className="text-[#616161]">
           Welcome back, {userEmail}. You have access to {accessibleBotCount} bot(s).
         </p>
-        <p className="text-sm text-[#038a71] mt-1">
-          Currently viewing: {currentBotName}
-          {userAccess?.isSuperAdmin && selectedBot === null && " (All Bots)"}
-        </p>
+        <p className="text-sm text-[#038a71] mt-1">Currently viewing: {currentBotName}</p>
       </div>
 
       {/* Time Period Selector */}

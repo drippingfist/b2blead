@@ -283,7 +283,7 @@ export async function getAccessibleBotsClient(): Promise<Bot[]> {
   }
 }
 
-// Rest of the functions remain the same...
+// Get thread stats for a specific bot or all bots
 export async function getThreadStatsClient(botShareName?: string | null) {
   let totalQuery = supabase.from("threads").select("*", { count: "exact", head: true })
   let recentQuery = supabase.from("threads").select("*", { count: "exact", head: true })
@@ -323,6 +323,7 @@ export async function getThreadStatsClient(botShareName?: string | null) {
   }
 }
 
+// Get callback stats for a specific bot or all bots with a specified period
 export async function getCallbackStatsClientWithPeriod(
   botShareName?: string | null,
   period: "today" | "last7days" | "last30days" | "last90days" | "alltime" = "last30days",
@@ -410,6 +411,7 @@ export async function getCallbackStatsClientWithPeriod(
   }
 }
 
+// Analyze callback columns for a specific bot or all bots
 export async function analyzeCallbackColumns(botShareName?: string | null): Promise<{
   hasCompany: boolean
   hasCountry: boolean
@@ -447,6 +449,7 @@ export async function analyzeCallbackColumns(botShareName?: string | null): Prom
   }
 }
 
+// Get messages by thread ID
 export async function getMessagesByThreadId(threadId: string): Promise<Message[]> {
   // Validate threadId before making the query
   if (!threadId || threadId.trim() === "") {
@@ -471,6 +474,7 @@ export async function getMessagesByThreadId(threadId: string): Promise<Message[]
   return data || []
 }
 
+// Get thread by ID
 export async function getThreadById(id: string): Promise<Thread | null> {
   // Validate id before making the query
   if (!id || id.trim() === "") {
@@ -491,11 +495,14 @@ export async function getThreadById(id: string): Promise<Thread | null> {
   return data
 }
 
+// Get dashboard metrics for a specific bot or all bots with a specified period and accessible bots
 export async function getDashboardMetrics(
   botShareName?: string | null,
   period: "today" | "last7days" | "last30days" | "alltime" | "custom" = "last30days",
+  accessibleBots?: string[],
 ) {
   console.log("📊 getDashboardMetrics: Starting calculation for bot:", botShareName, "period:", period)
+  console.log("📊 Accessible bots:", accessibleBots)
 
   // Calculate date ranges for current and previous periods
   const now = new Date()
@@ -564,21 +571,33 @@ export async function getDashboardMetrics(
   let currentGlobalResponseTimeQuery = supabase.from("threads").select("mean_response_time")
   let previousGlobalResponseTimeQuery = supabase.from("threads").select("mean_response_time")
 
-  // Apply bot filter if provided
+  // Apply bot filter based on selection and accessible bots
   if (botShareName) {
+    // If a specific bot is selected, filter by that bot
     currentThreadsQuery = currentThreadsQuery.eq("bot_share_name", botShareName)
-    // Fix: Ensure callbacks use bot_share_name
     currentCallbacksQuery = currentCallbacksQuery.eq("bot_share_name", botShareName)
     currentCallbackThreadsQuery = currentCallbackThreadsQuery.eq("bot_share_name", botShareName)
     currentSentimentQuery = currentSentimentQuery.eq("bot_share_name", botShareName)
     currentResponseTimeQuery = currentResponseTimeQuery.eq("bot_share_name", botShareName)
 
     previousThreadsQuery = previousThreadsQuery.eq("bot_share_name", botShareName)
-    // Fix: Ensure callbacks use bot_share_name
     previousCallbacksQuery = previousCallbacksQuery.eq("bot_share_name", botShareName)
     previousCallbackThreadsQuery = previousCallbackThreadsQuery.eq("bot_share_name", botShareName)
     previousSentimentQuery = previousSentimentQuery.eq("bot_share_name", botShareName)
     previousResponseTimeQuery = previousResponseTimeQuery.eq("bot_share_name", botShareName)
+  } else if (accessibleBots && accessibleBots.length > 0) {
+    // If "All Bots" is selected and we have a list of accessible bots, filter by those bots
+    currentThreadsQuery = currentThreadsQuery.in("bot_share_name", accessibleBots)
+    currentCallbacksQuery = currentCallbacksQuery.in("bot_share_name", accessibleBots)
+    currentCallbackThreadsQuery = currentCallbackThreadsQuery.in("bot_share_name", accessibleBots)
+    currentSentimentQuery = currentSentimentQuery.in("bot_share_name", accessibleBots)
+    currentResponseTimeQuery = currentResponseTimeQuery.in("bot_share_name", accessibleBots)
+
+    previousThreadsQuery = previousThreadsQuery.in("bot_share_name", accessibleBots)
+    previousCallbacksQuery = previousCallbacksQuery.in("bot_share_name", accessibleBots)
+    previousCallbackThreadsQuery = previousCallbackThreadsQuery.in("bot_share_name", accessibleBots)
+    previousSentimentQuery = previousSentimentQuery.in("bot_share_name", accessibleBots)
+    previousResponseTimeQuery = previousResponseTimeQuery.in("bot_share_name", accessibleBots)
   }
 
   // Apply date filters for current period
@@ -738,11 +757,14 @@ export async function getDashboardMetrics(
   }
 }
 
+// Get chat metrics for a specific bot or all bots with a specified period and accessible bots
 export async function getChatMetrics(
   botShareName?: string | null,
   period: "today" | "last7days" | "last30days" | "alltime" | "custom" = "last30days",
+  accessibleBots?: string[],
 ) {
   console.log("📊 getChatMetrics: Starting calculation for bot:", botShareName, "period:", period)
+  console.log("📊 Accessible bots:", accessibleBots)
 
   // Calculate date ranges for current and previous periods
   const now = new Date()
@@ -801,12 +823,19 @@ export async function getChatMetrics(
   let previousThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
   let previousMessagesQuery = supabase.from("messages").select("*", { count: "exact", head: true })
 
-  // Apply bot filter if provided
+  // Apply bot filter based on selection and accessible bots
   if (botShareName) {
+    // If a specific bot is selected, filter by that bot
     currentThreadsQuery = currentThreadsQuery.eq("bot_share_name", botShareName)
     currentMessagesQuery = currentMessagesQuery.eq("bot_share_name", botShareName)
     previousThreadsQuery = previousThreadsQuery.eq("bot_share_name", botShareName)
     previousMessagesQuery = previousMessagesQuery.eq("bot_share_name", botShareName)
+  } else if (accessibleBots && accessibleBots.length > 0) {
+    // If "All Bots" is selected and we have a list of accessible bots, filter by those bots
+    currentThreadsQuery = currentThreadsQuery.in("bot_share_name", accessibleBots)
+    currentMessagesQuery = currentMessagesQuery.in("bot_share_name", accessibleBots)
+    previousThreadsQuery = previousThreadsQuery.in("bot_share_name", accessibleBots)
+    previousMessagesQuery = previousMessagesQuery.in("bot_share_name", accessibleBots)
   }
 
   // Apply date filters for current period
@@ -854,6 +883,7 @@ export async function getChatMetrics(
   }
 }
 
+// Update thread starred status
 export async function updateThreadStarred(threadId: string, starred: boolean): Promise<boolean> {
   console.log("⭐ updateThreadStarred:", threadId, starred)
 
@@ -867,6 +897,7 @@ export async function updateThreadStarred(threadId: string, starred: boolean): P
   return true
 }
 
+// Update message starred status
 export async function updateMessageStarred(messageId: string, starred: boolean): Promise<boolean> {
   console.log("⭐ updateMessageStarred:", messageId, starred)
 

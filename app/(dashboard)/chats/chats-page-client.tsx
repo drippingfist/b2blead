@@ -47,16 +47,25 @@ export default function ChatsPageClient() {
   const [threads, setThreads] = useState<Thread[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<FilterType>("all")
-  const [timePeriod, setTimePeriod] = useState<TimePeriod>("last30days")
+  const [timePeriod, setTimePeriod] = useState<TimePeriod>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("selectedTimePeriod")
+      return (stored as TimePeriod) || "last30days"
+    }
+    return "last30days"
+  })
   const [currentPage, setCurrentPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
-  const [userTableSize, setUserTableSize] = useState<number>(30)
   const [hoveredSentiment, setHoveredSentiment] = useState<string | null>(null)
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
   const itemsPerPage = 100
   const [sortField, setSortField] = useState<string | null>("created_at")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+
+  // Debug state
+  const [debugInfo, setDebugInfo] = useState<string>("")
+  const [accessibleBots, setAccessibleBots] = useState<string[]>([])
 
   // Listen for bot selection changes
   useEffect(() => {
@@ -77,55 +86,60 @@ export default function ChatsPageClient() {
     return () => window.removeEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
   }, [])
 
-  // Load user preferences and bot data
+  // Load accessible bots and debug info
   useEffect(() => {
-    const loadUserPreferences = async () => {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (user) {
-          // Get user table size preference
-          const { data: profile } = await supabase.from("user_profiles").select("table_size").eq("id", user.id).single()
-
-          if (profile?.table_size) {
-            setUserTableSize(profile.table_size)
-            // Map table_size to time period
-            if (profile.table_size === 1) {
-              setTimePeriod("today")
-            } else if (profile.table_size === 30) {
-              setTimePeriod("last30days")
-            } else if (profile.table_size === 90) {
-              setTimePeriod("last90days")
-            } else {
-              setTimePeriod("alltime")
-            }
-          }
-        }
-      } catch (error) {
-        console.error("Error loading user preferences:", error)
-      }
-    }
-
-    loadUserPreferences()
-  }, [])
-
-  // Check if user is superadmin
-  useEffect(() => {
-    const checkSuperAdminStatus = async () => {
+    const loadAccessibleBots = async () => {
       try {
         const response = await fetch("/api/user-bot-access")
         if (response.ok) {
           const data = await response.json()
-          setIsSuperAdmin(data.isSuperAdmin)
+          setAccessibleBots(data.accessibleBots || [])
+
+          let debugText = `=== CHATS DEBUG INFO ===\n`
+          debugText += `Selected Bot: ${selectedBot || "All Bots"}\n`
+          debugText += `Accessible Bots Count: ${data.accessibleBots?.length || 0}\n`
+          debugText += `Accessible Bots: ${data.accessibleBots?.join(", ") || "None"}\n`
+          debugText += `Is SuperAdmin: ${data.isSuperAdmin}\n`
+          debugText += `User Role: ${data.role}\n`
+          debugText += `Filter: ${filter}\n`
+          debugText += `Time Period: ${timePeriod}\n\n`
+
+          // Direct database query to verify data exists
+          if (!selectedBot && data.accessibleBots?.length > 0) {
+            const { count: threadCount, error: threadError } = await supabase
+              .from("threads")
+              .select("*", { count: "exact", head: true })
+              .in("bot_share_name", data.accessibleBots)
+
+            debugText += `Direct DB Query - Thread Count: ${threadCount || 0}\n`
+
+            if (threadError) {
+              debugText += `Thread Query Error: ${threadError.message}\n`
+            }
+
+            // Test callback query
+            const { count: callbackCount, error: callbackError } = await supabase
+              .from("callbacks")
+              .select("*", { count: "exact", head: true })
+              .in("bot_share_name", data.accessibleBots)
+
+            debugText += `Direct DB Query - Callback Count: ${callbackCount || 0}\n`
+
+            if (callbackError) {
+              debugText += `Callback Query Error: ${callbackError.message}\n`
+            }
+          }
+
+          setDebugInfo(debugText)
         }
       } catch (error) {
-        console.error("Error checking superadmin status:", error)
+        console.error("Error loading accessible bots:", error)
+        setDebugInfo(`Error loading accessible bots: ${error}`)
       }
     }
 
-    checkSuperAdminStatus()
-  }, [])
+    loadAccessibleBots()
+  }, [selectedBot, filter, timePeriod])
 
   // Load bot data when selected bot changes
   useEffect(() => {
@@ -153,12 +167,28 @@ export default function ChatsPageClient() {
     loadBotData()
   }, [selectedBot])
 
+  // Check if user is superadmin
+  useEffect(() => {
+    const checkSuperAdminStatus = async () => {
+      try {
+        const response = await fetch("/api/user-bot-access")
+        if (response.ok) {
+          const data = await response.json()
+          setIsSuperAdmin(data.isSuperAdmin)
+        }
+      } catch (error) {
+        console.error("Error checking superadmin status:", error)
+      }
+    }
+
+    checkSuperAdminStatus()
+  }, [])
+
   // Load threads data
   useEffect(() => {
     const loadThreads = async () => {
-      // We now allow loading all threads when no bot is selected
-      // Only return early if we're not a superadmin and no bot is selected
-      if (!selectedBot && !isSuperAdmin) {
+      // Only return early if we're not a superadmin, no bot is selected, AND no accessible bots
+      if (!selectedBot && !isSuperAdmin && accessibleBots.length === 0) {
         setThreads([])
         setTotalCount(0)
         setLoading(false)
@@ -198,9 +228,13 @@ export default function ChatsPageClient() {
         // Build base query for counting
         let countQuery = supabase.from("threads").select("id", { count: "exact", head: true }).gt("count", 0)
 
-        // Only filter by bot if one is selected OR user is not superadmin
+        // Apply bot filter based on selection and accessible bots
         if (selectedBot) {
+          // If a specific bot is selected, filter by that bot
           countQuery = countQuery.eq("bot_share_name", selectedBot)
+        } else if (accessibleBots.length > 0) {
+          // If "All Bots" is selected and we have accessible bots, filter by those
+          countQuery = countQuery.in("bot_share_name", accessibleBots)
         }
 
         // Apply date filter to count query
@@ -215,6 +249,8 @@ export default function ChatsPageClient() {
 
           if (selectedBot) {
             callbacksSubQuery = callbacksSubQuery.eq("bot_share_name", selectedBot)
+          } else if (accessibleBots.length > 0) {
+            callbacksSubQuery = callbacksSubQuery.in("bot_share_name", accessibleBots)
           }
 
           const { data: callbackThreads } = await callbacksSubQuery
@@ -235,9 +271,10 @@ export default function ChatsPageClient() {
           // Get thread IDs that have user messages
           let userMessagesQuery = supabase.from("messages").select("thread_id").eq("role", "user")
 
-          // Only filter by bot if one is selected
           if (selectedBot) {
             userMessagesQuery = userMessagesQuery.eq("bot_share_name", selectedBot)
+          } else if (accessibleBots.length > 0) {
+            userMessagesQuery = userMessagesQuery.in("bot_share_name", accessibleBots)
           }
 
           const { data: userMessageThreads } = await userMessagesQuery
@@ -271,9 +308,11 @@ export default function ChatsPageClient() {
           .gt("count", 0)
           .order(sortField || "created_at", { ascending: sortDirection === "asc" })
 
-        // Only filter by bot if one is selected
+        // Apply bot filter to main query
         if (selectedBot) {
           query = query.eq("bot_share_name", selectedBot)
+        } else if (accessibleBots.length > 0) {
+          query = query.in("bot_share_name", accessibleBots)
         }
 
         // Apply date filter
@@ -290,11 +329,15 @@ export default function ChatsPageClient() {
           query = query.eq("callback", true).is("callbacks", null)
         } else if (filter === "user_messages") {
           // Get thread IDs that have user messages
-          const { data: userMessageThreads } = await supabase
-            .from("messages")
-            .select("thread_id")
-            .eq("role", "user")
-            .eq("bot_share_name", selectedBot)
+          let userMessagesQuery = supabase.from("messages").select("thread_id").eq("role", "user")
+
+          if (selectedBot) {
+            userMessagesQuery = userMessagesQuery.eq("bot_share_name", selectedBot)
+          } else if (accessibleBots.length > 0) {
+            userMessagesQuery = userMessagesQuery.in("bot_share_name", accessibleBots)
+          }
+
+          const { data: userMessageThreads } = await userMessagesQuery
 
           if (userMessageThreads && userMessageThreads.length > 0) {
             const threadIds = [...new Set(userMessageThreads.map((m) => m.thread_id).filter(Boolean))]
@@ -329,7 +372,12 @@ export default function ChatsPageClient() {
     }
 
     loadThreads()
-  }, [selectedBot, filter, timePeriod, currentPage, sortField, sortDirection, isSuperAdmin])
+  }, [selectedBot, filter, timePeriod, currentPage, sortField, sortDirection, isSuperAdmin, accessibleBots])
+
+  // Persist time period selection to localStorage
+  useEffect(() => {
+    localStorage.setItem("selectedTimePeriod", timePeriod)
+  }, [timePeriod])
 
   const handleStarToggle = async (threadId: string) => {
     try {
@@ -575,6 +623,14 @@ export default function ChatsPageClient() {
           </p>
         )}
       </div>
+
+      {/* Debug Info */}
+      {debugInfo && (
+        <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <h3 className="text-sm font-medium text-yellow-800 mb-2">Debug Information</h3>
+          <pre className="text-xs text-yellow-700 whitespace-pre-wrap font-mono">{debugInfo}</pre>
+        </div>
+      )}
 
       {/* Loading State */}
       {loading && (

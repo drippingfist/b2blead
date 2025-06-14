@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Extract unique bot share names and determine highest role
-    const accessibleBots = [...new Set(botUsers?.map((bu) => bu.bot_share_name) || [])]
+    const accessibleBots = [...new Set(botUsers?.map((bu) => bu.bot_share_name).filter(Boolean) || [])]
 
     // Determine the highest role
     let highestRole: "admin" | "member" | null = null
