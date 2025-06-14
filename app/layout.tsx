@@ -1,6 +1,5 @@
 import type React from "react"
-// Remove this import
-// import { GeistSans } from "geist/font/sans"
+import { GeistSans } from "geist/font/sans"
 import { ThemeProvider } from "@/components/theme-provider"
 import "./globals.css"
 
@@ -19,7 +18,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className="font-sans" suppressHydrationWarnings>
+    <html lang="en" className={GeistSans.className} suppressHydrationWarnings>
       <head>
         <script
           dangerouslySetInnerHTML={{
