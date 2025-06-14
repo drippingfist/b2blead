@@ -30,6 +30,11 @@ interface UserData {
   email?: string
   is_active?: boolean
   is_invited?: boolean
+  botAssignments?: Array<{
+    bot_share_name: string
+    role: string
+    is_active: boolean
+  }>
 }
 
 interface InvitedUser {
@@ -248,14 +253,22 @@ export default function SettingsPage() {
         setAvailableBots(availableBotsResult.value.bots || [])
       }
 
-      // Process users result
+      // Process users result - show users for the selected bot only
       if (usersResult.status === "fulfilled" && usersResult.value.success) {
-        setUsers(usersResult.value.users.filter((user: any) => user.role !== "superadmin"))
+        // Filter users to only show those with access to the selected bot
+        const botUsers = usersResult.value.users.filter(
+          (user: any) => user.role !== "superadmin" && user.bot_share_name === botShareName,
+        )
+        setUsers(botUsers)
       }
 
-      // Process invitations result
+      // Process invitations result - show invitations for the selected bot only
       if (invitationsResult.status === "fulfilled" && invitationsResult.value.success) {
-        setInvitedUsers(invitationsResult.value.invitations || [])
+        // Filter invitations to only show those for the selected bot
+        const botInvitations = invitationsResult.value.invitations.filter(
+          (invitation: any) => invitation.bot_share_name === botShareName,
+        )
+        setInvitedUsers(botInvitations)
       }
 
       const endTime = Date.now()
@@ -271,10 +284,14 @@ export default function SettingsPage() {
   const loadUsers = async () => {
     try {
       setUsersLoading(true)
-      const result = await getUsers(selectedBot)
+      const result = await getUsers() // Get all users first
 
       if (result.success) {
-        setUsers(result.users.filter((user) => user.role !== "superadmin"))
+        // Filter to only show users for the selected bot
+        const botUsers = result.users.filter(
+          (user) => user.role !== "superadmin" && user.bot_share_name === selectedBot,
+        )
+        setUsers(botUsers)
       } else {
         setError(result.error || "Failed to load users")
       }
@@ -291,7 +308,9 @@ export default function SettingsPage() {
       const result = await getInvitations()
 
       if (result.success) {
-        setInvitedUsers(result.invitations || [])
+        // Filter invitations to only show those for the selected bot
+        const botInvitations = result.invitations.filter((invitation: any) => invitation.bot_share_name === selectedBot)
+        setInvitedUsers(botInvitations)
       } else {
         console.error("Error loading invitations:", result.error)
       }
@@ -566,9 +585,7 @@ export default function SettingsPage() {
         <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm max-w-md w-full text-center">
           <Settings className="h-12 w-12 text-[#038a71] mx-auto mb-4" />
           <h1 className="text-2xl font-semibold text-[#212121] mb-2">Select a Bot</h1>
-          <p className="text-[#616161] mb-6">
-            Please select a specific bot from the dropdown menu above to view and manage its settings.
-          </p>
+          <p className="text-[#616161] mb-6">Please select a bot from the dropdown menu in the sidebar.</p>
           <Button onClick={() => router.push("/dashboard")} variant="outline" className="w-full">
             Return to Dashboard
           </Button>
@@ -932,21 +949,25 @@ export default function SettingsPage() {
           )}
 
           {/* Existing Users List */}
+
           <div className="space-y-4">
+            <h4 className="text-sm font-medium text-[#212121] mb-2">Active Users</h4>
             {users.map((user) => (
-              <div
-                key={user.id}
-                className="flex items-center justify-between p-4 border border-[#e0e0e0] rounded-lg bg-gray-50"
-              >
-                <div className="flex items-center space-x-2">
+              <div key={user.id} className="p-4 border border-[#e0e0e0] rounded-lg bg-gray-50">
+                <div className="flex items-center justify-between">
                   <div className="flex flex-col">
                     <p className="text-sm font-medium text-[#212121]">
                       {user.first_name} {user.surname}
                     </p>
                     <p className="text-xs text-[#616161]">{user.email}</p>
+                    <div className="mt-1">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                        <span className="font-medium">{user.bot_share_name}</span>
+                        <span className="ml-1 text-blue-600">({user.role})</span>
+                        {!user.is_active && <span className="ml-1 text-red-600">(inactive)</span>}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center space-x-2">
                   <Button
                     onClick={() => handleDeleteUser(user.id)}
                     variant="outline"
@@ -959,6 +980,41 @@ export default function SettingsPage() {
                 </div>
               </div>
             ))}
+
+            {/* Pending Invitations */}
+            {invitedUsers.length > 0 && (
+              <>
+                <h4 className="text-sm font-medium text-[#212121] mb-2 mt-6">Pending Invitations</h4>
+                {invitedUsers.map((invitation) => (
+                  <div key={invitation.id} className="p-4 border border-orange-200 rounded-lg bg-orange-50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <p className="text-sm font-medium text-[#212121]">
+                          {invitation.first_name} {invitation.surname}
+                        </p>
+                        <p className="text-xs text-[#616161]">{invitation.email}</p>
+                        <div className="mt-1">
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-800">
+                            <span className="font-medium">{invitation.bot_share_name}</span>
+                            <span className="ml-1 text-orange-600">({invitation.role})</span>
+                            <span className="ml-1 text-orange-600">(pending)</span>
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        onClick={() => handleDeleteInvitation(invitation.id)}
+                        variant="outline"
+                        size="sm"
+                        className="bg-red-500 hover:bg-red-500/90 px-3"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
       </div>

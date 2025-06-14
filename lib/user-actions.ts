@@ -267,41 +267,29 @@ export async function getUsers(selectedBot?: string | null) {
 
     console.log("🔍 Current user bot access:", currentUserBotNames, "Is superadmin:", isSuperAdmin)
 
-    // Step 1: Get users invited by the current admin
-    let invitedUsersQuery = supabase.from("user_invitations").select("email").eq("invited_by", user.id)
-
-    // Filter by selected bot if provided
-    if (selectedBot) {
-      invitedUsersQuery = invitedUsersQuery.eq("bot_share_name", selectedBot)
-    }
-
-    const { data: invitedUsers, error: invitedUsersError } = await invitedUsersQuery
-
-    if (invitedUsersError) {
-      throw invitedUsersError
-    }
-
-    const invitedEmails = invitedUsers?.map((inv) => inv.email) || []
-    console.log("🔍 Users invited by current admin:", invitedEmails)
-
-    // Step 2: Get all users from auth.users using admin client
+    // Step 1: Get all users from auth.users using admin client
     const { data: authUsers, error: authError } = await adminClient.auth.admin.listUsers()
 
     if (authError) {
       throw authError
     }
 
-    // Step 3: Get user profiles and bot access data
+    console.log("🔍 Total auth users found:", authUsers.users.length)
+
+    // Step 2: Get user profiles
     const { data: userProfiles, error: profilesError } = await supabase.from("user_profiles").select("*")
 
     if (profilesError) {
       throw profilesError
     }
 
+    console.log("🔍 User profiles found:", userProfiles?.length || 0)
+
+    // Step 3: Get bot users - filter by selected bot if provided
     let botUsersQuery = supabase.from("bot_users").select("*")
 
-    // Filter by selected bot if provided
     if (selectedBot) {
+      console.log("🔍 Filtering bot_users by bot_share_name:", selectedBot)
       botUsersQuery = botUsersQuery.eq("bot_share_name", selectedBot)
     }
 
@@ -310,6 +298,9 @@ export async function getUsers(selectedBot?: string | null) {
     if (botUsersError) {
       throw botUsersError
     }
+
+    console.log("🔍 Bot users found:", botUsers?.length || 0)
+    console.log("🔍 Bot users data:", botUsers)
 
     // Step 4: Create maps for quick lookup
     const profilesMap = new Map()
@@ -322,57 +313,71 @@ export async function getUsers(selectedBot?: string | null) {
       botUsersMap.set(botUser.user_id, botUser)
     })
 
-    // Step 5: Filter and transform users based on access rules
+    console.log("🔍 Bot users map keys:", Array.from(botUsersMap.keys()))
+
+    // Step 5: Filter and transform users - SIMPLIFIED LOGIC
     const transformedUsers = authUsers.users
       .filter((authUser) => {
         // Don't show the current user in the list
-        if (authUser.id === user.id) return false
+        if (authUser.id === user.id) {
+          console.log("❌ Hiding current user:", authUser.email)
+          return false
+        }
 
         // Don't show super admins
-        if (authUser.is_super_admin) return false
+        if (authUser.is_super_admin) {
+          console.log("❌ Hiding super admin:", authUser.email)
+          return false
+        }
 
         const botUser = botUsersMap.get(authUser.id)
 
         // Don't show superadmins based on role in bot_users table
-        if (botUser?.role === "superadmin") return false
-
-        // Only include users who have bot access
-        const profile = profilesMap.get(authUser.id)
-        if (!profile?.bot_share_name && !botUser?.bot_share_name) return false
-
-        // Check if user should be visible based on access rules
-        const userEmail = authUser.email
-        const userBotShareName = profile?.bot_share_name || botUser?.bot_share_name
-
-        // If filtering by selected bot, only show users with that bot access
-        if (selectedBot && userBotShareName !== selectedBot) {
+        if (botUser?.role === "superadmin") {
+          console.log("❌ Hiding superadmin (bot_users role):", authUser.email)
           return false
         }
 
-        // Rule 1: Show users invited by the current admin
-        if (invitedEmails.includes(userEmail)) {
-          console.log("✅ Showing user (invited by current admin):", userEmail)
+        // SIMPLIFIED: If filtering by selected bot, only show users who have a bot_users record for that bot
+        if (selectedBot) {
+          if (!botUser || botUser.bot_share_name !== selectedBot) {
+            console.log("❌ User doesn't have bot_users record for selected bot:", authUser.email, "Bot:", selectedBot)
+            return false
+          }
+          console.log("✅ User has bot_users record for selected bot:", authUser.email, "Bot:", selectedBot)
           return true
         }
 
-        // Rule 2: Show users who share the same bot_share_name
-        if (currentUserBotNames.includes(userBotShareName)) {
-          console.log("✅ Showing user (same bot access):", userEmail, "Bot:", userBotShareName)
-          return true
+        // If no bot filter, show users who have any bot access
+        const profile = profilesMap.get(authUser.id)
+        if (!profile?.bot_share_name && !botUser?.bot_share_name) {
+          console.log("❌ User has no bot access:", authUser.email)
+          return false
         }
 
-        // Rule 3: Superadmins can see all users
+        // Check access permissions for non-filtered view
+        const userBotShareName = profile?.bot_share_name || botUser?.bot_share_name
+
+        // Superadmins can see all users
         if (isSuperAdmin) {
-          console.log("✅ Showing user (superadmin access):", userEmail)
+          console.log("✅ Showing user (superadmin access):", authUser.email)
           return true
         }
 
-        console.log("❌ Hiding user:", userEmail, "Bot:", userBotShareName)
+        // Show users who share the same bot_share_name
+        if (currentUserBotNames.includes(userBotShareName)) {
+          console.log("✅ Showing user (same bot access):", authUser.email, "Bot:", userBotShareName)
+          return true
+        }
+
+        console.log("❌ Hiding user:", authUser.email, "Bot:", userBotShareName)
         return false
       })
       .map((authUser) => {
         const profile = profilesMap.get(authUser.id)
         const botUser = botUsersMap.get(authUser.id)
+
+        console.log("🔍 Transforming user:", authUser.email, "Profile:", profile, "BotUser:", botUser)
 
         return {
           id: authUser.id,
@@ -380,13 +385,17 @@ export async function getUsers(selectedBot?: string | null) {
           first_name: profile?.first_name || "",
           surname: profile?.surname || "",
           role: botUser?.role || "member",
-          bot_share_name: profile?.bot_share_name || botUser?.bot_share_name || "",
+          bot_share_name: botUser?.bot_share_name || profile?.bot_share_name || "",
           is_active: botUser?.is_active || false,
         }
       })
       .sort((a, b) => (a.first_name || "").localeCompare(b.first_name || ""))
 
     console.log("✅ Final user list:", transformedUsers.length, "users")
+    console.log(
+      "✅ Final users:",
+      transformedUsers.map((u) => ({ email: u.email, bot: u.bot_share_name, role: u.role })),
+    )
 
     return { success: true, users: transformedUsers }
   } catch (error: any) {
@@ -415,7 +424,7 @@ export async function getInvitations() {
     const { data: currentUserBots, error: currentUserBotsError } = await supabase
       .from("bot_users")
       .select("bot_share_name, role")
-      .eq("id", user.id)
+      .eq("user_id", user.id) // Fixed: use user_id instead of id
       .eq("is_active", true)
 
     if (currentUserBotsError) {
