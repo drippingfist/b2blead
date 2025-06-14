@@ -17,17 +17,15 @@ const getAdminClient = () => {
   })
 }
 
-// Get invitation details by email
+// ✅ NEW: Get invitation details by email
 export async function getInvitationByEmail(email: string) {
   try {
-    // Use admin client to bypass RLS for this internal lookup
-    const supabase = getAdminClient()
+    const adminClient = getAdminClient()
 
-    const { data, error } = await supabase.from("user_invitations").select("*").eq("email", email).single()
+    const { data, error } = await adminClient.from("user_invitations").select("*").eq("email", email).single()
 
     if (error) {
       if (error.code === "PGRST116") {
-        // Not found
         return { success: false, error: "Invitation not found for this email." }
       }
       throw error
@@ -40,12 +38,12 @@ export async function getInvitationByEmail(email: string) {
   }
 }
 
-// Delete invitation by email after successful signup
+// ✅ NEW: Delete invitation by email after successful signup
 export async function deleteInvitationByEmail(email: string) {
   try {
-    const supabase = getAdminClient()
+    const adminClient = getAdminClient()
 
-    const { error } = await supabase.from("user_invitations").delete().eq("email", email)
+    const { error } = await adminClient.from("user_invitations").delete().eq("email", email)
 
     if (error) throw error
 
@@ -190,7 +188,7 @@ export async function inviteUser(userData: {
     // Send Supabase invitation email using inviteUserByEmail
     const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(userData.email, {
       data: {
-        // We don't need to pass data here anymore as we fetch it from our table
+        // Don't put sensitive data here - we'll fetch from user_invitations table
       },
       redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/accept-invite`,
     })

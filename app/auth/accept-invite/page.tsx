@@ -23,36 +23,43 @@ export default function AcceptInvitePage() {
   useEffect(() => {
     const processInvitation = async () => {
       try {
+        // Get URL parameters (Supabase redirects with token and type as query params)
         const urlParams = new URLSearchParams(window.location.search)
         const token = urlParams.get("token")
         const type = urlParams.get("type")
 
+        console.log("🔍 Processing invitation with params:", { token: !!token, type })
+
         if (!token || type !== "invite") {
-          // This handles the case where Supabase redirects back without a token
-          // after the token has been used. We can redirect to login.
-          console.log("No valid token found, redirecting to login.")
-          router.push("/auth/login")
-          return
+          throw new Error("Invalid invitation link - missing token or type")
         }
 
+        // Use Supabase's verifyOtp method for invitation tokens
         console.log("🔍 Verifying invitation token...")
         const { data: authData, error: authError } = await supabase.auth.verifyOtp({
           token_hash: token,
           type: "invite",
         })
 
-        if (authError) throw authError
-        if (!authData.user?.email) throw new Error("Could not get user email from invitation token.")
+        if (authError) {
+          console.error("❌ Auth error:", authError)
+          throw authError
+        }
+
+        if (!authData.user?.email) {
+          throw new Error("Could not get user email from invitation token")
+        }
 
         const userEmail = authData.user.email
         setEmail(userEmail)
         console.log("✅ Invitation token verified for email:", userEmail)
 
-        console.log("🔍 Fetching invitation details from server...")
+        // Fetch invitation details from user_invitations table
+        console.log("🔍 Fetching invitation details from database...")
         const { success, invitation, error: inviteDetailsError } = await getInvitationByEmail(userEmail)
 
         if (!success || !invitation) {
-          throw new Error(inviteDetailsError || "Invitation details not found in the database.")
+          throw new Error(inviteDetailsError || "Invitation details not found in database")
         }
 
         console.log("✅ Fetched invitation details:", invitation)
@@ -60,13 +67,13 @@ export default function AcceptInvitePage() {
         setStatus("form")
       } catch (err: any) {
         console.error("❌ Error processing invitation:", err)
-        setError(err.message || "Invalid or expired invitation link.")
+        setError(err.message || "Invalid or expired invitation link")
         setStatus("error")
       }
     }
 
     processInvitation()
-  }, [router])
+  }, [])
 
   const handleSetPassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -75,55 +82,81 @@ export default function AcceptInvitePage() {
       setStatus("processing")
       setError(null)
 
+      // Validate passwords
       if (password.length < 8) {
         throw new Error("Password must be at least 8 characters")
       }
+
       if (password !== confirmPassword) {
         throw new Error("Passwords do not match")
       }
 
+      // Update the user's password
+      console.log("🔐 Setting user password...")
       const { error: passwordError } = await supabase.auth.updateUser({ password })
-      if (passwordError) throw passwordError
+
+      if (passwordError) {
+        throw passwordError
+      }
+
       console.log("✅ Password set successfully")
 
+      // Get the current user to create profile and bot access
       const {
         data: { user },
         error: userError,
       } = await supabase.auth.getUser()
-      if (userError || !user) throw new Error("Failed to get user after password update")
+
+      if (userError || !user) {
+        throw new Error("Failed to get user after password update")
+      }
 
       if (inviteData) {
         console.log("📝 Creating user profile and bot access...")
+
+        // Create user profile
         const { error: profileError } = await supabase.from("user_profiles").upsert({
           id: user.id,
           first_name: inviteData.first_name || "",
           surname: inviteData.surname || "",
           bot_share_name: inviteData.bot_share_name || "",
         })
-        if (profileError) console.error("❌ Error creating user profile:", profileError)
-        else console.log("✅ User profile created")
 
+        if (profileError) {
+          console.error("❌ Error creating user profile:", profileError)
+          // Don't fail the whole process, but log it
+        } else {
+          console.log("✅ User profile created")
+        }
+
+        // ✅ Create bot_users record - THIS IS THE KEY PART
         const { error: botUserError } = await supabase.from("bot_users").upsert({
-          user_id: user.id,
+          user_id: user.id, // FK to auth.users
           role: inviteData.role || "member",
           bot_share_name: inviteData.bot_share_name || "",
           is_active: true,
         })
-        if (botUserError) console.error("❌ Error creating bot user:", botUserError)
-        else console.log("✅ Bot user access created")
+
+        if (botUserError) {
+          console.error("❌ Error creating bot user:", botUserError)
+          // Don't fail the whole process, but log it
+        } else {
+          console.log("✅ Bot user access created")
+        }
       }
 
+      // Clean up the used invitation
       console.log("🗑️ Deleting used invitation record...")
       await deleteInvitationByEmail(email)
 
       setStatus("success")
       setTimeout(() => {
-        router.push("/")
+        router.push("/chats") // Redirect to chats after successful setup
       }, 2000)
     } catch (err: any) {
       console.error("❌ Error setting password:", err)
       setError(err.message || "Failed to set password")
-      setStatus("form")
+      setStatus("form") // Go back to form to try again
     }
   }
 
@@ -154,6 +187,7 @@ export default function AcceptInvitePage() {
           )}
 
           <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">
+            {/* ✅ Show invitation details from user_invitations table */}
             {inviteData && (
               <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
                 <h3 className="text-sm font-medium text-[#212121] mb-2">Invitation Details</h3>
