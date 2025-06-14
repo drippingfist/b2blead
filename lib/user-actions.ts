@@ -17,6 +17,45 @@ const getAdminClient = () => {
   })
 }
 
+// Get invitation details by email
+export async function getInvitationByEmail(email: string) {
+  try {
+    // Use admin client to bypass RLS for this internal lookup
+    const supabase = getAdminClient()
+
+    const { data, error } = await supabase.from("user_invitations").select("*").eq("email", email).single()
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        // Not found
+        return { success: false, error: "Invitation not found for this email." }
+      }
+      throw error
+    }
+
+    return { success: true, invitation: data }
+  } catch (error: any) {
+    console.error("Error getting invitation by email:", error)
+    return { success: false, error: error.message }
+  }
+}
+
+// Delete invitation by email after successful signup
+export async function deleteInvitationByEmail(email: string) {
+  try {
+    const supabase = getAdminClient()
+
+    const { error } = await supabase.from("user_invitations").delete().eq("email", email)
+
+    if (error) throw error
+
+    return { success: true }
+  } catch (error: any) {
+    console.error("Error deleting invitation by email:", error)
+    return { success: false, error: error.message }
+  }
+}
+
 // Get bots that the current user can invite others to
 export async function getInvitableBots() {
   try {
@@ -151,13 +190,9 @@ export async function inviteUser(userData: {
     // Send Supabase invitation email using inviteUserByEmail
     const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(userData.email, {
       data: {
-        first_name: userData.first_name,
-        surname: userData.surname,
-        bot_share_name: userData.bot_share_name,
-        role: userData.role,
-        invited_by: userData.invited_by,
+        // We don't need to pass data here anymore as we fetch it from our table
       },
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/accept-invite?type=invite`,
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/accept-invite`,
     })
 
     if (inviteError) {

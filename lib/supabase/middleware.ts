@@ -1,43 +1,97 @@
-import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
-import { NextResponse } from "next/server"
+import { createServerClient, type CookieOptions } from "@supabase/ssr"
+import { NextResponse, type NextRequest } from "next/server"
 
-import type { NextRequest } from "next/server"
+export async function updateSession(request: NextRequest) {
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
 
-export async function middleware(req: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
-  await supabase.auth.getSession()
-  return res
-}
-
-export async function updateSession(req: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return request.cookies.get(name)?.value
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          request.cookies.set({
+            name,
+            value,
+            ...options,
+          })
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          })
+          response.cookies.set({
+            name,
+            value,
+            ...options,
+          })
+        },
+        remove(name: string, options: CookieOptions) {
+          request.cookies.set({
+            name,
+            value: "",
+            ...options,
+          })
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          })
+          response.cookies.set({
+            name,
+            value: "",
+            ...options,
+          })
+        },
+      },
+    },
+  )
 
   const {
-    data: { session },
-  } = await supabase.auth.getSession()
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  const publicRoutes = ["/auth/login", "/auth/sign-up", "/auth/forgot-password", "/auth/magic-link"]
+  const { pathname } = request.nextUrl
 
-  if (!session && !publicRoutes.includes(req.nextUrl.pathname)) {
-    const redirectUrl = req.nextUrl.clone()
-    redirectUrl.pathname = "/auth/login"
-    redirectUrl.searchParams.set(`redirect_to`, req.nextUrl.pathname)
-    return NextResponse.redirect(redirectUrl)
+  const publicPaths = [
+    "/",
+    "/auth/login",
+    "/auth/sign-up",
+    "/auth/forgot-password",
+    "/auth/reset-password",
+    "/auth/magic-link",
+    "/auth/accept-invite",
+    "/auth/set-password",
+    "/auth/callback",
+  ]
+
+  // Allow all API routes
+  if (pathname.startsWith("/api/")) {
+    return response
   }
 
-  const isAuthRoute =
-    req.nextUrl.pathname.startsWith("/auth/login") ||
-    req.nextUrl.pathname.startsWith("/auth/sign-up") ||
-    req.nextUrl.pathname.startsWith("/auth/forgot-password") ||
-    req.nextUrl.pathname.startsWith("/auth/magic-link") ||
-    req.nextUrl.pathname.startsWith("/auth/reset-password") ||
-    req.nextUrl.pathname.startsWith("/auth/set-password") ||
-    req.nextUrl.pathname.startsWith("/auth/accept-invite") ||
-    req.nextUrl.pathname.startsWith("/auth/setup") ||
-    req.nextUrl.pathname.startsWith("/auth/test") ||
-    req.nextUrl.pathname === "/auth/callback"
+  // If the user is not signed in and the path is not public, redirect to login
+  if (!user && !publicPaths.some((path) => pathname.startsWith(path))) {
+    const url = request.nextUrl.clone()
+    url.pathname = "/auth/login"
+    url.searchParams.set("redirect_to", pathname)
+    return NextResponse.redirect(url)
+  }
 
-  return res
+  // If user is signed in and tries to access a public auth page, redirect to dashboard
+  if (user && (pathname === "/auth/login" || pathname === "/auth/sign-up")) {
+    const url = request.nextUrl.clone()
+    url.pathname = "/dashboard"
+    url.search = ""
+    return NextResponse.redirect(url)
+  }
+
+  return response
 }
