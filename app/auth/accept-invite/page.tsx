@@ -23,22 +23,28 @@ export default function AcceptInvitePage() {
   useEffect(() => {
     const processInvitation = async () => {
       try {
-        // Get URL parameters (Supabase redirects with token and type as query params)
-        const urlParams = new URLSearchParams(window.location.search)
-        const token = urlParams.get("token")
-        const type = urlParams.get("type")
+        // ✅ FIXED: Get tokens from URL hash (not search params)
+        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const accessToken = hashParams.get("access_token")
+        const refreshToken = hashParams.get("refresh_token")
+        const type = hashParams.get("type")
 
-        console.log("🔍 Processing invitation with params:", { token: !!token, type })
+        console.log("🔍 Processing invitation with hash params:", {
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken,
+          type,
+          hash: window.location.hash,
+        })
 
-        if (!token || type !== "invite") {
-          throw new Error("Invalid invitation link - missing token or type")
+        if (!accessToken || !refreshToken || type !== "invite") {
+          throw new Error("Invalid invitation link - missing tokens or type")
         }
 
-        // Use Supabase's verifyOtp method for invitation tokens
-        console.log("🔍 Verifying invitation token...")
-        const { data: authData, error: authError } = await supabase.auth.verifyOtp({
-          token_hash: token,
-          type: "invite",
+        // ✅ FIXED: Use setSession with the tokens from the hash
+        console.log("🔍 Setting session with invitation tokens...")
+        const { data: authData, error: authError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
         })
 
         if (authError) {
@@ -47,12 +53,12 @@ export default function AcceptInvitePage() {
         }
 
         if (!authData.user?.email) {
-          throw new Error("Could not get user email from invitation token")
+          throw new Error("Could not get user email from invitation tokens")
         }
 
         const userEmail = authData.user.email
         setEmail(userEmail)
-        console.log("✅ Invitation token verified for email:", userEmail)
+        console.log("✅ Session set successfully for email:", userEmail)
 
         // Fetch invitation details from user_invitations table
         console.log("🔍 Fetching invitation details from database...")
