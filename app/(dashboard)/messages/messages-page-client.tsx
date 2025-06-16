@@ -117,6 +117,14 @@ export function MessagesPageClient({
         return
       }
 
+      // Check if a specific bot is selected - don't load if "All Bots" is selected
+      if (selectedBot === null) {
+        console.log("🔍 Messages: All Bots selected, not loading threads")
+        setThreadsWithMessages([])
+        setLoading(false)
+        return
+      }
+
       console.log("🔍 Messages: Loading data for bot:", selectedBot)
       setLoading(true)
 
