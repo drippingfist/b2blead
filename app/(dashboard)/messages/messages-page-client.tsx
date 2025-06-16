@@ -58,7 +58,13 @@ export function MessagesPageClient({
           }
         } else {
           // Regular user: must select a specific bot, never "All Bots"
-          if (storedBot && storedBot !== "null" && userAccess?.accessibleBots.includes(storedBot)) {
+          // If user has only one accessible bot, always select it automatically
+          if (userAccess?.accessibleBots.length === 1) {
+            const singleBot = userAccess.accessibleBots[0]
+            setSelectedBot(singleBot)
+            localStorage.setItem("selectedBot", singleBot)
+            console.log("🔍 Messages: Single-bot user auto-selected:", singleBot)
+          } else if (storedBot && storedBot !== "null" && userAccess?.accessibleBots.includes(storedBot)) {
             setSelectedBot(storedBot)
             console.log("🔍 Messages: Regular user using stored bot:", storedBot)
           } else if (bots.length > 0) {
