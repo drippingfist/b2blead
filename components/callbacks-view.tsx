@@ -216,7 +216,7 @@ export default function CallbacksView({
           <thead>
             <tr className="bg-white border-b border-[#e0e0e0]">
               <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">Date</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider w-[20%]">
                 Contact Info
               </th>
               {columnConfig.hasCompany && (
@@ -259,23 +259,25 @@ export default function CallbacksView({
                         minute: "2-digit",
                       })}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 w-[20%]">
                       <div className="space-y-1">
                         <div className="text-sm font-medium text-[#212121] flex items-center">
-                          <User className="h-4 w-4 mr-1 text-[#616161]" />
-                          {callback.user_name ||
-                            `${callback.user_first_name || ""} ${callback.user_surname || ""}`.trim() ||
-                            "Anonymous"}
+                          <User className="h-4 w-4 mr-1 text-[#616161] flex-shrink-0" />
+                          <span className="truncate">
+                            {callback.user_name ||
+                              `${callback.user_first_name || ""} ${callback.user_surname || ""}`.trim() ||
+                              "Anonymous"}
+                          </span>
                         </div>
                         {callback.user_email && (
                           <div className="text-xs text-[#616161] flex items-center">
-                            <Mail className="h-3 w-3 mr-1" />
-                            {callback.user_email}
+                            <Mail className="h-3 w-3 mr-1 flex-shrink-0" />
+                            <span className="truncate">{callback.user_email}</span>
                           </div>
                         )}
                         <div className="text-xs text-[#616161] flex items-center">
-                          <Phone className="h-3 w-3 mr-1" />
-                          {formatPhoneNumber(callback.user_phone)}
+                          <Phone className="h-3 w-3 mr-1 flex-shrink-0" />
+                          <span className="truncate">{formatPhoneNumber(callback.user_phone)}</span>
                         </div>
                       </div>
                     </td>
