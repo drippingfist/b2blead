@@ -118,6 +118,39 @@ export default function Dashboard() {
         console.log("🔍 Dashboard: Accessible bots from API:", access.accessibleBots)
         setUserAccess(access)
 
+        // If user has only one accessible bot, auto-select it
+        if (!access.isSuperAdmin && access.accessibleBots.length === 1) {
+          const singleBot = access.accessibleBots[0]
+          setSelectedBot(singleBot)
+          console.log("🔍 Dashboard: Auto-selecting single bot for user:", singleBot)
+        } else {
+          // Existing logic for multiple bots or superadmin
+          const storedBot = localStorage.getItem("selectedBot")
+          console.log("🔍 Dashboard: Stored bot selection:", storedBot)
+
+          if (access.isSuperAdmin) {
+            // Superadmin: can select "All Bots" (null) or specific bot
+            if (storedBot && storedBot !== "null") {
+              setSelectedBot(storedBot)
+              console.log("🔍 Dashboard: Superadmin using stored bot:", storedBot)
+            } else {
+              // Default to "All Bots" for superadmin if no specific selection
+              setSelectedBot(null)
+              console.log("🔍 Dashboard: Superadmin defaulting to All Bots")
+            }
+          } else {
+            // Regular user with multiple bots: can use "All Bots" (null) or specific bot
+            if (storedBot && storedBot !== "null" && access.accessibleBots.includes(storedBot)) {
+              setSelectedBot(storedBot)
+              console.log("🔍 Dashboard: Regular user using stored bot:", storedBot)
+            } else {
+              // Default to "All Bots" for regular users too
+              setSelectedBot(null)
+              console.log("🔍 Dashboard: Regular user defaulting to All Bots")
+            }
+          }
+        }
+
         // Get current user
         const {
           data: { user },
@@ -145,33 +178,6 @@ export default function Dashboard() {
         const storedBots = JSON.parse(localStorage.getItem("userBots") || "[]")
         console.log("🔍 Dashboard: Stored bots from localStorage:", storedBots)
         setBots(storedBots)
-
-        // Get stored bot selection
-        const storedBot = localStorage.getItem("selectedBot")
-        console.log("🔍 Dashboard: Stored bot selection:", storedBot)
-
-        // Determine proper bot selection based on user access
-        if (access.isSuperAdmin) {
-          // Superadmin: can select "All Bots" (null) or specific bot
-          if (storedBot && storedBot !== "null") {
-            setSelectedBot(storedBot)
-            console.log("🔍 Dashboard: Superadmin using stored bot:", storedBot)
-          } else {
-            // Default to "All Bots" for superadmin if no specific selection
-            setSelectedBot(null)
-            console.log("🔍 Dashboard: Superadmin defaulting to All Bots")
-          }
-        } else {
-          // Regular user: can also use "All Bots" (null) or specific bot
-          if (storedBot && storedBot !== "null" && access.accessibleBots.includes(storedBot)) {
-            setSelectedBot(storedBot)
-            console.log("🔍 Dashboard: Regular user using stored bot:", storedBot)
-          } else {
-            // Default to "All Bots" for regular users too
-            setSelectedBot(null)
-            console.log("🔍 Dashboard: Regular user defaulting to All Bots")
-          }
-        }
 
         setBotSelectionReady(true)
         console.log("🔍 Dashboard: Bot selection ready with access:", access)
@@ -261,6 +267,7 @@ export default function Dashboard() {
           setCurrentBotName("All Bots")
         } else if (selectedBot) {
           const currentBot = bots.find((b) => b.bot_share_name === selectedBot)
+          // Prioritize client_name, fallback to bot_share_name if client_name is not available
           setCurrentBotName(currentBot?.client_name || currentBot?.bot_share_name || "Selected Bot")
         } else {
           setCurrentBotName("No Bot Selected")
