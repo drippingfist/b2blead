@@ -115,19 +115,11 @@ export function MessagesPageClient({
     return () => window.removeEventListener("botsLoaded", handleBotsLoaded as EventListener)
   }, [])
 
-  // Load messages data only when bot selection is ready (EXACT SAME AS DASHBOARD)
+  // Load messages data only when bot selection is ready
   useEffect(() => {
     const fetchData = async () => {
       if (!botSelectionReady) {
         console.log("🔍 Messages: Waiting for bot selection to be ready...")
-        return
-      }
-
-      // Check if a specific bot is selected - don't load if "All Bots" is selected
-      if (selectedBot === null) {
-        console.log("🔍 Messages: All Bots selected, not loading threads")
-        setThreadsWithMessages([])
-        setLoading(false)
         return
       }
 

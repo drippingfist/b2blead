@@ -322,163 +322,144 @@ export function MessagesView({
 
       {/* Messages Container with Infinite Scroll */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-[15%] py-4 space-y-4">
-        {/* Show message when All Bots is selected */}
-        {selectedBot === null && (
-          <div className="text-center py-12">
-            <div className="text-[#616161] text-lg mb-2">Please select a specific bot</div>
-            <div className="text-[#616161] text-sm">
-              Use the bot selector in the sidebar to choose a bot to view messages for.
-            </div>
+        {/* Intersection Observer Trigger Element */}
+        <div ref={loadTriggerRef} className="h-10 -mt-2 flex items-center justify-center">
+          {hasMore && !loading && <div className="text-xs text-gray-400">Scroll to load more</div>}
+        </div>
+
+        {/* Loading indicator at top */}
+        {loading && (
+          <div className="text-center py-4">
+            <div className="text-[#616161]">Loading more threads...</div>
           </div>
         )}
 
-        {/* Only show the rest of the content when a specific bot is selected */}
-        {selectedBot !== null && (
-          <>
-            {/* Intersection Observer Trigger Element */}
-            <div ref={loadTriggerRef} className="h-10 -mt-2 flex items-center justify-center">
-              {hasMore && !loading && <div className="text-xs text-gray-400">Scroll to load more</div>}
-            </div>
-
-            {/* Loading indicator at top */}
-            {loading && (
-              <div className="text-center py-4">
-                <div className="text-[#616161]">Loading more threads...</div>
-              </div>
-            )}
-
-            {filteredThreads.length === 0 && !loading && (
-              <div className="text-center py-12">
-                <div className="text-[#616161]">No messages found for {selectedBot || "the selected bot"}.</div>
-              </div>
-            )}
-
-            {filteredThreads.map((thread, index) => {
-              // Check if we need to show a date header
-              const currentDate = new Date(thread.created_at).toDateString()
-              const previousDate = index > 0 ? new Date(filteredThreads[index - 1].created_at).toDateString() : null
-              const showDateHeader = index === 0 || currentDate !== previousDate
-
-              return (
-                <div
-                  key={thread.id}
-                  className="space-y-4"
-                  ref={(el) => {
-                    if (el) {
-                      threadRefs.current.set(thread.id, el)
-                      el.setAttribute("data-thread-id", thread.id)
-                      el.setAttribute("data-thread-date", thread.created_at)
-                    }
-                  }}
-                >
-                  {/* Date Header - only show when date changes */}
-                  {showDateHeader && (
-                    <div className="text-center py-4">
-                      <div className="inline-block bg-[#f5f5f5] text-[#616161] px-4 py-2 rounded-full text-sm font-medium">
-                        {new Date(thread.created_at).toLocaleDateString("en-US", {
-                          weekday: "long",
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Message Preview */}
-                  {thread.message_preview && (
-                    <div className="text-center py-2">
-                      <Link
-                        href={`/thread/${thread.id}`}
-                        className="inline-block bg-blue-50 text-blue-800 px-4 py-2 rounded-lg text-sm max-w-md hover:bg-blue-100 hover:text-blue-900 transition-colors cursor-pointer"
-                      >
-                        {thread.message_preview}
-                      </Link>
-                    </div>
-                  )}
-
-                  {/* Callback Information */}
-                  {thread.callback === true && (
-                    <div className="text-center py-2">
-                      <div className="inline-block bg-orange-50 text-orange-800 px-4 py-2 rounded-lg text-sm">
-                        <div className="font-medium">{thread.callbackData?.user_name || "Callback Requested"}</div>
-                        {thread.callbackData?.user_email && (
-                          <div className="text-xs">{thread.callbackData.user_email}</div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Messages */}
-                  {thread.messages?.map((message: any) => {
-                    const isUser = ["user", "suggested_button", "menu_button"].includes(message.role)
-                    const isStarred = starredMessages.has(message.id)
-
-                    return (
-                      <div key={message.id} className={`flex ${isUser ? "justify-start" : "justify-end"} mb-8 group`}>
-                        {/* Star button for user messages (left side) */}
-                        {isUser && (
-                          <button
-                            onClick={() => handleStarMessage(message.id)}
-                            className="flex-shrink-0 p-1 rounded transition-colors text-[#616161] hover:text-[#212121] mr-2 opacity-0 group-hover:opacity-100 focus:opacity-100"
-                          >
-                            <Star
-                              className={`h-4 w-4 ${isStarred ? "fill-yellow-400 text-yellow-400" : "text-[#616161]"}`}
-                            />
-                          </button>
-                        )}
-
-                        <div
-                          className={`flex flex-col ${isUser ? "items-start" : "items-end"} max-w-[60%] min-w-[120px]`}
-                        >
-                          {/* Message Label */}
-                          {isUser && <div className="text-xs text-[#616161] mb-1 px-2">{message.role}</div>}
-
-                          {/* Message Bubble */}
-                          <div
-                            className={`relative w-full rounded-2xl px-4 py-3 shadow-sm ${
-                              isUser
-                                ? message.role === "user"
-                                  ? "bg-white border border-[#e0e0e0] rounded-bl-md"
-                                  : "bg-[#effdf5] border border-[#e0e0e0] rounded-bl-md"
-                                : "bg-[#048a71] text-white rounded-br-md"
-                            }`}
-                          >
-                            <p
-                              className={`text-sm leading-relaxed break-words ${isUser ? "text-[#212121]" : "text-white"}`}
-                            >
-                              {message.content}
-                            </p>
-                          </div>
-
-                          {/* Timestamp */}
-                          <p className="text-xs mt-1 px-2 text-[#616161]">
-                            {message.formattedTime || new Date(message.created_at).toLocaleTimeString()}
-                          </p>
-                        </div>
-
-                        {/* Star button for bot messages (right side) */}
-                        {!isUser && (
-                          <button
-                            onClick={() => handleStarMessage(message.id)}
-                            className="flex-shrink-0 p-1 rounded transition-colors text-[#616161] hover:text-[#212121] ml-2 opacity-0 group-hover:opacity-100 focus:opacity-100"
-                          >
-                            <Star
-                              className={`h-4 w-4 ${isStarred ? "fill-yellow-400 text-yellow-400" : "text-[#616161]"}`}
-                            />
-                          </button>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )
-            })}
-
-            {/* Scroll anchor */}
-            <div ref={messagesEndRef} />
-          </>
+        {filteredThreads.length === 0 && !loading && (
+          <div className="text-center py-12">
+            <div className="text-[#616161]">No messages found for {selectedBot || "the selected bot"}.</div>
+          </div>
         )}
+
+        {filteredThreads.map((thread, index) => {
+          // Check if we need to show a date header
+          const currentDate = new Date(thread.created_at).toDateString()
+          const previousDate = index > 0 ? new Date(filteredThreads[index - 1].created_at).toDateString() : null
+          const showDateHeader = index === 0 || currentDate !== previousDate
+
+          return (
+            <div
+              key={thread.id}
+              className="space-y-4"
+              ref={(el) => {
+                if (el) {
+                  threadRefs.current.set(thread.id, el)
+                  el.setAttribute("data-thread-id", thread.id)
+                  el.setAttribute("data-thread-date", thread.created_at)
+                }
+              }}
+            >
+              {/* Date Header - only show when date changes */}
+              {showDateHeader && (
+                <div className="text-center py-4">
+                  <div className="inline-block bg-[#f5f5f5] text-[#616161] px-4 py-2 rounded-full text-sm font-medium">
+                    {new Date(thread.created_at).toLocaleDateString("en-US", {
+                      weekday: "long",
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Message Preview */}
+              {thread.message_preview && (
+                <div className="text-center py-2">
+                  <Link
+                    href={`/thread/${thread.id}`}
+                    className="inline-block bg-blue-50 text-blue-800 px-4 py-2 rounded-lg text-sm max-w-md hover:bg-blue-100 hover:text-blue-900 transition-colors cursor-pointer"
+                  >
+                    {thread.message_preview}
+                  </Link>
+                </div>
+              )}
+
+              {/* Callback Information */}
+              {thread.callback === true && (
+                <div className="text-center py-2">
+                  <div className="inline-block bg-orange-50 text-orange-800 px-4 py-2 rounded-lg text-sm">
+                    <div className="font-medium">{thread.callbackData?.user_name || "Callback Requested"}</div>
+                    {thread.callbackData?.user_email && <div className="text-xs">{thread.callbackData.user_email}</div>}
+                  </div>
+                </div>
+              )}
+
+              {/* Messages */}
+              {thread.messages?.map((message: any) => {
+                const isUser = ["user", "suggested_button", "menu_button"].includes(message.role)
+                const isStarred = starredMessages.has(message.id)
+
+                return (
+                  <div key={message.id} className={`flex ${isUser ? "justify-start" : "justify-end"} mb-8 group`}>
+                    {/* Star button for user messages (left side) */}
+                    {isUser && (
+                      <button
+                        onClick={() => handleStarMessage(message.id)}
+                        className="flex-shrink-0 p-1 rounded transition-colors text-[#616161] hover:text-[#212121] mr-2 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                      >
+                        <Star
+                          className={`h-4 w-4 ${isStarred ? "fill-yellow-400 text-yellow-400" : "text-[#616161]"}`}
+                        />
+                      </button>
+                    )}
+
+                    <div className={`flex flex-col ${isUser ? "items-start" : "items-end"} max-w-[60%] min-w-[120px]`}>
+                      {/* Message Label */}
+                      {isUser && <div className="text-xs text-[#616161] mb-1 px-2">{message.role}</div>}
+
+                      {/* Message Bubble */}
+                      <div
+                        className={`relative w-full rounded-2xl px-4 py-3 shadow-sm ${
+                          isUser
+                            ? message.role === "user"
+                              ? "bg-white border border-[#e0e0e0] rounded-bl-md"
+                              : "bg-[#effdf5] border border-[#e0e0e0] rounded-bl-md"
+                            : "bg-[#048a71] text-white rounded-br-md"
+                        }`}
+                      >
+                        <p
+                          className={`text-sm leading-relaxed break-words ${isUser ? "text-[#212121]" : "text-white"}`}
+                        >
+                          {message.content}
+                        </p>
+                      </div>
+
+                      {/* Timestamp */}
+                      <p className="text-xs mt-1 px-2 text-[#616161]">
+                        {message.formattedTime || new Date(message.created_at).toLocaleTimeString()}
+                      </p>
+                    </div>
+
+                    {/* Star button for bot messages (right side) */}
+                    {!isUser && (
+                      <button
+                        onClick={() => handleStarMessage(message.id)}
+                        className="flex-shrink-0 p-1 rounded transition-colors text-[#616161] hover:text-[#212121] ml-2 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                      >
+                        <Star
+                          className={`h-4 w-4 ${isStarred ? "fill-yellow-400 text-yellow-400" : "text-[#616161]"}`}
+                        />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })}
+
+        {/* Scroll anchor */}
+        <div ref={messagesEndRef} />
       </div>
     </div>
   )
