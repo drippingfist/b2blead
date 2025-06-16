@@ -624,14 +624,6 @@ export default function ChatsPageClient() {
         )}
       </div>
 
-      {/* Debug Info */}
-      {debugInfo && (
-        <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-yellow-800 mb-2">Debug Information</h3>
-          <pre className="text-xs text-yellow-700 whitespace-pre-wrap font-mono">{debugInfo}</pre>
-        </div>
-      )}
-
       {/* Loading State */}
       {loading && (
         <div className="flex items-center justify-center py-12">
