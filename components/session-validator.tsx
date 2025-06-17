@@ -31,9 +31,11 @@ export function SessionValidator() {
         return
       }
 
-      if (!data.session) {
+      // Check if data exists and has a session property
+      if (!data || !data.session) {
         console.log("🔑 No active session found, redirecting to login")
         router.push("/auth/login")
+        return
       }
     } catch (err) {
       console.error("Failed to validate session:", err)

@@ -546,28 +546,39 @@ export default function ChatsPageClient() {
       return
     }
 
-    // Check if user is logged in
+    // Get the current user's session
     const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      console.error("Please log in to regenerate sentiment.")
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession()
+
+    if (sessionError || !session) {
+      console.error("Error getting session or user not logged in:", sessionError)
       return
     }
+
+    const userAccessToken = session.access_token
 
     setRefreshingSentiment((prev) => new Set(prev).add(threadId))
 
     try {
-      const { data, error } = await supabase.functions.invoke("sentiment_analysis_specific", {
-        body: { thread_id: threadId },
-      })
+      // Make direct fetch call to the correct Edge Function URL
+      const response = await fetch(
+        "https://bhekqolukbxkxjloffdi.supabase.co/functions/v1/sentiment_analysis_specific",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${userAccessToken}`, // Use the session's access_token
+            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "", // Include anon key as well
+          },
+          body: JSON.stringify({ thread_id: threadId }),
+        },
+      )
 
-      if (error) {
-        console.error("Error invoking sentiment_analysis_specific:", error)
-        return
-      }
+      const data = await response.json()
 
-      if (data && data.success) {
+      if (response.ok && data && data.success) {
         console.log("Sentiment regeneration successful:", data)
         // Update the thread in the local state
         setThreads((prev) =>
@@ -582,10 +593,10 @@ export default function ChatsPageClient() {
           ),
         )
       } else {
-        console.warn("Sentiment regeneration may not have been successful:", data)
+        console.error("Error from Edge Function:", data)
       }
     } catch (e) {
-      console.error("Network or frontend error during invocation:", e)
+      console.error("Network or frontend error during fetch:", e)
     } finally {
       setRefreshingSentiment((prev) => {
         const newSet = new Set(prev)

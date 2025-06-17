@@ -101,5 +101,4 @@ export const timezones = [
   { value: "Asia/Ho_Chi_Minh", label: "(GMT+07:00) Ho Chi Minh City" },
   { value: "Asia/Phnom_Penh", label: "(GMT+07:00) Phnom Penh" },
   { value: "Asia/Vientiane", label: "(GMT+07:00) Vientiane" },
-  { value: "Pacific/Honolulu", label: "(GMT-10:00) Honolulu" },
 ]
