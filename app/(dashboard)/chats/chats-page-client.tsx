@@ -67,6 +67,9 @@ export default function ChatsPageClient() {
   const [debugInfo, setDebugInfo] = useState<string>("")
   const [accessibleBots, setAccessibleBots] = useState<string[]>([])
 
+  // New state for tracking refreshing sentiment
+  const [refreshingSentiment, setRefreshingSentiment] = useState<Set<string>>(new Set())
+
   // Listen for bot selection changes
   useEffect(() => {
     const handleBotSelectionChanged = (event: CustomEvent) => {
@@ -536,6 +539,62 @@ export default function ChatsPageClient() {
     )
   }
 
+  // New function to handle sentiment refresh for individual threads
+  const regenerateSentimentForThread = async (threadId: string) => {
+    if (!threadId) {
+      console.error("Thread ID is required.")
+      return
+    }
+
+    // Check if user is logged in
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      console.error("Please log in to regenerate sentiment.")
+      return
+    }
+
+    setRefreshingSentiment((prev) => new Set(prev).add(threadId))
+
+    try {
+      const { data, error } = await supabase.functions.invoke("sentiment_analysis_specific", {
+        body: { thread_id: threadId },
+      })
+
+      if (error) {
+        console.error("Error invoking sentiment_analysis_specific:", error)
+        return
+      }
+
+      if (data && data.success) {
+        console.log("Sentiment regeneration successful:", data)
+        // Update the thread in the local state
+        setThreads((prev) =>
+          prev.map((thread) =>
+            thread.id === threadId
+              ? {
+                  ...thread,
+                  sentiment_score: data.score,
+                  sentiment_justification: data.justification,
+                }
+              : thread,
+          ),
+        )
+      } else {
+        console.warn("Sentiment regeneration may not have been successful:", data)
+      }
+    } catch (e) {
+      console.error("Network or frontend error during invocation:", e)
+    } finally {
+      setRefreshingSentiment((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(threadId)
+        return newSet
+      })
+    }
+  }
+
   // We've removed the restriction that prevented viewing chats when "All Bots" is selected
 
   return (
@@ -796,18 +855,30 @@ export default function ChatsPageClient() {
                         {/* Sentiment */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           {thread.sentiment_score ? (
-                            <div
-                              className="flex items-center gap-2 cursor-pointer"
-                              onMouseEnter={(e) => handleSentimentHover(thread.id, thread.sentiment_justification, e)}
-                              onMouseLeave={handleSentimentLeave}
-                              onMouseMove={(e) => {
-                                if (hoveredSentiment === thread.id) {
-                                  setTooltipPosition({ x: e.clientX, y: e.clientY })
-                                }
-                              }}
-                            >
-                              <span className="text-lg">{getSentimentEmoji(thread.sentiment_score)}</span>
-                              <span className="text-[#212121]">{thread.sentiment_score}</span>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="flex items-center gap-2 cursor-pointer"
+                                onMouseEnter={(e) => handleSentimentHover(thread.id, thread.sentiment_justification, e)}
+                                onMouseLeave={handleSentimentLeave}
+                                onMouseMove={(e) => {
+                                  if (hoveredSentiment === thread.id) {
+                                    setTooltipPosition({ x: e.clientX, y: e.clientY })
+                                  }
+                                }}
+                              >
+                                <span className="text-lg">{getSentimentEmoji(thread.sentiment_score)}</span>
+                                <span className="text-[#212121]">{thread.sentiment_score}</span>
+                              </div>
+                              <button
+                                onClick={() => regenerateSentimentForThread(thread.id)}
+                                disabled={refreshingSentiment.has(thread.id)}
+                                className="text-[#616161] hover:text-[#212121] transition-colors disabled:opacity-50 flex-shrink-0"
+                                title="Regenerate sentiment analysis"
+                              >
+                                <RefreshCw
+                                  className={`h-3 w-3 ${refreshingSentiment.has(thread.id) ? "animate-spin" : ""}`}
+                                />
+                              </button>
                             </div>
                           ) : (
                             <span className="text-[#616161]">-</span>
