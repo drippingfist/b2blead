@@ -6,7 +6,7 @@ import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Star, ChevronLeft, ChevronRight, MessageSquare, Clock, RefreshCw } from "lucide-react"
+import { Star, ChevronLeft, ChevronRight, MessageSquare, Clock } from "lucide-react"
 import Link from "next/link"
 
 interface Thread {
@@ -68,7 +68,7 @@ export default function ChatsPageClient() {
   const [accessibleBots, setAccessibleBots] = useState<string[]>([])
 
   // New state for tracking refreshing sentiment
-  const [refreshingSentiment, setRefreshingSentiment] = useState<Set<string>>(new Set())
+  // const [refreshingSentiment, setRefreshingSentiment] = useState<Set<string>>(new Set())
 
   // Listen for bot selection changes
   useEffect(() => {
@@ -540,71 +540,71 @@ export default function ChatsPageClient() {
   }
 
   // New function to handle sentiment refresh for individual threads
-  const regenerateSentimentForThread = async (threadId: string) => {
-    if (!threadId) {
-      console.error("Thread ID is required.")
-      return
-    }
+  // const regenerateSentimentForThread = async (threadId: string) => {
+  //   if (!threadId) {
+  //     console.error("Thread ID is required.")
+  //     return
+  //   }
 
-    // Get the current user's session
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession()
+  //   // Get the current user's session
+  //   const {
+  //     data: { session },
+  //     error: sessionError,
+  //   } = await supabase.auth.getSession()
 
-    if (sessionError || !session) {
-      console.error("Error getting session or user not logged in:", sessionError)
-      return
-    }
+  //   if (sessionError || !session) {
+  //     console.error("Error getting session or user not logged in:", sessionError)
+  //     return
+  //   }
 
-    const userAccessToken = session.access_token
+  //   const userAccessToken = session.access_token
 
-    setRefreshingSentiment((prev) => new Set(prev).add(threadId))
+  //   setRefreshingSentiment((prev) => new Set(prev).add(threadId))
 
-    try {
-      // Make direct fetch call to the correct Edge Function URL
-      const response = await fetch(
-        "https://bhekqolukbxkxjloffdi.supabase.co/functions/v1/sentiment_analysis_specific",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${userAccessToken}`, // Use the session's access_token
-            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "", // Include anon key as well
-          },
-          body: JSON.stringify({ thread_id: threadId }),
-        },
-      )
+  //   try {
+  //     // Make direct fetch call to the correct Edge Function URL
+  //     const response = await fetch(
+  //       "https://bhekqolukbxkxjloffdi.supabase.co/functions/v1/sentiment_analysis_specific",
+  //       {
+  //         method: "POST",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //           Authorization: `Bearer ${userAccessToken}`, // Use the session's access_token
+  //           apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "", // Include anon key as well
+  //         },
+  //         body: JSON.stringify({ thread_id: threadId }),
+  //       },
+  //     )
 
-      const data = await response.json()
+  //     const data = await response.json()
 
-      if (response.ok && data && data.success) {
-        console.log("Sentiment regeneration successful:", data)
-        // Update the thread in the local state
-        setThreads((prev) =>
-          prev.map((thread) =>
-            thread.id === threadId
-              ? {
-                  ...thread,
-                  sentiment_score: data.score,
-                  sentiment_justification: data.justification,
-                }
-              : thread,
-          ),
-        )
-      } else {
-        console.error("Error from Edge Function:", data)
-      }
-    } catch (e) {
-      console.error("Network or frontend error during fetch:", e)
-    } finally {
-      setRefreshingSentiment((prev) => {
-        const newSet = new Set(prev)
-        newSet.delete(threadId)
-        return newSet
-      })
-    }
-  }
+  //     if (response.ok && data && data.success) {
+  //       console.log("Sentiment regeneration successful:", data)
+  //       // Update the thread in the local state
+  //       setThreads((prev) =>
+  //         prev.map((thread) =>
+  //           thread.id === threadId
+  //             ? {
+  //                 ...thread,
+  //                 sentiment_score: data.score,
+  //                 sentiment_justification: data.justification,
+  //               }
+  //             : thread,
+  //         ),
+  //       )
+  //     } else {
+  //       console.error("Error from Edge Function:", data)
+  //     }
+  //   } catch (e) {
+  //     console.error("Network or frontend error during fetch:", e)
+  //   } finally {
+  //     setRefreshingSentiment((prev) => {
+  //       const newSet = new Set(prev)
+  //       newSet.delete(threadId)
+  //       return newSet
+  //     })
+  //   }
+  // }
 
   // We've removed the restriction that prevented viewing chats when "All Bots" is selected
 
@@ -672,7 +672,7 @@ export default function ChatsPageClient() {
             </Select>
 
             {/* Refresh Button */}
-            <Button
+            {/* <Button
               variant="outline"
               size="sm"
               onClick={() => window.location.reload()}
@@ -680,7 +680,7 @@ export default function ChatsPageClient() {
             >
               <RefreshCw className="h-4 w-4" />
               Refresh
-            </Button>
+            </Button> */}
           </div>
         </div>
 
@@ -866,30 +866,18 @@ export default function ChatsPageClient() {
                         {/* Sentiment */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           {thread.sentiment_score ? (
-                            <div className="flex items-center gap-2">
-                              <div
-                                className="flex items-center gap-2 cursor-pointer"
-                                onMouseEnter={(e) => handleSentimentHover(thread.id, thread.sentiment_justification, e)}
-                                onMouseLeave={handleSentimentLeave}
-                                onMouseMove={(e) => {
-                                  if (hoveredSentiment === thread.id) {
-                                    setTooltipPosition({ x: e.clientX, y: e.clientY })
-                                  }
-                                }}
-                              >
-                                <span className="text-lg">{getSentimentEmoji(thread.sentiment_score)}</span>
-                                <span className="text-[#212121]">{thread.sentiment_score}</span>
-                              </div>
-                              <button
-                                onClick={() => regenerateSentimentForThread(thread.id)}
-                                disabled={refreshingSentiment.has(thread.id)}
-                                className="text-[#616161] hover:text-[#212121] transition-colors disabled:opacity-50 flex-shrink-0"
-                                title="Regenerate sentiment analysis"
-                              >
-                                <RefreshCw
-                                  className={`h-3 w-3 ${refreshingSentiment.has(thread.id) ? "animate-spin" : ""}`}
-                                />
-                              </button>
+                            <div
+                              className="flex items-center gap-2 cursor-pointer"
+                              onMouseEnter={(e) => handleSentimentHover(thread.id, thread.sentiment_justification, e)}
+                              onMouseLeave={handleSentimentLeave}
+                              onMouseMove={(e) => {
+                                if (hoveredSentiment === thread.id) {
+                                  setTooltipPosition({ x: e.clientX, y: e.clientY })
+                                }
+                              }}
+                            >
+                              <span className="text-lg">{getSentimentEmoji(thread.sentiment_score)}</span>
+                              <span className="text-[#212121]">{thread.sentiment_score}</span>
                             </div>
                           ) : (
                             <span className="text-[#616161]">-</span>
