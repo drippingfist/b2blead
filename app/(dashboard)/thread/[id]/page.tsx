@@ -113,11 +113,22 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
     }
   }
 
-  const getSentimentEmoji = (sentiment?: number) => {
-    if (sentiment === undefined || sentiment === null) return "😐"
-    if (sentiment >= 7) return "😊"
-    if (sentiment >= 4) return "😐"
-    return "😞"
+  const getSentimentEmoji = (score?: number) => {
+    if (!score) return "😐"
+    switch (score) {
+      case 1:
+        return "😡"
+      case 2:
+        return "😞"
+      case 3:
+        return "😐"
+      case 4:
+        return "😊"
+      case 5:
+        return "😍"
+      default:
+        return "😐"
+    }
   }
 
   const formatDuration = (duration?: string) => {

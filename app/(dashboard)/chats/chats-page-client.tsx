@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Star, ChevronLeft, ChevronRight, MessageSquare, Clock, RefreshCw } from "lucide-react"
 import Link from "next/link"
+import { refreshSentimentAnalysis } from "@/lib/actions"
 
 interface Thread {
   id: string
@@ -68,6 +69,10 @@ export default function ChatsPageClient() {
   const [accessibleBots, setAccessibleBots] = useState<string[]>([])
 
   // Listen for bot selection changes
+  const [refreshingThreads, setRefreshingThreads] = useState<Set<string>>(new Set())
+  const [refreshingPreviews, setRefreshingPreviews] = useState<Set<string>>(new Set())
+  const [refreshingSentiment, setRefreshingSentiment] = useState<Set<string>>(new Set())
+
   useEffect(() => {
     const handleBotSelectionChanged = (event: CustomEvent) => {
       const newBotSelection = event.detail
@@ -536,6 +541,125 @@ export default function ChatsPageClient() {
     )
   }
 
+  const handleSentimentRefresh = async (threadId: string) => {
+    if (threadId === "") {
+      // Batch process all threads with empty sentiment
+      setRefreshingThreads(new Set(["batch"]))
+
+      try {
+        const { data, error } = await supabase.functions.invoke("sentiment_all")
+
+        if (error) {
+          console.error("Error refreshing sentiment batch:", error)
+        }
+      } catch (error) {
+        console.error("Error refreshing sentiment batch:", error)
+      } finally {
+        setRefreshingThreads(new Set())
+      }
+    } else {
+      setRefreshingThreads((prev) => new Set(prev).add(threadId))
+
+      try {
+        const result = await refreshSentimentAnalysis(threadId)
+        if (result.error) {
+          console.error("Error refreshing sentiment:", result.error)
+        }
+      } catch (error) {
+        console.error("Error refreshing sentiment:", error)
+      } finally {
+        setRefreshingThreads((prev) => {
+          const newSet = new Set(prev)
+          newSet.delete(threadId)
+          return newSet
+        })
+      }
+    }
+  }
+
+  const regenerateSentimentForThread = async (threadId: string) => {
+    if (!threadId) {
+      console.error("Thread ID is required.")
+      return
+    }
+
+    // Check if user is logged in
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      console.error("Please log in to regenerate sentiment.")
+      return
+    }
+
+    setRefreshingSentiment((prev) => new Set(prev).add(threadId))
+
+    const edgeFunctionName = "sentiment_analysis_specific"
+    console.log(`Invoking ${edgeFunctionName} for thread: ${threadId}`)
+
+    try {
+      const { data, error } = await supabase.functions.invoke(edgeFunctionName, {
+        body: { thread_id: threadId },
+      })
+
+      if (error) {
+        console.error(`Error invoking ${edgeFunctionName}:`, error)
+        if (error.context && error.context.error_details) {
+          console.error("Function error details:", error.context.error_details.error)
+        }
+        return
+      }
+
+      if (data && data.success) {
+        console.log("Sentiment regeneration successful:", data)
+        // Update the thread in the local state
+        setThreads((prev) =>
+          prev.map((thread) =>
+            thread.id === threadId
+              ? {
+                  ...thread,
+                  sentiment_score: data.score,
+                  sentiment_justification: data.justification,
+                }
+              : thread,
+          ),
+        )
+      } else {
+        console.warn("Sentiment regeneration may not have been successful:", data)
+      }
+    } catch (e) {
+      console.error("Network or frontend error during invocation:", e)
+    } finally {
+      setRefreshingSentiment((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(threadId)
+        return newSet
+      })
+    }
+  }
+
+  const handleMessagePreviewRefresh = async (threadId: string) => {
+    setRefreshingPreviews((prev) => new Set(prev).add(threadId))
+
+    try {
+      const { data, error } = await supabase.functions.invoke("update-message-preview", {
+        body: { thread_id: threadId },
+      })
+
+      if (error) {
+        console.error("Error refreshing message preview:", error)
+      }
+    } catch (error) {
+      console.error("Error refreshing message preview:", error)
+    } finally {
+      setRefreshingPreviews((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(threadId)
+        return newSet
+      })
+    }
+  }
+
   // We've removed the restriction that prevented viewing chats when "All Bots" is selected
 
   return (
@@ -702,12 +826,22 @@ export default function ChatsPageClient() {
                     Callback
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                    <button
-                      onClick={() => handleSort("sentiment_score")}
-                      className="flex items-center hover:text-blue-600 transition-colors"
-                    >
-                      Sentiment {getSortIndicator("sentiment_score")}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleSentimentRefresh("")}
+                        disabled={refreshingThreads.size > 0}
+                        className="text-[#616161] hover:text-[#212121] transition-colors disabled:opacity-50 hidden"
+                        title="Refresh sentiment analysis for all threads"
+                      >
+                        <RefreshCw className={`h-3 w-3 ${refreshingThreads.size > 0 ? "animate-spin" : ""}`} />
+                      </button>
+                      <button
+                        onClick={() => handleSort("sentiment_score")}
+                        className="flex items-center hover:text-blue-600 transition-colors"
+                      >
+                        Sentiment {getSortIndicator("sentiment_score")}
+                      </button>
+                    </div>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
                     <button
@@ -795,7 +929,7 @@ export default function ChatsPageClient() {
 
                         {/* Sentiment */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          {thread.sentiment_score ? (
+                          <div className="flex items-center gap-2">
                             <div
                               className="flex items-center gap-2 cursor-pointer"
                               onMouseEnter={(e) => handleSentimentHover(thread.id, thread.sentiment_justification, e)}
@@ -809,19 +943,39 @@ export default function ChatsPageClient() {
                               <span className="text-lg">{getSentimentEmoji(thread.sentiment_score)}</span>
                               <span className="text-[#212121]">{thread.sentiment_score}</span>
                             </div>
-                          ) : (
-                            <span className="text-[#616161]">-</span>
-                          )}
+                            <button
+                              onClick={() => regenerateSentimentForThread(thread.id)}
+                              disabled={refreshingSentiment.has(thread.id)}
+                              className="text-[#616161] hover:text-[#212121] transition-colors disabled:opacity-50 flex-shrink-0"
+                              title="Regenerate sentiment analysis"
+                            >
+                              <RefreshCw
+                                className={`h-3 w-3 ${refreshingSentiment.has(thread.id) ? "animate-spin" : ""}`}
+                              />
+                            </button>
+                          </div>
                         </td>
 
                         {/* Message Preview */}
                         <td className="px-6 py-4 text-sm">
-                          <Link
-                            href={`/thread/${thread.id}`}
-                            className="text-[#212121] hover:underline hover:text-[#038a71] max-w-xs truncate block transition-colors"
-                          >
-                            {thread.message_preview || "No preview available"}
-                          </Link>
+                          <div className="flex items-center gap-2">
+                            <Link
+                              href={`/thread/${thread.id}`}
+                              className="text-[#212121] hover:underline hover:text-[#038a71] max-w-xs truncate block transition-colors flex-1"
+                            >
+                              {thread.message_preview || "No preview available"}
+                            </Link>
+                            <button
+                              onClick={() => handleMessagePreviewRefresh(thread.id)}
+                              disabled={refreshingPreviews.has(thread.id)}
+                              className="text-[#616161] hover:text-[#212121] transition-colors disabled:opacity-50 flex-shrink-0"
+                              title="Refresh message preview"
+                            >
+                              <RefreshCw
+                                className={`h-3 w-3 ${refreshingPreviews.has(thread.id) ? "animate-spin" : ""}`}
+                              />
+                            </button>
+                          </div>
                         </td>
 
                         {/* Messages Count */}
