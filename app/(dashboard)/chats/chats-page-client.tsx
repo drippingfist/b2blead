@@ -6,7 +6,7 @@ import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Star, ChevronLeft, ChevronRight, MessageSquare, Clock } from "lucide-react"
+import { Star, ChevronLeft, ChevronRight, MessageSquare, Clock, RefreshCw } from "lucide-react"
 import Link from "next/link"
 
 interface Thread {
@@ -672,15 +672,20 @@ export default function ChatsPageClient() {
             </Select>
 
             {/* Refresh Button */}
-            {/* <Button
+            <Button
               variant="outline"
               size="sm"
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                setCurrentPage(1)
+                // Force a re-fetch by updating a dependency
+                setLoading(true)
+                // The useEffect will automatically re-run and fetch fresh data
+              }}
               className="flex items-center gap-2"
             >
               <RefreshCw className="h-4 w-4" />
               Refresh
-            </Button> */}
+            </Button>
           </div>
         </div>
 
