@@ -19,6 +19,7 @@ import {
   getInvitableBots,
 } from "@/lib/user-actions"
 import Loading from "@/components/loading"
+import { DeleteUserModal } from "@/components/delete-user-modal"
 
 interface UserData {
   id: string
@@ -1018,6 +1019,18 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Add the Delete User Modal */}
+      <DeleteUserModal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false)
+          setUserToDelete(null)
+        }}
+        onConfirm={confirmDeleteUser}
+        userName={userToDelete?.name || ""}
+        userEmail={userToDelete?.email || ""}
+      />
     </div>
   )
 }
