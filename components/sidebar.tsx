@@ -123,7 +123,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const allNavigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Chats", href: "/chats", icon: MessageSquare }, // Updated to point to /chats
-    { name: "Messages", href: "/messages", icon: MessageSquare, adminOnly: true },
     { name: "Callbacks", href: "/callbacks", icon: PhoneCall },
     {
       name: "Settings",

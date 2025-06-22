@@ -17,13 +17,14 @@ export default async function MessagesPage({ searchParams }: MessagesPageProps) 
   // Get user access and accessible bots (same as dashboard)
   const [userAccess, bots] = await Promise.all([getUserBotAccess(), getAccessibleBotsClient()])
 
-  // Check if user has admin role
-  if (userAccess.role !== "admin" && !userAccess.isSuperAdmin) {
+  // Check if user has admin role or is superadmin
+  if (userAccess.role !== "admin" && userAccess.role !== "superadmin" && !userAccess.isSuperAdmin) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
           <p className="text-gray-600">You need admin privileges to access this page.</p>
+          <p className="text-sm text-gray-500 mt-2">Your current role: {userAccess.role || "none"}</p>
         </div>
       </div>
     )
