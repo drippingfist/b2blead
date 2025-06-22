@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getInvitationByEmail, deleteInvitationByEmail } from "@/lib/user-actions"
+import { completeUserSetup } from "@/lib/setup-actions"
 
 export default function AcceptInvitePage() {
   const router = useRouter()
@@ -120,37 +121,22 @@ export default function AcceptInvitePage() {
       }
 
       if (inviteData) {
-        console.log("📝 Creating user profile and bot access...")
+        console.log("📝 Calling completeUserSetup with admin privileges...")
 
-        // Create user profile
-        const { error: profileError } = await supabase.from("user_profiles").upsert({
-          id: user.id,
+        const setupResult = await completeUserSetup({
           first_name: inviteData.first_name || "",
           surname: inviteData.surname || "",
           bot_share_name: inviteData.bot_share_name || "",
-        })
-
-        if (profileError) {
-          console.error("❌ Error creating user profile:", profileError)
-          // Don't fail the whole process, but log it
-        } else {
-          console.log("✅ User profile created")
-        }
-
-        // ✅ Create bot_users record - THIS IS THE KEY PART
-        const { error: botUserError } = await supabase.from("bot_users").upsert({
-          user_id: user.id, // FK to auth.users
           role: inviteData.role || "member",
-          bot_share_name: inviteData.bot_share_name || "",
-          is_active: true,
+          email: email,
+          invitation_id: inviteData.id,
         })
 
-        if (botUserError) {
-          console.error("❌ Error creating bot user:", botUserError)
-          // Don't fail the whole process, but log it
-        } else {
-          console.log("✅ Bot user access created")
+        if (!setupResult.success) {
+          throw new Error(setupResult.error || "Failed to complete user setup")
         }
+
+        console.log("✅ User setup completed successfully")
       }
 
       // Clean up the used invitation
