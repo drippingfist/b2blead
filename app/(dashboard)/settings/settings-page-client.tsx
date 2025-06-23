@@ -221,7 +221,13 @@ export default function SettingsPage({
         }
 
         // Parse questions from the text blob
-        const questions = (bot.groq_suggested_questions || "").split("\n").filter((q) => q.trim() !== "")
+        const rawQuestions = bot.groq_suggested_questions || ""
+        const questions = rawQuestions
+          .split("\n")
+          .map((q) => q.trim())
+          .filter((q) => q !== "")
+          .map((q) => q.replace(/^\d+\.\s*/, "")) // Remove "1. ", "2. ", etc.
+
         // Ensure there are at least 3 fields, even if empty
         while (questions.length < 3) {
           questions.push("")
@@ -407,7 +413,10 @@ export default function SettingsPage({
         throw new Error(updateError.message)
       }
 
-      const suggestedQuestionsBlob = suggestedQuestions.filter((q) => q.trim() !== "").join("\n")
+      const suggestedQuestionsBlob = suggestedQuestions
+        .filter((q) => q.trim() !== "")
+        .map((q, index) => `${index + 1}. ${q.trim()}`)
+        .join("\n")
 
       if (selectedBot) {
         const { error: botUpdateError } = await supabase
