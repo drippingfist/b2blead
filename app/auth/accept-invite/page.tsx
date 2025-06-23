@@ -23,11 +23,41 @@ export default function AcceptInvitePage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   useEffect(() => {
-    // This function will process the invitation details once we have a session.
-    const processInvitation = async (userEmail: string) => {
+    const handleInvite = async () => {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1))
+      const accessToken = hashParams.get("access_token")
+      const refreshToken = hashParams.get("refresh_token")
+      const type = hashParams.get("type")
+
+      if (!accessToken || !refreshToken || type !== "invite") {
+        setError("Invalid or expired invitation link. Please request a new one.")
+        setStatus("error")
+        return
+      }
+
       try {
-        setEmail(userEmail)
-        const { success, invitation, error: inviteDetailsError } = await getInvitationByEmail(userEmail)
+        // Manually set the session from the URL hash
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        })
+
+        if (sessionError) {
+          throw sessionError
+        }
+
+        // Now that the session is set, get the user
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser()
+        if (userError || !user || !user.email) {
+          throw userError || new Error("Could not retrieve user details.")
+        }
+
+        // At this point, the user is authenticated, and we can fetch their invitation details
+        setEmail(user.email)
+        const { success, invitation, error: inviteDetailsError } = await getInvitationByEmail(user.email)
 
         if (!success || !invitation) {
           throw new Error(
@@ -38,48 +68,14 @@ export default function AcceptInvitePage() {
         setInviteData(invitation)
         setStatus("form")
       } catch (err: any) {
-        console.error("❌ Error processing invitation details:", err)
+        console.error("❌ Error processing invitation:", err)
         setError(err.message || "Invalid or expired invitation link.")
         setStatus("error")
       }
     }
 
-    // Set up a listener for auth state changes.
-    // This is the key to solving the race condition.
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === "SIGNED_IN" && session?.user?.email) {
-        // This event fires AFTER the Supabase client has processed the URL fragment
-        // and successfully established a session. Now it's safe to proceed.
-        await processInvitation(session.user.email)
-      } else if (event === "INITIAL_SESSION" && session?.user?.email) {
-        // Also handle the case where the session might already be available
-        // when the component mounts.
-        await processInvitation(session.user.email)
-      }
-    })
-
-    // Check if the session is already available on initial load, just in case.
-    const checkInitialSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      if (session?.user?.email) {
-        // If a session exists but the form isn't shown yet, process it.
-        if (status === "loading") {
-          await processInvitation(session.user.email)
-        }
-      }
-    }
-
-    checkInitialSession()
-
-    // Cleanup the subscription when the component unmounts.
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [status]) // Rerun if status changes, to handle edge cases.
+    handleInvite()
+  }, []) // Empty dependency array ensures this runs only once on mount.
 
   const handleSetPassword = async (e: React.FormEvent) => {
     e.preventDefault()
