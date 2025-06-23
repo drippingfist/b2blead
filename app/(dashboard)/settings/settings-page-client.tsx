@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Save, X, Users, Trash2, UserPlus, Settings, PlusCircle } from "lucide-react"
+import { Loader2, Save, X, Trash2, Settings, PlusCircle } from "lucide-react"
 import { supabase } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { timezones } from "@/lib/timezones"
@@ -18,7 +18,6 @@ import {
   getInvitableBots,
 } from "@/lib/user-actions"
 import Loading from "@/components/loading"
-import { DeleteUserModal } from "@/components/delete-user-modal"
 import { useBotSelection } from "@/hooks/use-bot-selection"
 
 interface UserData {
@@ -218,21 +217,21 @@ export default function SettingsPage({
             }
           }
           botSettingsValue.groq_suggested_questions = bot.groq_suggested_questions || ""
-        }
 
-        // Parse questions from the text blob
-        const rawQuestions = bot.groq_suggested_questions || ""
-        const questions = rawQuestions
-          .split("\n")
-          .map((q) => q.trim())
-          .filter((q) => q !== "")
-          .map((q) => q.replace(/^\d+\.\s*/, "")) // Remove "1. ", "2. ", etc.
+          // Parse questions from the text blob
+          const rawQuestions = bot.groq_suggested_questions || ""
+          const questions = rawQuestions
+            .split("\n")
+            .map((q) => q.trim())
+            .filter((q) => q !== "")
+            .map((q) => q.replace(/^\d+\.\s*/, "")) // Remove "1. ", "2. ", etc.
 
-        // Ensure there are at least 3 fields, even if empty
-        while (questions.length < 3) {
-          questions.push("")
+          // Ensure there are at least 3 fields, even if empty
+          while (questions.length < 3) {
+            questions.push("")
+          }
+          setSuggestedQuestions(questions)
         }
-        setSuggestedQuestions(questions)
       }
 
       // Set all state at once
@@ -895,203 +894,19 @@ export default function SettingsPage({
                   />
                 </div>
                 {suggestedQuestions.length > 3 && (
-                  <Button
-                    onClick={() => removeQuestionField(index)}
-                    variant="ghost"
-                    size="icon"
-                    className="mt-6 text-red-500 hover:bg-red-50 hover:text-red-600"
-                  >
+                  <Button onClick={() => removeQuestionField(index)} variant="ghost" size="icon">
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 )}
               </div>
             ))}
-            <Button onClick={addQuestionField} variant="outline" className="flex items-center mt-4">
+            <Button onClick={addQuestionField} variant="outline" className="w-full">
               <PlusCircle className="h-4 w-4 mr-2" />
               Add Question
             </Button>
           </div>
         </div>
-
-        {/* Users Management Section */}
-        <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-medium text-[#212121] flex items-center">
-              <Users className="h-5 w-5 mr-2" />
-              User Management
-            </h2>
-            <Button
-              onClick={() => setAddingUser(true)}
-              className="bg-[#038a71] hover:bg-[#038a71]/90 flex items-center"
-              size="sm"
-            >
-              <UserPlus className="h-4 w-4 mr-2" />
-              Add User
-            </Button>
-          </div>
-
-          {/* Add User Form */}
-          {addingUser && (
-            <div className="mb-6 p-4 border border-[#e0e0e0] rounded-lg bg-gray-50">
-              <h3 className="text-sm font-medium text-[#212121] mb-3">Invite New User</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label className="text-xs">Email *</Label>
-                  <Input
-                    value={newUser.email}
-                    onChange={(e) => handleNewUserChange("email", e.target.value)}
-                    placeholder="user@example.com"
-                    className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Bot Access *</Label>
-                  <Select
-                    value={newUser.bot_share_name}
-                    onValueChange={(value) => handleNewUserChange("bot_share_name", value)}
-                  >
-                    <SelectTrigger className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8">
-                      <SelectValue placeholder="Select bot" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableBots.map((bot) => (
-                        <SelectItem key={bot.bot_share_name} value={bot.bot_share_name}>
-                          {bot.client_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">First Name</Label>
-                  <Input
-                    value={newUser.first_name}
-                    onChange={(e) => handleNewUserChange("first_name", e.target.value)}
-                    placeholder="John"
-                    className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Surname</Label>
-                  <Input
-                    value={newUser.surname}
-                    onChange={(e) => handleNewUserChange("surname", e.target.value)}
-                    placeholder="Doe"
-                    className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Role</Label>
-                  <Select value={newUser.role} onValueChange={(value) => handleNewUserChange("role", value)}>
-                    <SelectTrigger className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] h-8">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="member">Member</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="flex justify-end mt-4">
-                <Button
-                  onClick={handleAddUser}
-                  disabled={addingUserLoading}
-                  className="bg-[#038a71] hover:bg-[#038a71]/90 flex items-center"
-                >
-                  {addingUserLoading ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <UserPlus className="h-4 w-4 mr-2" />
-                  )}
-                  Invite
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Existing Users List */}
-
-          <div className="space-y-4">
-            <h4 className="text-sm font-medium text-[#212121] mb-2">Active Users</h4>
-            {users.map((user) => (
-              <div key={user.id} className="p-4 border border-[#e0e0e0] rounded-lg bg-gray-50">
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <p className="text-sm font-medium text-[#212121]">
-                      {user.first_name} {user.surname}
-                    </p>
-                    <p className="text-xs text-[#616161]">{user.email}</p>
-                    <div className="mt-1">
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
-                        <span className="font-medium">{user.bot_share_name}</span>
-                        <span className="ml-1 text-blue-600">({user.role})</span>
-                        {!user.is_active && <span className="ml-1 text-red-600">(inactive)</span>}
-                      </span>
-                    </div>
-                  </div>
-                  <Button
-                    onClick={() => handleDeleteUser(user.id)}
-                    variant="outline"
-                    size="sm"
-                    className="bg-red-500 hover:bg-red-500/90 px-3"
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete
-                  </Button>
-                </div>
-              </div>
-            ))}
-
-            {/* Pending Invitations */}
-            {invitedUsers.length > 0 && (
-              <>
-                <h4 className="text-sm font-medium text-[#212121] mb-2 mt-6">Pending Invitations</h4>
-                {invitedUsers.map((invitation) => (
-                  <div key={invitation.id} className="p-4 border border-orange-200 rounded-lg bg-orange-50">
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <p className="text-sm font-medium text-[#212121]">
-                          {invitation.first_name} {invitation.surname}
-                        </p>
-                        <p className="text-xs text-[#616161]">{invitation.email}</p>
-                        <div className="mt-1">
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-800">
-                            <span className="font-medium">{invitation.bot_share_name}</span>
-                            <span className="ml-1 text-orange-600">({invitation.role})</span>
-                            <span className="ml-1 text-orange-600">(pending)</span>
-                          </span>
-                        </div>
-                      </div>
-                      <Button
-                        onClick={() => handleDeleteInvitation(invitation.id)}
-                        variant="outline"
-                        size="sm"
-                        className="bg-red-500 hover:bg-red-500/90 px-3"
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
-        </div>
       </div>
-
-      {/* Add the Delete User Modal */}
-      <DeleteUserModal
-        isOpen={deleteModalOpen}
-        onClose={() => {
-          setDeleteModalOpen(false)
-          setUserToDelete(null)
-        }}
-        onConfirm={confirmDeleteUser}
-        userName={userToDelete?.name || ""}
-        userEmail={userToDelete?.email || ""}
-      />
     </div>
   )
 }
