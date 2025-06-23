@@ -252,6 +252,20 @@ export default function SuperAdminClient() {
     }
   }
 
+  // Show bot selection required
+  if (!selectedBot && !loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Card className="max-w-md mx-auto">
+          <CardHeader>
+            <CardTitle>Bot Selection Required</CardTitle>
+            <CardDescription>Please select a specific bot from the sidebar to configure its settings.</CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    )
+  }
+
   if (loading) {
     return <Loading message="Loading bot settings..." />
   }
