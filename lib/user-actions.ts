@@ -186,7 +186,7 @@ export async function inviteUser(userData: {
       data: {
         // Don't put sensitive data here - we'll fetch from user_invitations table
       },
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/callback?next=/auth/accept-invite`,
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/accept-invite`,
     })
 
     if (inviteError) {

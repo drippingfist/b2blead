@@ -146,7 +146,7 @@ export async function sendMagicLink(prevState: any, formData: FormData) {
 
     // Send password reset email
     const { error } = await supabase.auth.resetPasswordForEmail(email.toString(), {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback?next=/auth/reset-password`,
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`,
     })
 
     if (error) {
