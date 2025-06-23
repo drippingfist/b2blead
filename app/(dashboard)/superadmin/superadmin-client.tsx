@@ -7,8 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { createClient } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
+import { supabase } from "@/lib/supabase/client"
 import { timezones } from "@/lib/timezones"
 import { Upload, Save, ImageIcon } from "lucide-react"
 import Loading from "@/components/loading"
@@ -28,34 +27,7 @@ interface BotSettings {
   product_name: string
 }
 
-async function checkSuperAdminAccess() {
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return false
-  }
-
-  // Check the bot_super_users table
-  const { data: superAdmin } = await supabase.from("bot_super_users").select("id").eq("id", user.id).single()
-
-  return !!superAdmin
-}
-
-export default async function SuperAdminPage() {
-  const isSuperAdmin = await checkSuperAdminAccess()
-
-  if (!isSuperAdmin) {
-    redirect("/dashboard")
-  }
-
-  // If check passes, render the client component
-  return <SuperAdminClientComponent />
-}
-
-function SuperAdminClientComponent() {
+export default function SuperAdminPage() {
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
   const [clientName, setClientName] = useState<string>("")
   const [botSettings, setBotSettings] = useState<BotSettings>({
@@ -130,7 +102,6 @@ function SuperAdminClientComponent() {
       try {
         console.log("Loading bot data for:", selectedBot)
 
-        const supabase = createClient()
         const { data: bot, error: botError } = await supabase
           .from("bots")
           .select("*")
@@ -205,7 +176,6 @@ function SuperAdminClientComponent() {
     try {
       console.log("Saving bot settings:", botSettings)
 
-      const supabase = createClient()
       const { error: updateError } = await supabase.from("bots").update(botSettings).eq("bot_share_name", selectedBot)
 
       if (updateError) {
@@ -237,7 +207,6 @@ function SuperAdminClientComponent() {
 
       console.log(`Saving ${section} settings:`, sectionData)
 
-      const supabase = createClient()
       const { error: updateError } = await supabase.from("bots").update(sectionData).eq("bot_share_name", selectedBot)
 
       if (updateError) {

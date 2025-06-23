@@ -1,7 +1,6 @@
 "use server"
 
 import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
-import { createClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 
@@ -141,10 +140,9 @@ export async function sendMagicLink(prevState: any, formData: FormData) {
   }
 
   try {
-    // Create a new Supabase client with implicit flow
-    const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-      auth: { flowType: "implicit" },
-    })
+    // CORRECT: Use the standard server action client
+    const cookieStore = cookies()
+    const supabase = createServerActionClient({ cookies: () => cookieStore })
 
     // Send password reset email
     const { error } = await supabase.auth.resetPasswordForEmail(email.toString(), {
