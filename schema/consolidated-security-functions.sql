@@ -48,22 +48,16 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-    current_user_id UUID;
 BEGIN
-    current_user_id := auth.uid();
-    
-    IF current_user_id IS NULL THEN
+    IF auth.uid() IS NULL THEN
         RETURN FALSE;
     END IF;
-    
-    -- FIXED: Use user_id (FK), not id (PK)
+
+    -- CRITICAL FIX: Check the correct bot_super_users table
     RETURN EXISTS (
-        SELECT 1 
-        FROM bot_users 
-        WHERE user_id = current_user_id  -- CRITICAL FIX
-          AND role = 'superadmin' 
-          AND is_active = true
+        SELECT 1
+        FROM public.bot_super_users
+        WHERE id = auth.uid() AND is_active = true
     );
 END;
 $$;

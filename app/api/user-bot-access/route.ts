@@ -14,36 +14,55 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
-    // Get all bots the user has access to
-    const { data: botUsers, error: botUsersError } = await supabase
-      .from("bot_users")
-      .select("bot_share_name, role")
-      .eq("user_id", user.id)
+    // Check if the user is a superadmin
+    const { data: superAdmin, error: superAdminError } = await supabase
+      .from("bot_super_users")
+      .select("id")
+      .eq("id", user.id)
       .eq("is_active", true)
+      .single()
 
-    if (botUsersError) {
-      console.error("Error fetching bot users:", botUsersError)
-      return NextResponse.json({ error: "Failed to fetch user bot access" }, { status: 500 })
-    }
+    const isSuperAdmin = !!superAdmin && !superAdminError
 
-    // Extract unique bot share names and determine highest role
-    const accessibleBots = [...new Set(botUsers?.map((bu) => bu.bot_share_name).filter(Boolean) || [])]
+    let accessibleBots: string[] = []
+    let highestRole: "superadmin" | "admin" | "member" | null = null
 
-    // Determine the highest role
-    let highestRole: "admin" | "member" | null = null
+    if (isSuperAdmin) {
+      highestRole = "superadmin"
+      // Superadmins can access all bots
+      const { data: allBots, error: allBotsError } = await supabase
+        .from("bots")
+        .select("bot_share_name")
+        .not("bot_share_name", "is", null)
 
-    if (botUsers && botUsers.length > 0) {
-      if (botUsers.some((bu) => bu.role === "admin")) {
-        highestRole = "admin"
+      if (allBotsError) {
+        console.error("Error fetching all bots for superadmin:", allBotsError)
       } else {
-        highestRole = "member"
+        accessibleBots = allBots?.map((b) => b.bot_share_name).filter(Boolean) || []
+      }
+    } else {
+      // Regular users get their assigned bots from bot_users
+      const { data: botUsers, error: botUsersError } = await supabase
+        .from("bot_users")
+        .select("bot_share_name, role")
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+
+      if (botUsersError) {
+        console.error("Error fetching bot users:", botUsersError)
+        return NextResponse.json({ error: "Failed to fetch user bot access" }, { status: 500 })
+      }
+
+      if (botUsers && botUsers.length > 0) {
+        accessibleBots = [...new Set(botUsers.map((bu) => bu.bot_share_name).filter(Boolean))]
+        highestRole = botUsers.some((bu) => bu.role === "admin") ? "admin" : "member"
       }
     }
 
     return NextResponse.json({
       role: highestRole,
       accessibleBots,
-      isSuperAdmin: false, // No longer checking for superadmin
+      isSuperAdmin,
     })
   } catch (error) {
     console.error("Error in user-bot-access API route:", error)

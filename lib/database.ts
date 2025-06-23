@@ -152,7 +152,13 @@ export async function getCallbacksClient(limit = 50, botShareName?: string | nul
 
   if (!callbacksData || callbacksData.length === 0) {
     console.log("⚠️ No callback data returned for bot:", botShareName || "ALL")
-    return []
+    return callbacksData.map((callback) => ({
+      ...callback,
+      sentiment_score: null,
+      sentiment_justification: null,
+      message_preview: null,
+      thread_table_id: null,
+    }))
   }
 
   console.log("✅ Fetched", callbacksData.length, "callbacks for bot:", botShareName || "ALL")
@@ -513,7 +519,6 @@ export async function getDashboardMetrics(
   switch (period) {
     case "today":
       currentStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
-      // Previous period is yesterday
       const yesterday = new Date(now)
       yesterday.setDate(yesterday.getDate() - 1)
       previousStartDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate()).toISOString()
@@ -530,7 +535,6 @@ export async function getDashboardMetrics(
       const sevenDaysAgo = new Date(now)
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
       currentStartDate = sevenDaysAgo.toISOString()
-      // Previous period is 7 days before that
       const fourteenDaysAgo = new Date(now)
       fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
       previousStartDate = fourteenDaysAgo.toISOString()
@@ -540,7 +544,6 @@ export async function getDashboardMetrics(
       const thirtyDaysAgo = new Date(now)
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
       currentStartDate = thirtyDaysAgo.toISOString()
-      // Previous period is 30 days before that
       const sixtyDaysAgo = new Date(now)
       sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
       previousStartDate = sixtyDaysAgo.toISOString()
@@ -553,44 +556,45 @@ export async function getDashboardMetrics(
       break
   }
 
-  // Build current period queries
-  let currentThreadsQuery = supabase.from("threads").select("*")
-  // Query for current period dropped callbacks (threads with callback=true but no callback record)
+  // ✅ FIX: Use a consistent, efficient count query for currentThreadsQuery
+  let currentThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
+
   let currentDroppedCallbacksQuery = supabase
     .from("threads")
-    .select("*, callbacks(*)", { count: "exact", head: true })
+    .select("id", { count: "exact", head: true })
     .eq("callback", true)
     .is("callbacks", null)
 
-  // Query for previous period dropped callbacks
   let previousDroppedCallbacksQuery = supabase
     .from("threads")
-    .select("*, callbacks(*)", { count: "exact", head: true })
+    .select("id", { count: "exact", head: true })
     .eq("callback", true)
     .is("callbacks", null)
 
-  // Query for current period actual callbacks (for callback percentage calculation)
-  let currentCallbackThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
-  let currentActualCallbacksQuery = supabase.from("callbacks").select("*", { count: "exact", head: true })
+  let currentCallbackThreadsQuery = supabase
+    .from("threads")
+    .select("id", { count: "exact", head: true })
+    .eq("callback", true)
+  let currentActualCallbacksQuery = supabase.from("callbacks").select("id", { count: "exact", head: true })
 
-  // Query for previous period actual callbacks
-  let previousCallbackThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
-  let previousActualCallbacksQuery = supabase.from("callbacks").select("*", { count: "exact", head: true })
+  let previousCallbackThreadsQuery = supabase
+    .from("threads")
+    .select("id", { count: "exact", head: true })
+    .eq("callback", true)
+  let previousActualCallbacksQuery = supabase.from("callbacks").select("id", { count: "exact", head: true })
+
   let currentSentimentQuery = supabase.from("threads").select("sentiment_score")
   let currentResponseTimeQuery = supabase.from("threads").select("mean_response_time")
 
-  // Build previous period queries
   let previousThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
   let previousSentimentQuery = supabase.from("threads").select("sentiment_score")
   let previousResponseTimeQuery = supabase.from("threads").select("mean_response_time")
 
-  // Build global response time queries (all bots)
   let currentGlobalResponseTimeQuery = supabase.from("threads").select("mean_response_time")
   let previousGlobalResponseTimeQuery = supabase.from("threads").select("mean_response_time")
 
   // Apply bot filter based on selection and accessible bots
   if (botShareName) {
-    // If a specific bot is selected, filter by that bot
     currentThreadsQuery = currentThreadsQuery.eq("bot_share_name", botShareName)
     currentDroppedCallbacksQuery = currentDroppedCallbacksQuery.eq("bot_share_name", botShareName)
     currentCallbackThreadsQuery = currentCallbackThreadsQuery.eq("bot_share_name", botShareName)
@@ -605,7 +609,6 @@ export async function getDashboardMetrics(
     previousSentimentQuery = previousSentimentQuery.eq("bot_share_name", botShareName)
     previousResponseTimeQuery = previousResponseTimeQuery.eq("bot_share_name", botShareName)
   } else if (accessibleBots && accessibleBots.length > 0) {
-    // If "All Bots" is selected and we have a list of accessible bots, filter by those bots
     currentThreadsQuery = currentThreadsQuery.in("bot_share_name", accessibleBots)
     currentDroppedCallbacksQuery = currentDroppedCallbacksQuery.in("bot_share_name", accessibleBots)
     currentCallbackThreadsQuery = currentCallbackThreadsQuery.in("bot_share_name", accessibleBots)
@@ -655,27 +658,21 @@ export async function getDashboardMetrics(
       .lte("created_at", previousEndDate)
   }
 
-  // Add specific filters
-  currentCallbackThreadsQuery = currentCallbackThreadsQuery.eq("callback", true)
-  previousCallbackThreadsQuery = previousCallbackThreadsQuery.eq("callback", true)
-
   currentSentimentQuery = currentSentimentQuery.not("sentiment_score", "is", null)
   previousSentimentQuery = previousSentimentQuery.not("sentiment_score", "is", null)
-
   currentResponseTimeQuery = currentResponseTimeQuery.not("mean_response_time", "is", null)
   previousResponseTimeQuery = previousResponseTimeQuery.not("mean_response_time", "is", null)
   currentGlobalResponseTimeQuery = currentGlobalResponseTimeQuery.not("mean_response_time", "is", null)
   previousGlobalResponseTimeQuery = previousGlobalResponseTimeQuery.not("mean_response_time", "is", null)
 
-  // Execute all queries in parallel
   const [
-    { data: currentThreads },
+    { count: currentThreadsCount }, // ✅ FIX: Use the count from the query
     { count: currentDroppedCallbacks },
     { count: currentCallbackThreads },
     { count: currentActualCallbacks },
     { data: currentSentiment },
     { data: currentResponseTime },
-    { count: previousThreads },
+    { count: previousThreadsCount }, // ✅ FIX: Use the count from the query
     { count: previousDroppedCallbacks },
     { count: previousCallbackThreads },
     { count: previousActualCallbacks },
@@ -700,47 +697,39 @@ export async function getDashboardMetrics(
     previousGlobalResponseTimeQuery,
   ])
 
-  // Calculate metrics for current period
-  const totalChats = currentThreads?.length || 0
+  // ✅ FIX: Use the count directly from the query result
+  const totalChats = currentThreadsCount || 0
   const totalCallbacks = currentActualCallbacks || 0
   const callbackPercentage = totalChats > 0 ? ((currentCallbackThreads || 0) / totalChats) * 100 : 0
   const droppedCallbacks = currentDroppedCallbacks || 0
 
-  // Calculate average sentiment
   const sentimentValues = currentSentiment?.map((t) => t.sentiment_score).filter((s) => s !== null) as number[]
   const averageSentiment =
-    sentimentValues && sentimentValues.length > 0
-      ? sentimentValues.reduce((sum, score) => sum + score, 0) / sentimentValues.length
-      : 0
+    sentimentValues.length > 0 ? sentimentValues.reduce((sum, score) => sum + score, 0) / sentimentValues.length : 0
+  const sentimentDistribution = [1, 2, 3, 4, 5].map((score) => ({
+    score,
+    count: sentimentValues.filter((s) => Math.round(s) === score).length,
+  }))
 
-  // Calculate sentiment distribution
-  const sentimentDistribution = [1, 2, 3, 4, 5].map((score) => {
-    const count = sentimentValues?.filter((s) => Math.round(s) === score).length || 0
-    return { score, count }
-  })
-
-  // Calculate average response time
   const responseTimeValues = currentResponseTime
     ?.map((t) => t.mean_response_time)
     .filter((rt) => rt !== null) as number[]
   const averageResponseTime =
-    responseTimeValues && responseTimeValues.length > 0
+    responseTimeValues.length > 0
       ? responseTimeValues.reduce((sum, time) => sum + time, 0) / responseTimeValues.length
       : 0
 
-  // Calculate global average response time
   const globalResponseTimeValues = currentGlobalResponseTime
     ?.map((t) => t.mean_response_time)
     .filter((rt) => rt !== null) as number[]
   const globalAverageResponseTime =
-    globalResponseTimeValues && globalResponseTimeValues.length > 0
+    globalResponseTimeValues.length > 0
       ? globalResponseTimeValues.reduce((sum, time) => sum + time, 0) / globalResponseTimeValues.length
       : 0
 
-  // Calculate metrics for previous period
   const prevSentimentValues = previousSentiment?.map((t) => t.sentiment_score).filter((s) => s !== null) as number[]
   const prevAverageSentiment =
-    prevSentimentValues && prevSentimentValues.length > 0
+    prevSentimentValues.length > 0
       ? prevSentimentValues.reduce((sum, score) => sum + score, 0) / prevSentimentValues.length
       : 0
 
@@ -748,7 +737,7 @@ export async function getDashboardMetrics(
     ?.map((t) => t.mean_response_time)
     .filter((rt) => rt !== null) as number[]
   const prevAverageResponseTime =
-    prevResponseTimeValues && prevResponseTimeValues.length > 0
+    prevResponseTimeValues.length > 0
       ? prevResponseTimeValues.reduce((sum, time) => sum + time, 0) / prevResponseTimeValues.length
       : 0
 
@@ -756,11 +745,12 @@ export async function getDashboardMetrics(
     ?.map((t) => t.mean_response_time)
     .filter((rt) => rt !== null) as number[]
   const prevGlobalAverageResponseTime =
-    prevGlobalResponseTimeValues && prevGlobalResponseTimeValues.length > 0
+    prevGlobalResponseTimeValues.length > 0
       ? prevGlobalResponseTimeValues.reduce((sum, time) => sum + time, 0) / prevGlobalResponseTimeValues.length
       : 0
 
-  const prevCallbackPercentage = previousThreads > 0 ? ((previousCallbackThreads || 0) / previousThreads) * 100 : 0
+  const prevCallbackPercentage =
+    (previousThreadsCount || 0) > 0 ? ((previousCallbackThreads || 0) / (previousThreadsCount || 1)) * 100 : 0
   const prevDroppedCallbacks = previousDroppedCallbacks || 0
 
   console.log("📊 getDashboardMetrics: Calculation complete")
@@ -775,7 +765,7 @@ export async function getDashboardMetrics(
     globalAverageResponseTime,
     sentimentDistribution,
     previousPeriodComparison: {
-      totalChats: previousThreads || 0,
+      totalChats: previousThreadsCount || 0, // ✅ FIX: Use the count
       totalCallbacks: previousActualCallbacks || 0,
       callbackPercentage: prevCallbackPercentage,
       droppedCallbacks: prevDroppedCallbacks,
@@ -845,11 +835,11 @@ export async function getChatMetrics(
   }
 
   // Build current period queries
-  let currentThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
+  let currentThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true }).gt("count", 0)
   let currentMessagesQuery = supabase.from("messages").select("*", { count: "exact", head: true })
 
   // Build previous period queries
-  let previousThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true })
+  let previousThreadsQuery = supabase.from("threads").select("*", { count: "exact", head: true }).gt("count", 0)
   let previousMessagesQuery = supabase.from("messages").select("*", { count: "exact", head: true })
 
   // Apply bot filter based on selection and accessible bots
