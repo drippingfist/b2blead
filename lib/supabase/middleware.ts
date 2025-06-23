@@ -23,7 +23,8 @@ export async function updateSession(req: NextRequest) {
     "/auth/sign-up",
     "/auth/forgot-password",
     "/auth/magic-link",
-    "/auth/accept-invite", // ✅ Added this to public routes
+    "/auth/accept-invite",
+    "/auth/reset-password", // Add this line
   ]
 
   if (!session && !publicRoutes.includes(req.nextUrl.pathname)) {
