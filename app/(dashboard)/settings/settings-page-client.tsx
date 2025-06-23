@@ -217,8 +217,8 @@ export default function SettingsPage({
               groq_suggested_questions: bot.groq_suggested_questions || "",
             }
           }
+          botSettingsValue.groq_suggested_questions = bot.groq_suggested_questions || ""
         }
-        botSettingsValue.groq_suggested_questions = bot.groq_suggested_questions || ""
 
         // Parse questions from the text blob
         const questions = (bot.groq_suggested_questions || "").split("\n").filter((q) => q.trim() !== "")
@@ -443,6 +443,7 @@ export default function SettingsPage({
               timezone: userData.timezone,
               transcript_email: botSettings.transcript_email,
               callback_email: botSettings.callback_email,
+              groq_suggested_questions: suggestedQuestionsBlob,
             })
             .in("bot_share_name", botShareNames)
 
