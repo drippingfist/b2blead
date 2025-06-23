@@ -26,46 +26,31 @@ export default function AcceptInvitePage() {
   useEffect(() => {
     const processInvitation = async () => {
       try {
-        // ✅ FIXED: Get tokens from URL hash (not search params)
-        const hashParams = new URLSearchParams(window.location.hash.substring(1))
-        const accessToken = hashParams.get("access_token")
-        const refreshToken = hashParams.get("refresh_token")
-        const type = hashParams.get("type")
+        // With PKCE, the session is established by the callback route.
+        // We just get the user from the established session.
+        const { data: authData, error: authError } = await supabase.auth.getUser()
 
-        if (!accessToken || !refreshToken || type !== "invite") {
-          throw new Error("Invalid invitation link - missing tokens or type")
-        }
-
-        // ✅ FIXED: Use setSession with the tokens from the hash
-        const { data: authData, error: authError } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        })
-
-        if (authError) {
-          console.error("❌ Auth error:", authError)
-          throw authError
-        }
-
-        if (!authData.user?.email) {
-          throw new Error("Could not get user email from invitation tokens")
+        if (authError || !authData.user?.email) {
+          throw new Error(authError?.message || "Could not get user from invitation session.")
         }
 
         const userEmail = authData.user.email
         setEmail(userEmail)
 
-        // Fetch invitation details from user_invitations table
+        // Fetch invitation details from our user_invitations table
         const { success, invitation, error: inviteDetailsError } = await getInvitationByEmail(userEmail)
 
         if (!success || !invitation) {
-          throw new Error(inviteDetailsError || "Invitation details not found in database")
+          throw new Error(
+            inviteDetailsError || "Invitation details not found. The invitation may have already been used or expired.",
+          )
         }
 
         setInviteData(invitation)
         setStatus("form")
       } catch (err: any) {
         console.error("❌ Error processing invitation:", err)
-        setError(err.message || "Invalid or expired invitation link")
+        setError(err.message || "Invalid or expired invitation link.")
         setStatus("error")
       }
     }

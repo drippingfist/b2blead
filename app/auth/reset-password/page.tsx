@@ -19,37 +19,23 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    const handlePasswordReset = async () => {
-      try {
-        // Get the hash parameters from the URL
-        const hashParams = new URLSearchParams(window.location.hash.substring(1))
-        const accessToken = hashParams.get("access_token")
-        const refreshToken = hashParams.get("refresh_token")
-        const type = hashParams.get("type")
-
-        if (!accessToken || !refreshToken || type !== "recovery") {
-          throw new Error("Invalid password reset link")
-        }
-
-        // Set the session to allow password update
-        const { error: sessionError } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        })
-
-        if (sessionError) {
-          throw sessionError
-        }
-
+    // With PKCE, the session is already in cookies from the callback route.
+    // We just need to check if the session exists.
+    const checkSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (session) {
+        // A valid session exists, so the user can set a new password.
         setStep("password")
-      } catch (err: any) {
-        console.error("❌ Error processing password reset:", err)
-        setError(err.message || "Invalid password reset link")
+      } else {
+        // This can happen if the link is expired or already used.
+        setError("Invalid or expired password reset link. Please request a new one.")
         setStep("error")
       }
     }
 
-    handlePasswordReset()
+    checkSession()
   }, [])
 
   const handlePasswordUpdate = async () => {

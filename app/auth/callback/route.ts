@@ -5,46 +5,25 @@ import { type NextRequest, NextResponse } from "next/server"
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get("code")
-  const setup = requestUrl.searchParams.get("setup")
-  const type = requestUrl.searchParams.get("type")
+  const next = requestUrl.searchParams.get("next")
 
   if (code) {
     const cookieStore = cookies()
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const { error } = await supabase.auth.exchangeCodeForSession(code)
 
-    try {
-      // Exchange the code for a session
-      const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-
-      if (error) {
-        console.error("❌ Error exchanging code for session:", error)
-        return NextResponse.redirect(new URL("/auth/login?error=Invalid invitation link", request.url))
-      }
-
-      // Check if this is an invitation acceptance
-      if (type === "invite" || setup === "true") {
-        // Check if user already has a profile
-        const { data: existingProfile } = await supabase
-          .from("user_profiles")
-          .select("id")
-          .eq("id", data.user!.id)
-          .single()
-
-        if (existingProfile) {
-          return NextResponse.redirect(new URL("/", request.url))
-        } else {
-          return NextResponse.redirect(new URL("/auth/setup", request.url))
-        }
-      }
-
-      // Regular login, redirect to dashboard
-      return NextResponse.redirect(new URL("/", request.url))
-    } catch (error) {
-      console.error("❌ Unexpected error in auth callback:", error)
-      return NextResponse.redirect(new URL("/auth/login?error=Authentication failed", request.url))
+    if (error) {
+      console.error("Auth callback error:", error.message)
+      // Redirect to login with a generic error
+      const redirectUrl = new URL("/auth/login", request.url)
+      redirectUrl.searchParams.set("error", "Could not authenticate user.")
+      return NextResponse.redirect(redirectUrl)
     }
   }
 
-  // No code provided
-  return NextResponse.redirect(new URL("/auth/login?error=No authentication code", request.url))
+  // URL to redirect to after sign in process completes
+  // It will use the 'next' parameter if available (for invites/resets),
+  // otherwise it will default to the dashboard.
+  const redirectUrl = new URL(next || "/", request.url)
+  return NextResponse.redirect(redirectUrl)
 }
