@@ -74,7 +74,6 @@ export default function ChatsPageClient() {
   useEffect(() => {
     const handleBotSelectionChanged = (event: CustomEvent) => {
       const newBotSelection = event.detail
-      console.log("🔄 Chats: Bot selection changed to:", newBotSelection)
       setSelectedBot(newBotSelection)
       setCurrentPage(1) // Reset to first page when bot changes
     }
@@ -273,6 +272,39 @@ export default function ChatsPageClient() {
 
     loadThreads()
   }, [selectedBot, filter, timePeriod, currentPage, sortField, sortDirection])
+
+  // Real-time subscription for new threads
+  useEffect(() => {
+    // Define a function to handle new threads from the subscription
+    const handleNewThread = (payload: any) => {
+      const newThread = payload.new as Thread
+
+      // CRITICAL FIX: Only add the new thread if it matches the selected bot,
+      // or if "All Bots" is selected (selectedBot is null).
+      if (!selectedBot || newThread.bot_share_name === selectedBot) {
+        console.log("✅ Real-time: New thread matches filter, adding to view.", newThread)
+        setThreads((prevThreads) => [newThread, ...prevThreads])
+        setTotalCount((prevCount) => prevCount + 1)
+      } else {
+        console.log("❌ Real-time: New thread does not match filter, ignoring.", {
+          newThreadBot: newThread.bot_share_name,
+          selectedBot: selectedBot,
+        })
+      }
+    }
+
+    // Create a Supabase channel subscription for new inserts on the 'threads' table
+    const channel = supabase
+      .channel("threads-inserts")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "threads" }, handleNewThread)
+      .subscribe()
+
+    // Cleanup function: Unsubscribe from the channel when the component unmounts
+    // or when the selectedBot changes, to prevent memory leaks and duplicate listeners.
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [selectedBot]) // IMPORTANT: Re-run this effect when the selectedBot changes
 
   // Persist time period selection to localStorage
   useEffect(() => {

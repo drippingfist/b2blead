@@ -34,7 +34,6 @@ export default function PasswordResetHandler({ onRecoveryStateChange }: Password
   useEffect(() => {
     // If we're on the forgot password page, don't do anything
     if (typeof window !== "undefined" && window.location.pathname === "/auth/forgot-password") {
-      console.log("🔄 On forgot password page, skipping recovery flow check")
       return
     }
 
@@ -49,16 +48,8 @@ export default function PasswordResetHandler({ onRecoveryStateChange }: Password
         const refreshToken = params.get("refresh_token")
         const type = params.get("type")
 
-        console.log("🔑 Checking recovery flow:", {
-          hasAccessToken: !!accessToken,
-          hasRefreshToken: !!refreshToken,
-          type,
-          currentPath: window.location.pathname,
-        })
-
         // Only proceed if this is actually a recovery flow with tokens
         if (type === "recovery" && accessToken && refreshToken) {
-          console.log("🔑 Recovery flow detected, setting session...")
           updateRecoveryState(true)
           setMessage("Setting up your session...")
 
@@ -72,7 +63,6 @@ export default function PasswordResetHandler({ onRecoveryStateChange }: Password
             throw error
           }
 
-          console.log("✅ Session established successfully:", data.session?.user?.email)
           setMessage("Please set your new password.")
           setIsError(false)
 
@@ -95,11 +85,8 @@ export default function PasswordResetHandler({ onRecoveryStateChange }: Password
 
     // Also listen for auth state changes
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("🔐 Auth state change:", event, session ? "Session exists" : "No session")
-
       if (event === "SIGNED_IN" && session && !isRecovery) {
         // Normal sign-in flow, redirect to dashboard
-        console.log("👤 Normal sign-in detected, redirecting to dashboard")
         router.push("/")
       } else if (event === "SIGNED_OUT") {
         updateRecoveryState(false)
@@ -133,8 +120,6 @@ export default function PasswordResetHandler({ onRecoveryStateChange }: Password
     }
 
     try {
-      console.log("🔐 Updating user password...")
-
       // Check if we have a session first
       const {
         data: { session },
@@ -149,8 +134,6 @@ export default function PasswordResetHandler({ onRecoveryStateChange }: Password
         throw new Error("No active session found. Please try clicking the reset link again.")
       }
 
-      console.log("✅ Session found, updating password for:", session.user.email)
-
       // Update the password
       const { error } = await supabase.auth.updateUser({
         password: newPassword,
@@ -160,7 +143,6 @@ export default function PasswordResetHandler({ onRecoveryStateChange }: Password
         throw error
       }
 
-      console.log("✅ Password updated successfully")
       setMessage("Password updated successfully! Redirecting to dashboard...")
       setIsError(false)
       setIsSuccess(true)

@@ -46,8 +46,6 @@ export async function completeUserSetup(invitationData: InvitationData) {
     // For creating profile and bot_users, we need admin privileges
     const supabaseAdmin = getAdminSupabase()
 
-    console.log("🔧 Setting up user (admin context):", user.id, "with invitation data:", invitationData)
-
     // Step 1: Create user profile
     const { error: profileError } = await supabaseAdmin.from("user_profiles").upsert({
       id: user.id, // Use the new user's ID
@@ -60,7 +58,6 @@ export async function completeUserSetup(invitationData: InvitationData) {
       console.error("❌ Error creating user profile:", profileError)
       return { success: false, error: `Failed to create profile: ${profileError.message}` }
     }
-    console.log("✅ User profile created/updated for user:", user.id)
 
     // Step 2: Create bot_users entry
     const { error: botUserError } = await supabaseAdmin.from("bot_users").upsert({
@@ -74,7 +71,6 @@ export async function completeUserSetup(invitationData: InvitationData) {
       console.error("❌ Error creating bot user assignment:", botUserError)
       return { success: false, error: `Failed to create bot access: ${botUserError.message}` }
     }
-    console.log("✅ Bot user access created for user:", user.id, "Bot:", invitationData.bot_share_name)
 
     // Step 3: Clean up invitation record from user_invitations (if it exists there)
     // Fetch the original invitation_id if not passed directly, using the email.
@@ -101,11 +97,7 @@ export async function completeUserSetup(invitationData: InvitationData) {
 
       if (cleanupError) {
         console.warn("⚠️ Warning: Could not clean up invitation record:", cleanupError)
-      } else {
-        console.log("✅ Invitation record cleaned up for ID:", invitationIdToClean)
       }
-    } else {
-      console.log("ℹ️ No invitation_id provided or found for cleanup for email:", invitationData.email)
     }
 
     return { success: true }

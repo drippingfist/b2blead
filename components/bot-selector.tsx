@@ -26,15 +26,10 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
   useEffect(() => {
     const loadBots = async () => {
       try {
-        console.log("🔍 Loading ALL bots from database...")
-
         const { data, error, count } = await supabase
           .from("bots")
           .select("id, bot_share_name, client_name", { count: "exact" })
           .order("client_name", { ascending: true })
-
-        console.log("📊 Total bots found:", count)
-        console.log("📊 Bots data:", data)
 
         if (error) {
           console.error("❌ Error loading bots:", error)
@@ -43,13 +38,11 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
         }
 
         setBots(data || [])
-        console.log(`✅ Successfully loaded ${data?.length || 0} bots`)
 
         // Auto-select the single bot if there's only one and nothing is selected
         if (data && data.length === 1) {
           const storedBot = localStorage.getItem("selectedBot")
           if (!storedBot || storedBot === "null") {
-            console.log("🤖 Auto-selecting the only available bot:", data[0].bot_share_name)
             localStorage.setItem("selectedBot", data[0].bot_share_name)
             // Dispatch event without page refresh
             window.dispatchEvent(new CustomEvent("botSelectionChanged", { detail: data[0].bot_share_name }))
@@ -87,27 +80,21 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
   const displayName = selectedBot === null ? "All Bots" : currentBot?.client_name || "Select Bot"
 
   const handleBotSelection = (botShareName: string | null) => {
-    console.log("🤖 Bot selector: Selecting bot:", botShareName)
-
     // Store current sidebar state before refresh
     const sidebarElement = document.getElementById("mobile-sidebar")
     const isSidebarOpen = sidebarElement && !sidebarElement.classList.contains("-translate-x-full")
 
     if (isSidebarOpen) {
       localStorage.setItem("sidebarWasOpen", "true")
-      console.log("💾 Sidebar was open, storing state")
     } else {
       localStorage.removeItem("sidebarWasOpen")
-      console.log("💾 Sidebar was closed, removing state")
     }
 
     // Update localStorage immediately
     if (botShareName) {
       localStorage.setItem("selectedBot", botShareName)
-      console.log("💾 Saved to localStorage:", botShareName)
     } else {
       localStorage.removeItem("selectedBot")
-      console.log("💾 Removed from localStorage")
     }
 
     // Call the onSelectBot prop if provided
@@ -159,7 +146,6 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
             {/* All Bots option */}
             <button
               onClick={() => {
-                console.log("🤖 Selected: All Bots")
                 handleBotSelection(null)
                 setIsOpen(false)
               }}
@@ -176,7 +162,6 @@ export default function BotSelector({ selectedBot, onSelectBot }: BotSelectorPro
               <button
                 key={bot.id}
                 onClick={() => {
-                  console.log("🤖 Selected bot_share_name:", bot.bot_share_name)
                   handleBotSelection(bot.bot_share_name)
                   setIsOpen(false)
                 }}

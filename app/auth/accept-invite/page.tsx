@@ -32,19 +32,11 @@ export default function AcceptInvitePage() {
         const refreshToken = hashParams.get("refresh_token")
         const type = hashParams.get("type")
 
-        console.log("🔍 Processing invitation with hash params:", {
-          hasAccessToken: !!accessToken,
-          hasRefreshToken: !!refreshToken,
-          type,
-          hash: window.location.hash,
-        })
-
         if (!accessToken || !refreshToken || type !== "invite") {
           throw new Error("Invalid invitation link - missing tokens or type")
         }
 
         // ✅ FIXED: Use setSession with the tokens from the hash
-        console.log("🔍 Setting session with invitation tokens...")
         const { data: authData, error: authError } = await supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,
@@ -61,17 +53,14 @@ export default function AcceptInvitePage() {
 
         const userEmail = authData.user.email
         setEmail(userEmail)
-        console.log("✅ Session set successfully for email:", userEmail)
 
         // Fetch invitation details from user_invitations table
-        console.log("🔍 Fetching invitation details from database...")
         const { success, invitation, error: inviteDetailsError } = await getInvitationByEmail(userEmail)
 
         if (!success || !invitation) {
           throw new Error(inviteDetailsError || "Invitation details not found in database")
         }
 
-        console.log("✅ Fetched invitation details:", invitation)
         setInviteData(invitation)
         setStatus("form")
       } catch (err: any) {
@@ -101,14 +90,11 @@ export default function AcceptInvitePage() {
       }
 
       // Update the user's password
-      console.log("🔐 Setting user password...")
       const { error: passwordError } = await supabase.auth.updateUser({ password })
 
       if (passwordError) {
         throw passwordError
       }
-
-      console.log("✅ Password set successfully")
 
       // Get the current user to create profile and bot access
       const {
@@ -121,8 +107,6 @@ export default function AcceptInvitePage() {
       }
 
       if (inviteData) {
-        console.log("📝 Calling completeUserSetup with admin privileges...")
-
         const setupResult = await completeUserSetup({
           first_name: inviteData.first_name || "",
           surname: inviteData.surname || "",
@@ -135,12 +119,9 @@ export default function AcceptInvitePage() {
         if (!setupResult.success) {
           throw new Error(setupResult.error || "Failed to complete user setup")
         }
-
-        console.log("✅ User setup completed successfully")
       }
 
       // Clean up the used invitation
-      console.log("🗑️ Deleting used invitation record...")
       await deleteInvitationByEmail(email)
 
       setStatus("success")

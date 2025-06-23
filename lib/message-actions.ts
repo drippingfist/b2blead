@@ -28,17 +28,6 @@ export async function getRecentThreadsWithMessages(
   cursor: string | null = null, // Add cursor for better pagination
 ) {
   try {
-    console.log(
-      "🔍 Fetching recent threads for bot:",
-      botShareName || "ALL",
-      "limit:",
-      limit,
-      "cursor:",
-      cursor,
-      "specificDate:",
-      specificDate,
-    )
-
     const supabase = createClient()
 
     // Step 1: Build the query for threads
@@ -51,7 +40,6 @@ export async function getRecentThreadsWithMessages(
     // Apply cursor or date filtering
     if (cursor) {
       // For infinite scroll: get threads created before the cursor (older threads)
-      console.log("🔄 Using cursor for pagination:", cursor)
       threadsQuery = threadsQuery.lt("created_at", cursor)
     } else if (specificDate) {
       // Add date filtering if specified (only for initial load)
@@ -61,7 +49,6 @@ export async function getRecentThreadsWithMessages(
       const endDate = new Date(specificDate)
       endDate.setUTCHours(23, 59, 59, 999)
 
-      console.log("📅 Using date filter:", startDate.toISOString(), "to", endDate.toISOString())
       threadsQuery = threadsQuery.gte("created_at", startDate.toISOString()).lte("created_at", endDate.toISOString())
     }
 
@@ -73,12 +60,8 @@ export async function getRecentThreadsWithMessages(
     }
 
     if (!threads || threads.length === 0) {
-      console.log("ℹ️ No threads found")
       return []
     }
-
-    console.log(`✅ Found ${threads.length} threads`)
-    console.log("📊 Thread date range:", threads[threads.length - 1]?.created_at, "to", threads[0]?.created_at)
 
     // Step 2: Get bot timezone for timestamp formatting
     let botTimezone = "UTC"
@@ -124,8 +107,6 @@ export async function getRecentThreadsWithMessages(
     let callbackData = {}
 
     if (threadsWithCallbacks.length > 0) {
-      console.log(`🔍 Found ${threadsWithCallbacks.length} threads with callbacks`)
-
       // Fetch all callbacks in one query
       const { data: callbacks, error: callbacksError } = await supabase
         .from("callbacks")
@@ -138,15 +119,11 @@ export async function getRecentThreadsWithMessages(
       if (callbacksError) {
         console.error("❌ Error fetching callbacks:", callbacksError)
       } else if (callbacks && callbacks.length > 0) {
-        console.log(`✅ Found ${callbacks.length} callback records`)
-
         // Create a map of thread_id to callback data
         callbackData = callbacks.reduce((acc, callback) => {
           acc[callback.id] = callback
           return acc
         }, {})
-      } else {
-        console.log("⚠️ No callback records found despite threads having callback=true")
       }
     }
 
@@ -154,13 +131,6 @@ export async function getRecentThreadsWithMessages(
     const threadsWithMessages = threads.map((thread) => {
       // Get callback data if this thread has callback=true
       const threadCallbackData = thread.callback === true ? callbackData[thread.id] : null
-
-      if (thread.callback === true) {
-        console.log(
-          `Thread ${thread.id} has callback=${thread.callback}, callbackData:`,
-          threadCallbackData || "Not found",
-        )
-      }
 
       return {
         ...thread,
@@ -176,13 +146,6 @@ export async function getRecentThreadsWithMessages(
     // This is crucial for infinite scroll to work properly
     const sortedThreads = threadsWithMessages.sort(
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-    )
-
-    console.log(
-      "🔄 Sorted threads date range:",
-      sortedThreads[0]?.created_at,
-      "to",
-      sortedThreads[sortedThreads.length - 1]?.created_at,
     )
 
     return sortedThreads

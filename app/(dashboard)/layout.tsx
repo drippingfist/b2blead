@@ -17,7 +17,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   useEffect(() => {
     const sidebarWasOpen = localStorage.getItem("sidebarWasOpen")
     if (sidebarWasOpen === "true") {
-      console.log("🔄 Restoring sidebar open state after refresh")
       setSidebarOpen(true)
       // Clean up the stored state
       localStorage.removeItem("sidebarWasOpen")

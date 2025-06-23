@@ -22,7 +22,6 @@ export function SessionValidator() {
       isCheckingRef.current = true
       lastCheckTimeRef.current = now
 
-      console.log("🔒 Validating session after tab focus")
       const { data, error } = await supabaseWithRetry.auth.getSession()
 
       if (error) {

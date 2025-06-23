@@ -39,45 +39,36 @@ export function MessagesPageClient({
   useEffect(() => {
     const initializeBotSelection = async () => {
       try {
-        console.log("🔍 Messages: Initializing bot selection...")
-
         // Get stored bot selection
         const storedBot = localStorage.getItem("selectedBot")
-        console.log("🔍 Messages: Stored bot selection:", storedBot)
 
         // Determine proper bot selection based on user access (SAME AS DASHBOARD)
         if (userAccess?.isSuperAdmin) {
           // Superadmin: can select "All Bots" (null) or specific bot
           if (storedBot && storedBot !== "null") {
             setSelectedBot(storedBot)
-            console.log("🔍 Messages: Superadmin using stored bot:", storedBot)
           } else {
             // Default to "All Bots" for superadmin if no specific selection
             setSelectedBot(null)
-            console.log("🔍 Messages: Superadmin defaulting to All Bots")
           }
         } else {
           // Regular user: must select a specific bot, never "All Bots"
           if (storedBot && storedBot !== "null" && userAccess?.accessibleBots.includes(storedBot)) {
             setSelectedBot(storedBot)
-            console.log("🔍 Messages: Regular user using stored bot:", storedBot)
           } else if (bots.length > 0) {
             // Auto-select first available bot for regular users
             const firstBot = bots[0]
             setSelectedBot(firstBot.bot_share_name)
             localStorage.setItem("selectedBot", firstBot.bot_share_name)
-            console.log("🔍 Messages: Regular user auto-selected first bot:", firstBot.bot_share_name)
           } else if (userAccess?.accessibleBots.length > 0) {
             // Fallback to first accessible bot from access info
             const firstAccessibleBot = userAccess.accessibleBots[0]
             setSelectedBot(firstAccessibleBot)
             localStorage.setItem("selectedBot", firstAccessibleBot)
-            console.log("🔍 Messages: Regular user using first accessible bot:", firstAccessibleBot)
           }
         }
 
         setBotSelectionReady(true)
-        console.log("🔍 Messages: Bot selection ready")
       } catch (error) {
         console.error("❌ Messages: Error initializing bot selection:", error)
         setBotSelectionReady(true) // Still allow page to load
@@ -90,7 +81,6 @@ export function MessagesPageClient({
   // Listen for bot selection changes (EXACT SAME AS DASHBOARD)
   useEffect(() => {
     const handleBotSelectionChanged = (event: CustomEvent) => {
-      console.log("🔍 Messages: Bot selection changed to:", event.detail)
       setSelectedBot(event.detail)
     }
 
@@ -101,7 +91,6 @@ export function MessagesPageClient({
   // Listen for bots being loaded by other components (EXACT SAME AS DASHBOARD)
   useEffect(() => {
     const handleBotsLoaded = (event: CustomEvent) => {
-      console.log("🔍 Messages: Bots loaded:", event.detail)
       // Update bots if needed
     }
 
@@ -113,17 +102,14 @@ export function MessagesPageClient({
   useEffect(() => {
     const fetchData = async () => {
       if (!botSelectionReady) {
-        console.log("🔍 Messages: Waiting for bot selection to be ready...")
         return
       }
 
-      console.log("🔍 Messages: Loading data for bot:", selectedBot)
       setLoading(true)
 
       try {
         const threads = await getRecentThreadsWithMessages(selectedBot, 10, 0, selectedDate)
         setThreadsWithMessages(threads)
-        console.log("✅ Messages: Data loaded successfully")
       } catch (error) {
         console.error("❌ Messages: Error fetching data:", error)
       } finally {

@@ -60,7 +60,6 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
         if (botsData.length === 1) {
           const storedBot = localStorage.getItem("selectedBot")
           if (!storedBot || storedBot === "null") {
-            console.log("🤖 Auto-selecting the only available bot:", botsData[0].bot_share_name)
             localStorage.setItem("selectedBot", botsData[0].bot_share_name)
             // Dispatch event without page refresh
             window.dispatchEvent(new CustomEvent("botSelectionChanged", { detail: botsData[0].bot_share_name }))

@@ -94,8 +94,6 @@ export interface Callback {
 
 // Get ALL bots from database (now respects RLS)
 export async function getBotsClient(): Promise<Bot[]> {
-  console.log("🔍 getBotsClient: Fetching bots...")
-
   const { data, error } = await supabase.from("bots").select("*").order("bot_share_name", { ascending: true })
 
   if (error) {
@@ -103,19 +101,15 @@ export async function getBotsClient(): Promise<Bot[]> {
     return []
   }
 
-  console.log("✅ getBotsClient: Successfully fetched", data?.length || 0, "bots")
   return data || []
 }
 
 // Get threads - filter by bot_share_name if provided
 export async function getThreadsClient(limit = 50, botShareName?: string | null): Promise<Thread[]> {
-  console.log("🧵 getThreadsClient: Fetching threads for bot:", botShareName || "ALL")
-
   let query = supabase.from("threads").select("*").order("updated_at", { ascending: false }).limit(limit)
 
   // If a specific bot is selected, filter by that bot_share_name
   if (botShareName) {
-    console.log("🔍 Filtering threads by bot_share_name:", botShareName)
     query = query.eq("bot_share_name", botShareName)
   }
 
@@ -126,20 +120,16 @@ export async function getThreadsClient(limit = 50, botShareName?: string | null)
     return []
   }
 
-  console.log("✅ getThreadsClient: Successfully fetched", data?.length || 0, "threads")
   return data || []
 }
 
 // Get callbacks with sentiment scores, justification, and message_preview from linked thread
 export async function getCallbacksClient(limit = 50, botShareName?: string | null): Promise<Callback[]> {
-  console.log("🔍 getCallbacksClient: Fetching callbacks with thread data for bot:", botShareName || "ALL")
-
   // First, get the callbacks
   let callbacksQuery = supabase.from("callbacks").select("*").order("created_at", { ascending: false }).limit(limit)
 
   // If a specific bot is selected, filter by that bot_share_name
   if (botShareName) {
-    console.log("🔍 Filtering callbacks by bot_share_name:", botShareName)
     callbacksQuery = callbacksQuery.eq("bot_share_name", botShareName)
   }
 
@@ -151,7 +141,6 @@ export async function getCallbacksClient(limit = 50, botShareName?: string | nul
   }
 
   if (!callbacksData || callbacksData.length === 0) {
-    console.log("⚠️ No callback data returned for bot:", botShareName || "ALL")
     return callbacksData.map((callback) => ({
       ...callback,
       sentiment_score: null,
@@ -160,14 +149,11 @@ export async function getCallbacksClient(limit = 50, botShareName?: string | nul
       thread_table_id: null,
     }))
   }
-
-  console.log("✅ Fetched", callbacksData.length, "callbacks for bot:", botShareName || "ALL")
 
   // Get all unique thread IDs from callbacks
   const threadIds = [...new Set(callbacksData.map((callback) => callback.id).filter(Boolean))]
 
   if (threadIds.length === 0) {
-    console.log("⚠️ No thread IDs found in callbacks")
     return callbacksData.map((callback) => ({
       ...callback,
       sentiment_score: null,
@@ -176,8 +162,6 @@ export async function getCallbacksClient(limit = 50, botShareName?: string | nul
       thread_table_id: null,
     }))
   }
-
-  console.log("🔍 Looking up threads for IDs:", threadIds)
 
   // Fetch corresponding threads
   const { data: threadsData, error: threadsError } = await supabase
@@ -196,8 +180,6 @@ export async function getCallbacksClient(limit = 50, botShareName?: string | nul
       thread_table_id: null,
     }))
   }
-
-  console.log("✅ Fetched", threadsData?.length || 0, "threads")
 
   // Create a map of thread data by ID for quick lookup
   const threadsMap = new Map()
@@ -218,8 +200,6 @@ export async function getCallbacksClient(limit = 50, botShareName?: string | nul
     }
   })
 
-  console.log("✅ getCallbacksClient: Successfully processed", transformedData?.length || 0, "callbacks")
-
   return transformedData
 }
 
@@ -238,8 +218,6 @@ export async function getUserBotAccess(): Promise<{
   isSuperAdmin: boolean
 }> {
   try {
-    console.log("🔐 Calling user bot access API...")
-
     const response = await fetch("/api/user-bot-access", {
       method: "GET",
       headers: {
@@ -253,7 +231,6 @@ export async function getUserBotAccess(): Promise<{
     }
 
     const data = await response.json()
-    console.log("🔐 API response:", data)
 
     return data
   } catch (error) {
@@ -265,8 +242,6 @@ export async function getUserBotAccess(): Promise<{
 // Simple getAccessibleBotsClient function that uses API route
 export async function getAccessibleBotsClient(): Promise<Bot[]> {
   try {
-    console.log("🤖 getAccessibleBotsClient: Calling accessible bots API...")
-
     const response = await fetch("/api/accessible-bots", {
       method: "GET",
       headers: {
@@ -280,7 +255,6 @@ export async function getAccessibleBotsClient(): Promise<Bot[]> {
     }
 
     const bots = await response.json()
-    console.log("🤖 getAccessibleBotsClient: Successfully fetched", bots?.length || 0, "accessible bots")
 
     return bots || []
   } catch (error) {
@@ -401,13 +375,6 @@ export async function getCallbackStatsClientWithPeriod(
   const conversionRate =
     totalThreads && totalThreads > 0 ? Math.round(((threadsWithCallback || 0) / totalThreads) * 100) : 0
 
-  console.log("📊 SIMPLE Callback Stats for", botShareName || "ALL BOTS", "period:", period)
-  console.log("📊 Threads with callback=true:", threadsWithCallback)
-  console.log("📊 Actual callback records:", actualCallbacks)
-  console.log("📊 Callbacks dropped:", callbacksDropped)
-  console.log("📊 Total threads:", totalThreads)
-  console.log("📊 Conversion rate:", conversionRate)
-
   return {
     totalCallbacks: actualCallbacks || 0,
     recentCallbacks: threadsWithCallback || 0,
@@ -463,8 +430,6 @@ export async function getMessagesByThreadId(threadId: string): Promise<Message[]
     return []
   }
 
-  console.log("🔍 getMessagesByThreadId: Fetching messages for thread_id:", threadId)
-
   const { data, error } = await supabase
     .from("messages")
     .select("*")
@@ -476,7 +441,6 @@ export async function getMessagesByThreadId(threadId: string): Promise<Message[]
     return []
   }
 
-  console.log("✅ getMessagesByThreadId: Successfully fetched", data?.length || 0, "messages")
   return data || []
 }
 
@@ -488,8 +452,6 @@ export async function getThreadById(id: string): Promise<Thread | null> {
     return null
   }
 
-  console.log("🔍 getThreadById: Fetching thread with id:", id)
-
   const { data, error } = await supabase.from("threads").select("*").eq("id", id).single()
 
   if (error) {
@@ -497,7 +459,6 @@ export async function getThreadById(id: string): Promise<Thread | null> {
     return null
   }
 
-  console.log("✅ getThreadById: Successfully fetched thread")
   return data
 }
 
@@ -507,9 +468,6 @@ export async function getDashboardMetrics(
   period: "today" | "last7days" | "last30days" | "alltime" | "custom" = "last30days",
   accessibleBots?: string[],
 ) {
-  console.log("📊 getDashboardMetrics: Starting calculation for bot:", botShareName, "period:", period)
-  console.log("📊 Accessible bots:", accessibleBots)
-
   // Calculate date ranges for current and previous periods
   const now = new Date()
   let currentStartDate: string | null = null
@@ -548,6 +506,15 @@ export async function getDashboardMetrics(
       sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
       previousStartDate = sixtyDaysAgo.toISOString()
       previousEndDate = thirtyDaysAgo.toISOString()
+      break
+    case "last90days":
+      const ninetyDaysAgo = new Date(now)
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+      currentStartDate = ninetyDaysAgo.toISOString()
+      const oneEightyDaysAgo = new Date(now)
+      oneEightyDaysAgo.setDate(oneEightyDaysAgo.getDate() - 180)
+      previousStartDate = oneEightyDaysAgo.toISOString()
+      previousEndDate = ninetyDaysAgo.toISOString()
       break
     case "alltime":
       currentStartDate = null
@@ -753,8 +720,6 @@ export async function getDashboardMetrics(
     (previousThreadsCount || 0) > 0 ? ((previousCallbackThreads || 0) / (previousThreadsCount || 1)) * 100 : 0
   const prevDroppedCallbacks = previousDroppedCallbacks || 0
 
-  console.log("📊 getDashboardMetrics: Calculation complete")
-
   return {
     totalChats,
     totalCallbacks,
@@ -782,9 +747,6 @@ export async function getChatMetrics(
   period: "today" | "last7days" | "last30days" | "alltime" | "custom" = "last30days",
   accessibleBots?: string[],
 ) {
-  console.log("📊 getChatMetrics: Starting calculation for bot:", botShareName, "period:", period)
-  console.log("📊 Accessible bots:", accessibleBots)
-
   // Calculate date ranges for current and previous periods
   const now = new Date()
   let currentStartDate: string | null = null
@@ -821,11 +783,19 @@ export async function getChatMetrics(
       const thirtyDaysAgo = new Date(now)
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
       currentStartDate = thirtyDaysAgo.toISOString()
-      // Previous period is 30 days before that
       const sixtyDaysAgo = new Date(now)
       sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
       previousStartDate = sixtyDaysAgo.toISOString()
       previousEndDate = thirtyDaysAgo.toISOString()
+      break
+    case "last90days":
+      const ninetyDaysAgo = new Date(now)
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+      currentStartDate = ninetyDaysAgo.toISOString()
+      const oneEightyDaysAgo = new Date(now)
+      oneEightyDaysAgo.setDate(oneEightyDaysAgo.getDate() - 180)
+      previousStartDate = oneEightyDaysAgo.toISOString()
+      previousEndDate = ninetyDaysAgo.toISOString()
       break
     case "alltime":
       currentStartDate = null
@@ -888,8 +858,6 @@ export async function getChatMetrics(
   const prevTotalMessages = previousMessagesCount || 0
   const prevMessagesPerThread = prevTotalThreads > 0 ? prevTotalMessages / prevTotalThreads : 0
 
-  console.log("📊 getChatMetrics: Calculation complete")
-
   return {
     totalThreads,
     totalMessages,
@@ -904,8 +872,6 @@ export async function getChatMetrics(
 
 // Update thread starred status
 export async function updateThreadStarred(threadId: string, starred: boolean): Promise<boolean> {
-  console.log("⭐ updateThreadStarred:", threadId, starred)
-
   const { error } = await supabase.from("threads").update({ starred }).eq("id", threadId)
 
   if (error) {
@@ -918,8 +884,6 @@ export async function updateThreadStarred(threadId: string, starred: boolean): P
 
 // Update message starred status
 export async function updateMessageStarred(messageId: string, starred: boolean): Promise<boolean> {
-  console.log("⭐ updateMessageStarred:", messageId, starred)
-
   const { error } = await supabase.from("messages").update({ starred }).eq("id", messageId)
 
   if (error) {

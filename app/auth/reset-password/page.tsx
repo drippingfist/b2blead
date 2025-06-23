@@ -27,8 +27,6 @@ export default function ResetPasswordPage() {
         const refreshToken = hashParams.get("refresh_token")
         const type = hashParams.get("type")
 
-        console.log("🔗 Processing password reset:", { accessToken: !!accessToken, refreshToken: !!refreshToken, type })
-
         if (!accessToken || !refreshToken || type !== "recovery") {
           throw new Error("Invalid password reset link")
         }
@@ -70,8 +68,6 @@ export default function ResetPasswordPage() {
     setStep("processing")
 
     try {
-      console.log("🔐 Updating user password...")
-
       // Update the user's password
       const { error: passwordError } = await supabase.auth.updateUser({
         password: password,
@@ -80,8 +76,6 @@ export default function ResetPasswordPage() {
       if (passwordError) {
         throw passwordError
       }
-
-      console.log("✅ Password updated successfully")
 
       setStep("success")
       setTimeout(() => {

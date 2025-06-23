@@ -110,43 +110,33 @@ export default function Dashboard() {
   useEffect(() => {
     const initializeUserAccess = async () => {
       try {
-        console.log("🔍 Dashboard: Initializing user access...")
-
         // Get user access info
         const access = await getUserBotAccess()
-        console.log("🔍 Dashboard: User access received:", access)
-        console.log("🔍 Dashboard: Accessible bots from API:", access.accessibleBots)
         setUserAccess(access)
 
         // If user has only one accessible bot, auto-select it
         if (!access.isSuperAdmin && access.accessibleBots.length === 1) {
           const singleBot = access.accessibleBots[0]
           setSelectedBot(singleBot)
-          console.log("🔍 Dashboard: Auto-selecting single bot for user:", singleBot)
         } else {
           // Existing logic for multiple bots or superadmin
           const storedBot = localStorage.getItem("selectedBot")
-          console.log("🔍 Dashboard: Stored bot selection:", storedBot)
 
           if (access.isSuperAdmin) {
             // Superadmin: can select "All Bots" (null) or specific bot
             if (storedBot && storedBot !== "null") {
               setSelectedBot(storedBot)
-              console.log("🔍 Dashboard: Superadmin using stored bot:", storedBot)
             } else {
               // Default to "All Bots" for superadmin if no specific selection
               setSelectedBot(null)
-              console.log("🔍 Dashboard: Superadmin defaulting to All Bots")
             }
           } else {
             // Regular user with multiple bots: can use "All Bots" (null) or specific bot
             if (storedBot && storedBot !== "null" && access.accessibleBots.includes(storedBot)) {
               setSelectedBot(storedBot)
-              console.log("🔍 Dashboard: Regular user using stored bot:", storedBot)
             } else {
               // Default to "All Bots" for regular users too
               setSelectedBot(null)
-              console.log("🔍 Dashboard: Regular user defaulting to All Bots")
             }
           }
         }
@@ -170,17 +160,14 @@ export default function Dashboard() {
         if (error) {
           console.error("❌ Dashboard: Error counting accessible bots:", error)
         } else {
-          console.log("🔍 Dashboard: User has access to", count, "bots")
           setAccessibleBotCount(count || 0)
         }
 
         // Get stored bots or wait for them to be loaded
         const storedBots = JSON.parse(localStorage.getItem("userBots") || "[]")
-        console.log("🔍 Dashboard: Stored bots from localStorage:", storedBots)
         setBots(storedBots)
 
         setBotSelectionReady(true)
-        console.log("🔍 Dashboard: Bot selection ready with access:", access)
       } catch (error) {
         console.error("❌ Dashboard: Error initializing user access:", error)
         setBotSelectionReady(true) // Still allow page to load
@@ -193,7 +180,6 @@ export default function Dashboard() {
   // Listen for bot selection changes from the bot selector
   useEffect(() => {
     const handleBotSelectionChanged = (event: CustomEvent) => {
-      console.log("🔍 Dashboard: Bot selection changed to:", event.detail)
       setSelectedBot(event.detail)
     }
 
@@ -204,7 +190,6 @@ export default function Dashboard() {
   // Listen for bots being loaded by other components
   useEffect(() => {
     const handleBotsLoaded = (event: CustomEvent) => {
-      console.log("🔍 Dashboard: Bots loaded:", event.detail)
       setBots(event.detail)
     }
 
@@ -216,19 +201,14 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       if (!botSelectionReady) {
-        console.log("🔍 Dashboard: Waiting for bot selection to be ready...")
         return
       }
 
       // Wait for userAccess to be properly loaded
       if (!userAccess) {
-        console.log("🔍 Dashboard: Waiting for user access to be loaded...")
         return
       }
 
-      console.log("🔍 Dashboard: Loading data for bot:", selectedBot, "period:", selectedPeriod)
-      console.log("🔍 Dashboard: User access:", userAccess)
-      console.log("🔍 Dashboard: Accessible bots:", userAccess.accessibleBots)
       setLoading(true)
 
       try {
@@ -242,8 +222,6 @@ export default function Dashboard() {
           return
         }
 
-        console.log("🔍 Dashboard: Using accessible bots:", accessibleBots)
-
         // For "All Bots" view, pass the accessible bots list
         const [fetchedMetrics, fetchedChatMetrics, fetchedUserEmail] = await Promise.all([
           selectedBot === null
@@ -255,9 +233,6 @@ export default function Dashboard() {
           getCurrentUserEmailClient(),
         ])
 
-        console.log("🔍 Dashboard: Fetched metrics:", fetchedMetrics)
-        console.log("🔍 Dashboard: Fetched chat metrics:", fetchedChatMetrics)
-
         setMetrics(fetchedMetrics)
         setChatMetrics(fetchedChatMetrics)
         setUserEmail(fetchedUserEmail)
@@ -266,14 +241,21 @@ export default function Dashboard() {
         if (selectedBot === null) {
           setCurrentBotName("All Bots")
         } else if (selectedBot) {
-          const currentBot = bots.find((b) => b.bot_share_name === selectedBot)
-          // Always use client_name if available, otherwise use bot_share_name, with fallback
-          setCurrentBotName(currentBot?.client_name || currentBot?.bot_share_name || "Unknown Bot")
+          const { data: botDetails, error: botDetailsError } = await supabase
+            .from("bots")
+            .select("client_name, bot_share_name")
+            .eq("bot_share_name", selectedBot)
+            .single()
+
+          if (botDetailsError) {
+            console.error("❌ Dashboard: Error fetching bot name:", botDetailsError)
+            setCurrentBotName("Unknown Bot")
+          } else {
+            setCurrentBotName(botDetails.client_name || botDetails.bot_share_name || "Unknown Bot")
+          }
         } else {
           setCurrentBotName("No Bot Selected")
         }
-
-        console.log("✅ Dashboard: Data loaded successfully")
       } catch (error) {
         console.error("❌ Dashboard: Error fetching data:", error)
       } finally {
@@ -282,7 +264,7 @@ export default function Dashboard() {
     }
 
     fetchData()
-  }, [selectedBot, selectedPeriod, botSelectionReady, userAccess, bots])
+  }, [selectedBot, selectedPeriod, botSelectionReady, userAccess])
 
   // Persist time period selection to localStorage
   useEffect(() => {
@@ -450,14 +432,16 @@ export default function Dashboard() {
               </h2>
               <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{chatMetrics.totalThreads}</p>
             </div>
-            <div
-              className={`flex items-center text-sm ${getChangeColor(chatMetrics.totalThreads, chatMetrics.previousPeriodComparison.totalThreads)}`}
-            >
-              {getChangeIcon(chatMetrics.totalThreads, chatMetrics.previousPeriodComparison.totalThreads)}
-              <span className="ml-1">
-                {formatPercentageChange(chatMetrics.totalThreads, chatMetrics.previousPeriodComparison.totalThreads)}
-              </span>
-            </div>
+            {selectedPeriod !== "alltime" && (
+              <div
+                className={`flex items-center text-sm ${getChangeColor(chatMetrics.totalThreads, chatMetrics.previousPeriodComparison.totalThreads)}`}
+              >
+                {getChangeIcon(chatMetrics.totalThreads, chatMetrics.previousPeriodComparison.totalThreads)}
+                <span className="ml-1">
+                  {formatPercentageChange(chatMetrics.totalThreads, chatMetrics.previousPeriodComparison.totalThreads)}
+                </span>
+              </div>
+            )}
           </div>
           <p className="text-sm text-[#616161] mt-1">{getPeriodLabel(selectedPeriod)}</p>
         </div>
@@ -482,14 +466,19 @@ export default function Dashboard() {
               </h2>
               <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{chatMetrics.totalMessages}</p>
             </div>
-            <div
-              className={`flex items-center text-sm ${getChangeColor(chatMetrics.totalMessages, chatMetrics.previousPeriodComparison.totalMessages)}`}
-            >
-              {getChangeIcon(chatMetrics.totalMessages, chatMetrics.previousPeriodComparison.totalMessages)}
-              <span className="ml-1">
-                {formatPercentageChange(chatMetrics.totalMessages, chatMetrics.previousPeriodComparison.totalMessages)}
-              </span>
-            </div>
+            {selectedPeriod !== "alltime" && (
+              <div
+                className={`flex items-center text-sm ${getChangeColor(chatMetrics.totalMessages, chatMetrics.previousPeriodComparison.totalMessages)}`}
+              >
+                {getChangeIcon(chatMetrics.totalMessages, chatMetrics.previousPeriodComparison.totalMessages)}
+                <span className="ml-1">
+                  {formatPercentageChange(
+                    chatMetrics.totalMessages,
+                    chatMetrics.previousPeriodComparison.totalMessages,
+                  )}
+                </span>
+              </div>
+            )}
           </div>
           <p className="text-sm text-[#616161] mt-1">{getPeriodLabel(selectedPeriod)}</p>
         </div>
@@ -516,17 +505,19 @@ export default function Dashboard() {
                 {chatMetrics.messagesPerThread.toFixed(1)}
               </p>
             </div>
-            <div
-              className={`flex items-center text-sm ${getChangeColor(chatMetrics.messagesPerThread, chatMetrics.previousPeriodComparison.messagesPerThread)}`}
-            >
-              {getChangeIcon(chatMetrics.messagesPerThread, chatMetrics.previousPeriodComparison.messagesPerThread)}
-              <span className="ml-1">
-                {formatPercentageChange(
-                  chatMetrics.messagesPerThread,
-                  chatMetrics.previousPeriodComparison.messagesPerThread,
-                )}
-              </span>
-            </div>
+            {selectedPeriod !== "alltime" && (
+              <div
+                className={`flex items-center text-sm ${getChangeColor(chatMetrics.messagesPerThread, chatMetrics.previousPeriodComparison.messagesPerThread)}`}
+              >
+                {getChangeIcon(chatMetrics.messagesPerThread, chatMetrics.previousPeriodComparison.messagesPerThread)}
+                <span className="ml-1">
+                  {formatPercentageChange(
+                    chatMetrics.messagesPerThread,
+                    chatMetrics.previousPeriodComparison.messagesPerThread,
+                  )}
+                </span>
+              </div>
+            )}
           </div>
           <p className="text-sm text-[#616161] mt-1">Average engagement</p>
         </div>
@@ -554,14 +545,16 @@ export default function Dashboard() {
               </h2>
               <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{metrics.totalCallbacks}</p>
             </div>
-            <div
-              className={`flex items-center text-sm ${getChangeColor(metrics.totalCallbacks, metrics.previousPeriodComparison.totalCallbacks)}`}
-            >
-              {getChangeIcon(metrics.totalCallbacks, metrics.previousPeriodComparison.totalCallbacks)}
-              <span className="ml-1">
-                {formatPercentageChange(metrics.totalCallbacks, metrics.previousPeriodComparison.totalCallbacks)}
-              </span>
-            </div>
+            {selectedPeriod !== "alltime" && (
+              <div
+                className={`flex items-center text-sm ${getChangeColor(metrics.totalCallbacks, metrics.previousPeriodComparison.totalCallbacks)}`}
+              >
+                {getChangeIcon(metrics.totalCallbacks, metrics.previousPeriodComparison.totalCallbacks)}
+                <span className="ml-1">
+                  {formatPercentageChange(metrics.totalCallbacks, metrics.previousPeriodComparison.totalCallbacks)}
+                </span>
+              </div>
+            )}
           </div>
           <p className="text-sm text-[#616161] mt-1">{getPeriodLabel(selectedPeriod)}</p>
         </div>
@@ -587,17 +580,19 @@ export default function Dashboard() {
                 {metrics.callbackPercentage.toFixed(1)}%
               </p>
             </div>
-            <div
-              className={`flex items-center text-sm ${getChangeColor(metrics.callbackPercentage, metrics.previousPeriodComparison.callbackPercentage)}`}
-            >
-              {getChangeIcon(metrics.callbackPercentage, metrics.previousPeriodComparison.callbackPercentage)}
-              <span className="ml-1">
-                {formatPercentageChange(
-                  metrics.callbackPercentage,
-                  metrics.previousPeriodComparison.callbackPercentage,
-                )}
-              </span>
-            </div>
+            {selectedPeriod !== "alltime" && (
+              <div
+                className={`flex items-center text-sm ${getChangeColor(metrics.callbackPercentage, metrics.previousPeriodComparison.callbackPercentage)}`}
+              >
+                {getChangeIcon(metrics.callbackPercentage, metrics.previousPeriodComparison.callbackPercentage)}
+                <span className="ml-1">
+                  {formatPercentageChange(
+                    metrics.callbackPercentage,
+                    metrics.previousPeriodComparison.callbackPercentage,
+                  )}
+                </span>
+              </div>
+            )}
           </div>
           <p className="text-sm text-[#616161] mt-1">Conversion rate</p>
         </div>
@@ -621,14 +616,16 @@ export default function Dashboard() {
               </h2>
               <p className="text-2xl md:text-3xl font-bold mt-2 text-red-600">{metrics.droppedCallbacks}</p>
             </div>
-            <div
-              className={`flex items-center text-sm ${getChangeColor(metrics.droppedCallbacks, metrics.previousPeriodComparison.droppedCallbacks, true)}`}
-            >
-              {getChangeIcon(metrics.droppedCallbacks, metrics.previousPeriodComparison.droppedCallbacks, true)}
-              <span className="ml-1">
-                {formatPercentageChange(metrics.droppedCallbacks, metrics.previousPeriodComparison.droppedCallbacks)}
-              </span>
-            </div>
+            {selectedPeriod !== "alltime" && (
+              <div
+                className={`flex items-center text-sm ${getChangeColor(metrics.droppedCallbacks, metrics.previousPeriodComparison.droppedCallbacks, true)}`}
+              >
+                {getChangeIcon(metrics.droppedCallbacks, metrics.previousPeriodComparison.droppedCallbacks, true)}
+                <span className="ml-1">
+                  {formatPercentageChange(metrics.droppedCallbacks, metrics.previousPeriodComparison.droppedCallbacks)}
+                </span>
+              </div>
+            )}
           </div>
           <p className="text-sm text-[#616161] mt-1">Incomplete requests</p>
         </div>
@@ -639,14 +636,16 @@ export default function Dashboard() {
         <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-[#212121]">Sentiment Analysis</h3>
-            <div
-              className={`flex items-center text-sm ${getChangeColor(metrics.averageSentiment, metrics.previousPeriodComparison.averageSentiment)}`}
-            >
-              {getChangeIcon(metrics.averageSentiment, metrics.previousPeriodComparison.averageSentiment)}
-              <span className="ml-1">
-                {formatPercentageChange(metrics.averageSentiment, metrics.previousPeriodComparison.averageSentiment)}
-              </span>
-            </div>
+            {selectedPeriod !== "alltime" && (
+              <div
+                className={`flex items-center text-sm ${getChangeColor(metrics.averageSentiment, metrics.previousPeriodComparison.averageSentiment)}`}
+              >
+                {getChangeIcon(metrics.averageSentiment, metrics.previousPeriodComparison.averageSentiment)}
+                <span className="ml-1">
+                  {formatPercentageChange(metrics.averageSentiment, metrics.previousPeriodComparison.averageSentiment)}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="mb-6">
@@ -710,21 +709,23 @@ export default function Dashboard() {
                     }}
                   />
                 </h4>
-                <div
-                  className={`flex items-center text-xs ${getChangeColor(metrics.averageResponseTime, metrics.previousPeriodComparison.averageResponseTime, true)}`}
-                >
-                  {getChangeIcon(
-                    metrics.averageResponseTime,
-                    metrics.previousPeriodComparison.averageResponseTime,
-                    true,
-                  )}
-                  <span className="ml-1">
-                    {formatPercentageChange(
+                {selectedPeriod !== "alltime" && (
+                  <div
+                    className={`flex items-center text-xs ${getChangeColor(metrics.averageResponseTime, metrics.previousPeriodComparison.averageResponseTime, true)}`}
+                  >
+                    {getChangeIcon(
                       metrics.averageResponseTime,
                       metrics.previousPeriodComparison.averageResponseTime,
+                      true,
                     )}
-                  </span>
-                </div>
+                    <span className="ml-1">
+                      {formatPercentageChange(
+                        metrics.averageResponseTime,
+                        metrics.previousPeriodComparison.averageResponseTime,
+                      )}
+                    </span>
+                  </div>
+                )}
               </div>
               <p className="text-sm text-[#616161] mb-1">Response Speed</p>
               <p className="text-2xl font-bold text-[#038a71]">{(metrics.averageResponseTime / 1000).toFixed(1)}s</p>
@@ -754,21 +755,23 @@ export default function Dashboard() {
                     }}
                   />
                 </h4>
-                <div
-                  className={`flex items-center text-xs ${getChangeColor(metrics.globalAverageResponseTime, metrics.previousPeriodComparison.globalAverageResponseTime, true)}`}
-                >
-                  {getChangeIcon(
-                    metrics.globalAverageResponseTime,
-                    metrics.previousPeriodComparison.globalAverageResponseTime,
-                    true,
-                  )}
-                  <span className="ml-1">
-                    {formatPercentageChange(
+                {selectedPeriod !== "alltime" && (
+                  <div
+                    className={`flex items-center text-xs ${getChangeColor(metrics.globalAverageResponseTime, metrics.previousPeriodComparison.globalAverageResponseTime, true)}`}
+                  >
+                    {getChangeIcon(
                       metrics.globalAverageResponseTime,
                       metrics.previousPeriodComparison.globalAverageResponseTime,
+                      true,
                     )}
-                  </span>
-                </div>
+                    <span className="ml-1">
+                      {formatPercentageChange(
+                        metrics.globalAverageResponseTime,
+                        metrics.previousPeriodComparison.globalAverageResponseTime,
+                      )}
+                    </span>
+                  </div>
+                )}
               </div>
               <p className="text-sm text-[#616161] mb-1">Response Speed</p>
               <p className="text-2xl font-bold text-[#038a71]">

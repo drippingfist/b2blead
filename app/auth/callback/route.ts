@@ -8,14 +8,6 @@ export async function GET(request: NextRequest) {
   const setup = requestUrl.searchParams.get("setup")
   const type = requestUrl.searchParams.get("type")
 
-  console.log("🔗 Auth callback received:", {
-    code: !!code,
-    setup,
-    type,
-    fullUrl: request.url,
-    searchParams: Object.fromEntries(requestUrl.searchParams),
-  })
-
   if (code) {
     const cookieStore = cookies()
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
@@ -29,12 +21,8 @@ export async function GET(request: NextRequest) {
         return NextResponse.redirect(new URL("/auth/login?error=Invalid invitation link", request.url))
       }
 
-      console.log("✅ Session created for user:", data.user?.email)
-
       // Check if this is an invitation acceptance
       if (type === "invite" || setup === "true") {
-        console.log("📧 Processing invitation acceptance for:", data.user?.email)
-
         // Check if user already has a profile
         const { data: existingProfile } = await supabase
           .from("user_profiles")
@@ -43,16 +31,13 @@ export async function GET(request: NextRequest) {
           .single()
 
         if (existingProfile) {
-          console.log("✅ User already has profile, redirecting to dashboard")
           return NextResponse.redirect(new URL("/", request.url))
         } else {
-          console.log("🔧 New user, redirecting to setup")
           return NextResponse.redirect(new URL("/auth/setup", request.url))
         }
       }
 
       // Regular login, redirect to dashboard
-      console.log("🏠 Regular login, redirecting to dashboard")
       return NextResponse.redirect(new URL("/", request.url))
     } catch (error) {
       console.error("❌ Unexpected error in auth callback:", error)
@@ -61,6 +46,5 @@ export async function GET(request: NextRequest) {
   }
 
   // No code provided
-  console.log("❌ No auth code provided")
   return NextResponse.redirect(new URL("/auth/login?error=No authentication code", request.url))
 }

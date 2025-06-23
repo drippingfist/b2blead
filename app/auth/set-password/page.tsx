@@ -38,8 +38,6 @@ export default function SetPasswordPage() {
         const refreshToken = hashParams.get("refresh_token")
         const type = hashParams.get("type")
 
-        console.log("🔗 Processing invitation:", { accessToken: !!accessToken, refreshToken: !!refreshToken, type })
-
         if (!accessToken || !refreshToken || type !== "invite") {
           throw new Error("Invalid invitation link")
         }
@@ -47,8 +45,6 @@ export default function SetPasswordPage() {
         // Decode the JWT to get user metadata
         const payload = JSON.parse(atob(accessToken.split(".")[1]))
         const userMetadata = payload.user_metadata
-
-        console.log("📧 Invitation data:", userMetadata)
 
         setInvitationData({
           email: payload.email,
@@ -99,8 +95,6 @@ export default function SetPasswordPage() {
     setStep("processing")
 
     try {
-      console.log("🔐 Setting user password...")
-
       // Update the user's password
       const { error: passwordError } = await supabase.auth.updateUser({
         password: password,
@@ -109,8 +103,6 @@ export default function SetPasswordPage() {
       if (passwordError) {
         throw passwordError
       }
-
-      console.log("✅ Password set successfully")
 
       setStep("success")
       setTimeout(() => {

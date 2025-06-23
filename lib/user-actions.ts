@@ -139,8 +139,6 @@ export async function inviteUser(userData: {
     const supabase = createServerActionClient({ cookies: () => cookieStore })
     const adminClient = getAdminClient()
 
-    console.log("🔍 Starting invitation process for:", userData.email)
-
     // Verify the inviting user has access to the bot they're trying to invite to
     const { data: inviterBots, error: inviterBotsError } = await supabase
       .from("bot_users")
@@ -183,8 +181,6 @@ export async function inviteUser(userData: {
       return { success: false, error: "An invitation has already been sent to this email address" }
     }
 
-    console.log("✅ No existing user or invitation found")
-
     // Send Supabase invitation email using inviteUserByEmail
     const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(userData.email, {
       data: {
@@ -197,8 +193,6 @@ export async function inviteUser(userData: {
       console.error("❌ Supabase invitation error:", inviteError)
       return { success: false, error: `Failed to send invitation email: ${inviteError.message}` }
     }
-
-    console.log("✅ Invitation email sent successfully")
 
     // Record the invitation in user_invitations table
     const { error: recordError } = await supabase.from("user_invitations").insert({
@@ -213,8 +207,6 @@ export async function inviteUser(userData: {
     if (recordError) {
       console.error("❌ Error recording invitation:", recordError)
       // Don't fail the whole process if recording fails, but log it
-    } else {
-      console.log("✅ Invitation recorded in database")
     }
 
     return {
@@ -245,8 +237,6 @@ export async function getUsers(selectedBot?: string | null) {
       return { success: false, error: "User not authenticated", users: [] }
     }
 
-    console.log("🔍 Getting users for admin:", user.id, "Selected bot:", selectedBot)
-
     // Get current user's bot assignments to determine their access level
     const { data: currentUserBots, error: currentUserBotsError } = await supabase
       .from("bot_users")
@@ -265,16 +255,12 @@ export async function getUsers(selectedBot?: string | null) {
     const isSuperAdmin = currentUserBots.some((bot) => bot.role === "superadmin")
     const currentUserBotNames = currentUserBots.map((bot) => bot.bot_share_name)
 
-    console.log("🔍 Current user bot access:", currentUserBotNames, "Is superadmin:", isSuperAdmin)
-
     // Step 1: Get all users from auth.users using admin client
     const { data: authUsers, error: authError } = await adminClient.auth.admin.listUsers()
 
     if (authError) {
       throw authError
     }
-
-    console.log("🔍 Total auth users found:", authUsers.users.length)
 
     // Step 2: Get user profiles
     const { data: userProfiles, error: profilesError } = await supabase.from("user_profiles").select("*")
@@ -283,13 +269,10 @@ export async function getUsers(selectedBot?: string | null) {
       throw profilesError
     }
 
-    console.log("🔍 User profiles found:", userProfiles?.length || 0)
-
     // Step 3: Get bot users - filter by selected bot if provided
     let botUsersQuery = supabase.from("bot_users").select("*")
 
     if (selectedBot) {
-      console.log("🔍 Filtering bot_users by bot_share_name:", selectedBot)
       botUsersQuery = botUsersQuery.eq("bot_share_name", selectedBot)
     }
 
@@ -298,9 +281,6 @@ export async function getUsers(selectedBot?: string | null) {
     if (botUsersError) {
       throw botUsersError
     }
-
-    console.log("🔍 Bot users found:", botUsers?.length || 0)
-    console.log("🔍 Bot users data:", botUsers)
 
     // Step 4: Create maps for quick lookup
     const profilesMap = new Map()
@@ -313,20 +293,16 @@ export async function getUsers(selectedBot?: string | null) {
       botUsersMap.set(botUser.user_id, botUser)
     })
 
-    console.log("🔍 Bot users map keys:", Array.from(botUsersMap.keys()))
-
     // Step 5: Filter and transform users - SIMPLIFIED LOGIC
     const transformedUsers = authUsers.users
       .filter((authUser) => {
         // Don't show the current user in the list
         if (authUser.id === user.id) {
-          console.log("❌ Hiding current user:", authUser.email)
           return false
         }
 
         // Don't show super admins
         if (authUser.is_super_admin) {
-          console.log("❌ Hiding super admin:", authUser.email)
           return false
         }
 
@@ -334,24 +310,20 @@ export async function getUsers(selectedBot?: string | null) {
 
         // Don't show superadmins based on role in bot_users table
         if (botUser?.role === "superadmin") {
-          console.log("❌ Hiding superadmin (bot_users role):", authUser.email)
           return false
         }
 
         // SIMPLIFIED: If filtering by selected bot, only show users who have a bot_users record for that bot
         if (selectedBot) {
           if (!botUser || botUser.bot_share_name !== selectedBot) {
-            console.log("❌ User doesn't have bot_users record for selected bot:", authUser.email, "Bot:", selectedBot)
             return false
           }
-          console.log("✅ User has bot_users record for selected bot:", authUser.email, "Bot:", selectedBot)
           return true
         }
 
         // If no bot filter, show users who have any bot access
         const profile = profilesMap.get(authUser.id)
         if (!profile?.bot_share_name && !botUser?.bot_share_name) {
-          console.log("❌ User has no bot access:", authUser.email)
           return false
         }
 
@@ -360,24 +332,19 @@ export async function getUsers(selectedBot?: string | null) {
 
         // Superadmins can see all users
         if (isSuperAdmin) {
-          console.log("✅ Showing user (superadmin access):", authUser.email)
           return true
         }
 
         // Show users who share the same bot_share_name
         if (currentUserBotNames.includes(userBotShareName)) {
-          console.log("✅ Showing user (same bot access):", authUser.email, "Bot:", userBotShareName)
           return true
         }
 
-        console.log("❌ Hiding user:", authUser.email, "Bot:", userBotShareName)
         return false
       })
       .map((authUser) => {
         const profile = profilesMap.get(authUser.id)
         const botUser = botUsersMap.get(authUser.id)
-
-        console.log("🔍 Transforming user:", authUser.email, "Profile:", profile, "BotUser:", botUser)
 
         return {
           id: authUser.id,
@@ -390,12 +357,6 @@ export async function getUsers(selectedBot?: string | null) {
         }
       })
       .sort((a, b) => (a.first_name || "").localeCompare(b.first_name || ""))
-
-    console.log("✅ Final user list:", transformedUsers.length, "users")
-    console.log(
-      "✅ Final users:",
-      transformedUsers.map((u) => ({ email: u.email, bot: u.bot_share_name, role: u.role })),
-    )
 
     return { success: true, users: transformedUsers }
   } catch (error: any) {
@@ -499,8 +460,6 @@ export async function deleteUser(userId: string) {
     const supabase = createServerActionClient({ cookies: () => cookieStore })
     const adminClient = getAdminClient()
 
-    console.log("🗑️ Starting complete user deletion for:", userId)
-
     // Step 1: Delete from user_profiles table
     const { error: profileError } = await supabase.from("user_profiles").delete().eq("id", userId)
 
@@ -508,7 +467,6 @@ export async function deleteUser(userId: string) {
       console.error("❌ Error deleting user profile:", profileError)
       throw new Error(`Failed to delete user profile: ${profileError.message}`)
     }
-    console.log("✅ User profile deleted")
 
     // Step 2: Delete from bot_users table - UPDATED to use user_id
     const { error: botUserError } = await supabase.from("bot_users").delete().eq("user_id", userId) // Changed from 'id' to 'user_id'
@@ -517,7 +475,6 @@ export async function deleteUser(userId: string) {
       console.error("❌ Error deleting bot user:", botUserError)
       throw new Error(`Failed to delete bot user: ${botUserError.message}`)
     }
-    console.log("✅ Bot user deleted")
 
     // Step 3: Delete from auth.users table using admin client
     const { error: authError } = await adminClient.auth.admin.deleteUser(userId)
@@ -526,9 +483,6 @@ export async function deleteUser(userId: string) {
       console.error("❌ Error deleting auth user:", authError)
       throw new Error(`Failed to delete auth user: ${authError.message}`)
     }
-    console.log("✅ Auth user deleted")
-
-    console.log("✅ User completely deleted from all tables")
 
     return { success: true, message: "User has been completely removed from the system" }
   } catch (error: any) {
@@ -561,22 +515,16 @@ export async function deleteInvitation(invitationId: string) {
       throw new Error("Invitation not found")
     }
 
-    console.log("🗑️ Deleting invitation for email:", invitation.email)
-
     // Step 2: Find and delete the user from auth.users if they exist
     const { data: authUsers } = await adminClient.auth.admin.listUsers()
     const pendingUser = authUsers?.users?.find((user) => user.email === invitation.email)
 
     if (pendingUser) {
-      console.log("🗑️ Found pending user in auth, deleting:", pendingUser.id)
-
       const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(pendingUser.id)
 
       if (deleteUserError) {
         console.error("❌ Error deleting user from auth:", deleteUserError)
         // Continue anyway - we still want to delete the invitation record
-      } else {
-        console.log("✅ User deleted from auth.users")
       }
     }
 
@@ -584,8 +532,6 @@ export async function deleteInvitation(invitationId: string) {
     const { error: deleteInvitationError } = await supabase.from("user_invitations").delete().eq("id", invitationId)
 
     if (deleteInvitationError) throw deleteInvitationError
-
-    console.log("✅ Invitation record deleted")
 
     return { success: true }
   } catch (error: any) {

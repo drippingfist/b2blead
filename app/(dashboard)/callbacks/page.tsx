@@ -29,7 +29,6 @@ export default function CallbacksPage() {
   // Load selected bot from localStorage on initial page load
   useEffect(() => {
     const storedBot = localStorage.getItem("selectedBot")
-    console.log("📋 Callbacks Page: Initial load - stored bot:", storedBot)
 
     if (storedBot && storedBot !== "null") {
       setSelectedBot(storedBot)
@@ -43,7 +42,6 @@ export default function CallbacksPage() {
   useEffect(() => {
     const handleBotSelectionChanged = (event: CustomEvent) => {
       const newBot = event.detail
-      console.log("📋 Callbacks Page: Bot selection changed to:", newBot)
       setSelectedBot(newBot)
 
       // Update localStorage
@@ -61,22 +59,17 @@ export default function CallbacksPage() {
   // Fetch data whenever selectedBot or selectedPeriod changes, but only after initial load
   useEffect(() => {
     if (!initialLoadComplete) {
-      console.log("📋 Callbacks Page: Waiting for initial load to complete...")
       return
     }
 
     const fetchData = async () => {
       setLoading(true)
       try {
-        console.log("📋 Callbacks Page: Fetching data for bot:", selectedBot, "period:", selectedPeriod)
-
         const [fetchedCallbacks, fetchedStats, columnAnalysis] = await Promise.all([
           getCallbacksClient(100, selectedBot),
           getCallbackStatsClientWithPeriod(selectedBot, selectedPeriod as any),
           analyzeCallbackColumns(selectedBot),
         ])
-
-        console.log("📋 Callbacks Page: Fetched", fetchedCallbacks.length, "callbacks for bot:", selectedBot)
 
         setCallbacks(fetchedCallbacks)
         setStats(fetchedStats)

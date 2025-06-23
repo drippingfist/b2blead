@@ -8,9 +8,6 @@ interface MessagesPageProps {
 }
 
 export default async function MessagesPage({ searchParams }: MessagesPageProps) {
-  console.log("🔄 Messages Page: Server component loading...")
-  console.log("🔍 Messages Page: Search params:", searchParams)
-
   const selectedBot = searchParams.bot || null
   const selectedDate = searchParams.date || null
 
@@ -29,10 +26,6 @@ export default async function MessagesPage({ searchParams }: MessagesPageProps) 
       </div>
     )
   }
-
-  console.log("📊 Messages Page: User access:", userAccess)
-  console.log("📊 Messages Page: Loaded bots:", bots.length)
-  console.log("📊 Messages Page: Selected bot:", selectedBot)
 
   return (
     <Suspense fallback={<Loading message="Loading messages..." />}>

@@ -18,11 +18,9 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
   useEffect(() => {
     const handleBotSelectionChanged = (event: CustomEvent) => {
       const newBotSelection = event.detail
-      console.log("🔄 Thread Detail: Bot selection changed to:", newBotSelection)
 
       // If bot selection changes and we have thread data, check if thread belongs to new bot
       if (thread && thread.bot_share_name !== newBotSelection) {
-        console.log("🔄 Thread Detail: Thread belongs to different bot, redirecting to chats")
         router.push("/chats")
       }
 
@@ -41,8 +39,6 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
 
   useEffect(() => {
     async function loadData() {
-      console.log("🔍 ThreadDetailPage: Received threadId:", threadId)
-
       // Validate threadId
       if (!threadId || threadId.trim() === "") {
         console.error("❌ ThreadDetailPage: Invalid threadId")
@@ -64,20 +60,17 @@ export default function ThreadDetailPage({ params }: { params: { id: string } })
         notFound()
       }
 
-      console.log("🔍 ThreadDetailPage: Thread data:", threadData)
       setThread(threadData)
 
       // Check if thread belongs to currently selected bot
       const currentSelectedBot = localStorage.getItem("selectedBot")
       if (currentSelectedBot && currentSelectedBot !== "null" && threadData.bot_share_name !== currentSelectedBot) {
-        console.log("🔄 Thread Detail: Thread doesn't belong to selected bot, redirecting")
         router.push("/chats")
         return
       }
 
       // Get messages using the thread ID
       const messagesData = await getMessagesByThreadId(threadData.id)
-      console.log("🔍 ThreadDetailPage: Messages data:", messagesData)
       setMessages(messagesData)
       setLoading(false)
     }

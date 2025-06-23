@@ -40,7 +40,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         } = await supabase.auth.getUser()
 
         if (error) {
-          console.warn("Auth error in sidebar:", error.message)
           // Set default values on auth error
           setUserEmail("user@example.com")
           setUserName("User")
@@ -65,7 +64,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         const access = await getUserBotAccess()
         setUserAccess(access)
       } catch (error) {
-        console.warn("Failed to get user in sidebar:", error)
         // Set default values on error
         setUserEmail("user@example.com")
         setUserName("User")
@@ -97,9 +95,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           if (!error && bot) {
             setClientName(bot.client_name)
           }
-        } catch (error) {
-          console.warn("Failed to get client name:", error)
-        }
+        } catch (error) {}
       }
     }
 
