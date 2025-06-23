@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase/client"
@@ -24,20 +23,10 @@ export default function AcceptInvitePage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   useEffect(() => {
-    const processInvitation = async () => {
+    // This function will process the invitation details once we have a session.
+    const processInvitation = async (userEmail: string) => {
       try {
-        // With PKCE, the session is established by the callback route.
-        // We just get the user from the established session.
-        const { data: authData, error: authError } = await supabase.auth.getUser()
-
-        if (authError || !authData.user?.email) {
-          throw new Error(authError?.message || "Could not get user from invitation session.")
-        }
-
-        const userEmail = authData.user.email
         setEmail(userEmail)
-
-        // Fetch invitation details from our user_invitations table
         const { success, invitation, error: inviteDetailsError } = await getInvitationByEmail(userEmail)
 
         if (!success || !invitation) {
@@ -49,14 +38,48 @@ export default function AcceptInvitePage() {
         setInviteData(invitation)
         setStatus("form")
       } catch (err: any) {
-        console.error("❌ Error processing invitation:", err)
+        console.error("❌ Error processing invitation details:", err)
         setError(err.message || "Invalid or expired invitation link.")
         setStatus("error")
       }
     }
 
-    processInvitation()
-  }, [])
+    // Set up a listener for auth state changes.
+    // This is the key to solving the race condition.
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" && session?.user?.email) {
+        // This event fires AFTER the Supabase client has processed the URL fragment
+        // and successfully established a session. Now it's safe to proceed.
+        await processInvitation(session.user.email)
+      } else if (event === "INITIAL_SESSION" && session?.user?.email) {
+        // Also handle the case where the session might already be available
+        // when the component mounts.
+        await processInvitation(session.user.email)
+      }
+    })
+
+    // Check if the session is already available on initial load, just in case.
+    const checkInitialSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (session?.user?.email) {
+        // If a session exists but the form isn't shown yet, process it.
+        if (status === "loading") {
+          await processInvitation(session.user.email)
+        }
+      }
+    }
+
+    checkInitialSession()
+
+    // Cleanup the subscription when the component unmounts.
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [status]) // Rerun if status changes, to handle edge cases.
 
   const handleSetPassword = async (e: React.FormEvent) => {
     e.preventDefault()
