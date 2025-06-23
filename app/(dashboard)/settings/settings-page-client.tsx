@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Save, X, Users, Trash2, UserPlus, Settings } from "lucide-react"
+import { Loader2, Save, X, Users, Trash2, UserPlus, Settings, PlusCircle } from "lucide-react"
 import { supabase } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { timezones } from "@/lib/timezones"
@@ -89,17 +89,20 @@ export default function SettingsPage({
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [userToDelete, setUserToDelete] = useState<{ id: string; name: string; email: string } | null>(null)
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>(["", "", ""])
 
   const [botSettings, setBotSettings] = useState<{
     bot_share_name: string
     client_email: string
     transcript_email: string
     callback_email: string
+    groq_suggested_questions: string
   }>({
     bot_share_name: "",
     client_email: "",
-    transcript_email: "monthly", // Default value
-    callback_email: "monthly", // Default value
+    transcript_email: "monthly",
+    callback_email: "monthly",
+    groq_suggested_questions: "",
   })
   const [botSettingsLoading, setBotSettingsLoading] = useState(false)
   const [botSettingsSaving, setBotSettingsSaving] = useState(false)
@@ -188,6 +191,7 @@ export default function SettingsPage({
         client_email: "",
         transcript_email: "monthly",
         callback_email: "monthly",
+        groq_suggested_questions: "",
       }
 
       if (botUser?.bot_share_name) {
@@ -195,7 +199,7 @@ export default function SettingsPage({
 
         const { data: bot, error: botError } = await supabase
           .from("bots")
-          .select("timezone, client_name, client_email, transcript_email, callback_email")
+          .select("timezone, client_name, client_email, transcript_email, callback_email, groq_suggested_questions")
           .eq("bot_share_name", botUser.bot_share_name)
           .single()
 
@@ -210,9 +214,19 @@ export default function SettingsPage({
               client_email: bot.client_email || "",
               transcript_email: bot.transcript_email || "monthly",
               callback_email: bot.callback_email || "monthly",
+              groq_suggested_questions: bot.groq_suggested_questions || "",
             }
           }
         }
+        botSettingsValue.groq_suggested_questions = bot.groq_suggested_questions || ""
+
+        // Parse questions from the text blob
+        const questions = (bot.groq_suggested_questions || "").split("\n").filter((q) => q.trim() !== "")
+        // Ensure there are at least 3 fields, even if empty
+        while (questions.length < 3) {
+          questions.push("")
+        }
+        setSuggestedQuestions(questions)
       }
 
       // Set all state at once
@@ -353,6 +367,25 @@ export default function SettingsPage({
     setNewUser((prev) => ({ ...prev, [field]: value }))
   }
 
+  const handleQuestionChange = (index: number, value: string) => {
+    const newQuestions = [...suggestedQuestions]
+    newQuestions[index] = value
+    setSuggestedQuestions(newQuestions)
+    if (success) setSuccess(false)
+  }
+
+  const addQuestionField = () => {
+    setSuggestedQuestions([...suggestedQuestions, ""])
+  }
+
+  const removeQuestionField = (index: number) => {
+    // Prevent removing below the minimum of 3 fields
+    if (suggestedQuestions.length > 3) {
+      const newQuestions = suggestedQuestions.filter((_, i) => i !== index)
+      setSuggestedQuestions(newQuestions)
+    }
+  }
+
   const handleCancel = () => {
     router.push("/dashboard")
   }
@@ -374,7 +407,8 @@ export default function SettingsPage({
         throw new Error(updateError.message)
       }
 
-      // Update timezone and email settings for the currently selected bot
+      const suggestedQuestionsBlob = suggestedQuestions.filter((q) => q.trim() !== "").join("\n")
+
       if (selectedBot) {
         const { error: botUpdateError } = await supabase
           .from("bots")
@@ -382,6 +416,7 @@ export default function SettingsPage({
             timezone: userData.timezone,
             transcript_email: botSettings.transcript_email,
             callback_email: botSettings.callback_email,
+            groq_suggested_questions: suggestedQuestionsBlob,
           })
           .eq("bot_share_name", selectedBot)
 
@@ -826,6 +861,45 @@ export default function SettingsPage({
                 ? `This will update the timezone for ${clientName || selectedBot}.`
                 : "This will update the timezone for the selected AI."}
             </p>
+          </div>
+        </div>
+
+        {/* Permitted Suggested Questions Section */}
+        <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
+          <h2 className="text-lg font-medium text-[#212121] mb-4">Permitted Suggested Questions</h2>
+          <p className="text-sm text-[#616161] mb-4">
+            These questions will be suggested to the user during the chat. If no questions are added here, the AI will
+            suggest any question it thinks is suitable.
+          </p>
+          <div className="space-y-4">
+            {suggestedQuestions.map((question, index) => (
+              <div key={index} className="flex items-center space-x-2">
+                <div className="flex-1 space-y-2">
+                  <Label htmlFor={`question-${index}`}>Question {index + 1}</Label>
+                  <Input
+                    id={`question-${index}`}
+                    value={question}
+                    onChange={(e) => handleQuestionChange(index, e.target.value)}
+                    placeholder={`Enter suggested question ${index + 1}`}
+                    className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
+                  />
+                </div>
+                {suggestedQuestions.length > 3 && (
+                  <Button
+                    onClick={() => removeQuestionField(index)}
+                    variant="ghost"
+                    size="icon"
+                    className="mt-6 text-red-500 hover:bg-red-50 hover:text-red-600"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+            <Button onClick={addQuestionField} variant="outline" className="flex items-center mt-4">
+              <PlusCircle className="h-4 w-4 mr-2" />
+              Add Question
+            </Button>
           </div>
         </div>
 
