@@ -286,7 +286,7 @@ export default function ChatsPageClient() {
         setThreads((prevThreads) => [newThread, ...prevThreads])
         setTotalCount((prevCount) => prevCount + 1)
       } else {
-        console.log("❌ Real-time: New thread does not match filter, ignoring.", {
+        console.log("🟡 Real-time: New thread does not match filter, ignoring.", {
           newThreadBot: newThread.bot_share_name,
           selectedBot: selectedBot,
         })
@@ -304,7 +304,7 @@ export default function ChatsPageClient() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [selectedBot]) // IMPORTANT: Re-run this effect when the selectedBot changes
+  }, []) // ✅ FIX: Establish connection once on mount, filter client-side
 
   // Persist time period selection to localStorage
   useEffect(() => {
