@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Star, ChevronLeft, ChevronRight, MessageSquare, Clock, RefreshCw } from "lucide-react"
 import Link from "next/link"
+import { useBotSelection } from "@/hooks/use-bot-selection"
 
 interface Thread {
   id: string
@@ -42,7 +43,7 @@ type FilterType = "all" | "callbacks" | "dropped_callbacks" | "user_messages"
 type TimePeriod = "today" | "last7days" | "last30days" | "last90days" | "alltime"
 
 export default function ChatsPageClient() {
-  const [selectedBot, setSelectedBot] = useState<string | null>(null)
+  const { selectedBot, isSelectionLoaded } = useBotSelection()
   const [botData, setBotData] = useState<Bot | null>(null)
   const [threads, setThreads] = useState<Thread[]>([])
   const [loading, setLoading] = useState(true)
@@ -67,26 +68,12 @@ export default function ChatsPageClient() {
   const [debugInfo, setDebugInfo] = useState<string>("")
   const [accessibleBots, setAccessibleBots] = useState<string[]>([])
 
-  // New state for tracking refreshing sentiment
-  // const [refreshingSentiment, setRefreshingSentiment] = useState<Set<string>>(new Set())
-
-  // Listen for bot selection changes
+  // Reset to first page when bot selection changes
   useEffect(() => {
-    const handleBotSelectionChanged = (event: CustomEvent) => {
-      const newBotSelection = event.detail
-      setSelectedBot(newBotSelection)
-      setCurrentPage(1) // Reset to first page when bot changes
+    if (isSelectionLoaded) {
+      setCurrentPage(1)
     }
-
-    // Get initial bot selection from localStorage
-    const storedBot = localStorage.getItem("selectedBot")
-    if (storedBot && storedBot !== "null") {
-      setSelectedBot(storedBot)
-    }
-
-    window.addEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
-    return () => window.removeEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
-  }, [])
+  }, [selectedBot, isSelectionLoaded])
 
   // Load accessible bots and debug info
   useEffect(() => {
@@ -189,6 +176,8 @@ export default function ChatsPageClient() {
   // Load threads data
   useEffect(() => {
     const loadThreads = async () => {
+      if (!isSelectionLoaded) return
+
       setLoading(true)
       try {
         // Calculate date range based on time period
@@ -271,7 +260,7 @@ export default function ChatsPageClient() {
     }
 
     loadThreads()
-  }, [selectedBot, filter, timePeriod, currentPage, sortField, sortDirection])
+  }, [selectedBot, filter, timePeriod, currentPage, sortField, sortDirection, isSelectionLoaded])
 
   // Real-time subscription for new threads
   useEffect(() => {
@@ -468,74 +457,14 @@ export default function ChatsPageClient() {
     )
   }
 
-  // New function to handle sentiment refresh for individual threads
-  // const regenerateSentimentForThread = async (threadId: string) => {
-  //   if (!threadId) {
-  //     console.error("Thread ID is required.")
-  //     return
-  //   }
-
-  //   // Get the current user's session
-  //   const {
-  //     data: { session },
-  //     error: sessionError,
-  //   } = await supabase.auth.getSession()
-
-  //   if (sessionError || !session) {
-  //     console.error("Error getting session or user not logged in:", sessionError)
-  //     return
-  //   }
-
-  //   const userAccessToken = session.access_token
-
-  //   setRefreshingSentiment((prev) => new Set(prev).add(threadId))
-
-  //   try {
-  //     // Make direct fetch call to the correct Edge Function URL
-  //     const response = await fetch(
-  //       "https://bhekqolukbxkxjloffdi.supabase.co/functions/v1/sentiment_analysis_specific",
-  //       {
-  //         method: "POST",
-  //         headers: {
-  //           "Content-Type": "application/json",
-  //           Authorization: `Bearer ${userAccessToken}`, // Use the session's access_token
-  //           apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "", // Include anon key as well
-  //         },
-  //         body: JSON.stringify({ thread_id: threadId }),
-  //       },
-  //     )
-
-  //     const data = await response.json()
-
-  //     if (response.ok && data && data.success) {
-  //       console.log("Sentiment regeneration successful:", data)
-  //       // Update the thread in the local state
-  //       setThreads((prev) =>
-  //         prev.map((thread) =>
-  //           thread.id === threadId
-  //             ? {
-  //                 ...thread,
-  //                 sentiment_score: data.score,
-  //                 sentiment_justification: data.justification,
-  //               }
-  //             : thread,
-  //         ),
-  //       )
-  //     } else {
-  //       console.error("Error from Edge Function:", data)
-  //     }
-  //   } catch (e) {
-  //     console.error("Network or frontend error during fetch:", e)
-  //   } finally {
-  //     setRefreshingSentiment((prev) => {
-  //       const newSet = new Set(prev)
-  //       newSet.delete(threadId)
-  //       return newSet
-  //     })
-  //   }
-  // }
-
-  // We've removed the restriction that prevented viewing chats when "All Bots" is selected
+  // Show loading while bot selection is loading
+  if (!isSelectionLoaded || loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-[#616161]">Loading...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="p-4 md:p-6 relative">
@@ -627,13 +556,6 @@ export default function ChatsPageClient() {
           </p>
         )}
       </div>
-
-      {/* Loading State */}
-      {loading && (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-[#616161]">Loading threads...</div>
-        </div>
-      )}
 
       {/* No Data State */}
       {!loading && threads.length === 0 && (

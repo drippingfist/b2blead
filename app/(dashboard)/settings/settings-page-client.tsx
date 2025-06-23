@@ -19,6 +19,7 @@ import {
 } from "@/lib/user-actions"
 import Loading from "@/components/loading"
 import { DeleteUserModal } from "@/components/delete-user-modal"
+import { useBotSelection } from "@/hooks/use-bot-selection"
 
 interface UserData {
   id: string
@@ -54,6 +55,7 @@ export default function SettingsPage({
   searchParams: { bot?: string }
 }) {
   const router = useRouter()
+  const { selectedBot, isSelectionLoaded } = useBotSelection()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -102,38 +104,16 @@ export default function SettingsPage({
   const [botSettingsLoading, setBotSettingsLoading] = useState(false)
   const [botSettingsSaving, setBotSettingsSaving] = useState(false)
   const [clientName, setClientName] = useState<string>("")
-  const [selectedBot, setSelectedBot] = useState<string | null>(null)
   const [editingEmail, setEditingEmail] = useState(false)
 
-  // This useEffect is now ONLY for loading data, NOT for authorization.
+  // Load user data when bot selection is ready
   useEffect(() => {
-    // Check localStorage for selected bot first
-    const storedBot = localStorage.getItem("selectedBot")
-    console.log("⚙️ Settings Page: Retrieved bot from localStorage:", storedBot)
-    setSelectedBot(storedBot)
-
-    if (storedBot) {
-      loadUserData(storedBot)
-    } else {
+    if (isSelectionLoaded && selectedBot) {
+      loadUserData(selectedBot)
+    } else if (isSelectionLoaded) {
       setLoading(false)
     }
-
-    const handleBotChange = (event: CustomEvent) => {
-      const newBot = event.detail
-      console.log("⚙️ Settings Page: Bot changed to:", newBot)
-      setSelectedBot(newBot)
-      if (newBot) {
-        loadUserData(newBot)
-      } else {
-        setLoading(false)
-      }
-    }
-
-    window.addEventListener("botSelectionChanged", handleBotChange as EventListener)
-    return () => {
-      window.removeEventListener("botSelectionChanged", handleBotChange as EventListener)
-    }
-  }, [])
+  }, [selectedBot, isSelectionLoaded])
 
   const loadUserData = async (botShareName: string) => {
     try {
@@ -572,7 +552,6 @@ export default function SettingsPage({
 
   const handleBotSelection = (botShareName: string | null) => {
     if (botShareName) {
-      setSelectedBot(botShareName)
       loadUserData(botShareName)
     }
   }
@@ -594,7 +573,7 @@ export default function SettingsPage({
   }
 
   // Show loading screen while initial data loads
-  if (loading) {
+  if (loading || !isSelectionLoaded) {
     return <Loading message="Loading settings..." />
   }
 

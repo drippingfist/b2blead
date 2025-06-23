@@ -21,6 +21,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Loading from "@/components/loading"
 import { supabase } from "@/lib/supabase/client"
+import { useBotSelection } from "@/hooks/use-bot-selection"
 
 type TimePeriod = "today" | "last7days" | "last30days" | "last90days" | "alltime" | "custom"
 
@@ -45,7 +46,7 @@ interface DashboardMetrics {
 }
 
 export default function Dashboard() {
-  const [selectedBot, setSelectedBot] = useState<string | null>(null)
+  const { selectedBot, isSelectionLoaded } = useBotSelection()
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>(() => {
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem("selectedTimePeriod")
@@ -102,7 +103,6 @@ export default function Dashboard() {
     accessibleBots: string[]
     isSuperAdmin: boolean
   } | null>(null)
-  const [botSelectionReady, setBotSelectionReady] = useState(false)
   const [accessibleBotCount, setAccessibleBotCount] = useState(0)
   const [debugInfo, setDebugInfo] = useState<string>("")
 
@@ -113,33 +113,6 @@ export default function Dashboard() {
         // Get user access info
         const access = await getUserBotAccess()
         setUserAccess(access)
-
-        // If user has only one accessible bot, auto-select it
-        if (!access.isSuperAdmin && access.accessibleBots.length === 1) {
-          const singleBot = access.accessibleBots[0]
-          setSelectedBot(singleBot)
-        } else {
-          // Existing logic for multiple bots or superadmin
-          const storedBot = localStorage.getItem("selectedBot")
-
-          if (access.isSuperAdmin) {
-            // Superadmin: can select "All Bots" (null) or specific bot
-            if (storedBot && storedBot !== "null") {
-              setSelectedBot(storedBot)
-            } else {
-              // Default to "All Bots" for superadmin if no specific selection
-              setSelectedBot(null)
-            }
-          } else {
-            // Regular user with multiple bots: can use "All Bots" (null) or specific bot
-            if (storedBot && storedBot !== "null" && access.accessibleBots.includes(storedBot)) {
-              setSelectedBot(storedBot)
-            } else {
-              // Default to "All Bots" for regular users too
-              setSelectedBot(null)
-            }
-          }
-        }
 
         // Get current user
         const {
@@ -166,25 +139,12 @@ export default function Dashboard() {
         // Get stored bots or wait for them to be loaded
         const storedBots = JSON.parse(localStorage.getItem("userBots") || "[]")
         setBots(storedBots)
-
-        setBotSelectionReady(true)
       } catch (error) {
         console.error("❌ Dashboard: Error initializing user access:", error)
-        setBotSelectionReady(true) // Still allow page to load
       }
     }
 
     initializeUserAccess()
-  }, [])
-
-  // Listen for bot selection changes from the bot selector
-  useEffect(() => {
-    const handleBotSelectionChanged = (event: CustomEvent) => {
-      setSelectedBot(event.detail)
-    }
-
-    window.addEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
-    return () => window.removeEventListener("botSelectionChanged", handleBotSelectionChanged as EventListener)
   }, [])
 
   // Listen for bots being loaded by other components
@@ -200,7 +160,7 @@ export default function Dashboard() {
   // Load dashboard data only when bot selection is ready
   useEffect(() => {
     const fetchData = async () => {
-      if (!botSelectionReady) {
+      if (!isSelectionLoaded) {
         return
       }
 
@@ -264,7 +224,7 @@ export default function Dashboard() {
     }
 
     fetchData()
-  }, [selectedBot, selectedPeriod, botSelectionReady, userAccess])
+  }, [selectedBot, selectedPeriod, isSelectionLoaded, userAccess])
 
   // Persist time period selection to localStorage
   useEffect(() => {
@@ -362,8 +322,8 @@ export default function Dashboard() {
     }
   }
 
-  if (loading || !botSelectionReady) {
-    return <Loading message={!botSelectionReady ? "Initializing..." : "Loading dashboard..."} />
+  if (loading || !isSelectionLoaded) {
+    return <Loading message={!isSelectionLoaded ? "Initializing..." : "Loading dashboard..."} />
   }
 
   return (

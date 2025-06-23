@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase/client"
 import { timezones } from "@/lib/timezones"
 import { Upload, Save, ImageIcon } from "lucide-react"
 import Loading from "@/components/loading"
+import { useBotSelection } from "@/hooks/use-bot-selection"
 
 interface BotSettings {
   timezone: string
@@ -28,7 +29,7 @@ interface BotSettings {
 }
 
 export default function SuperAdminClient() {
-  const [selectedBot, setSelectedBot] = useState<string | null>(null)
+  const { selectedBot, isSelectionLoaded } = useBotSelection()
   const [clientName, setClientName] = useState<string>("")
   const [botSettings, setBotSettings] = useState<BotSettings>({
     timezone: "",
@@ -56,39 +57,13 @@ export default function SuperAdminClient() {
     callback: boolean
   }>({ gif: false, favicon: false, callback: false })
 
-  // Get selected bot from localStorage and listen for changes
-  useEffect(() => {
-    const getSelectedBot = () => {
-      const storedBot = localStorage.getItem("selectedBot")
-      if (storedBot && storedBot !== "null" && storedBot !== "all") {
-        setSelectedBot(storedBot)
-      } else {
-        setSelectedBot(null)
-      }
-    }
-
-    // Get selected bot immediately
-    getSelectedBot()
-
-    // Listen for bot selection changes
-    const handleBotChange = (event: CustomEvent) => {
-      const newBot = event.detail
-      if (newBot && newBot !== "all") {
-        setSelectedBot(newBot)
-      } else {
-        setSelectedBot(null)
-      }
-    }
-
-    window.addEventListener("botSelectionChanged", handleBotChange as EventListener)
-    return () => {
-      window.removeEventListener("botSelectionChanged", handleBotChange as EventListener)
-    }
-  }, [])
-
   // Load bot data when selected bot changes
   useEffect(() => {
     const loadBotData = async () => {
+      if (!isSelectionLoaded) {
+        return
+      }
+
       if (!selectedBot) {
         setLoading(false)
         return
@@ -156,7 +131,7 @@ export default function SuperAdminClient() {
     }
 
     loadBotData()
-  }, [selectedBot])
+  }, [selectedBot, isSelectionLoaded])
 
   const handleInputChange = (field: keyof BotSettings, value: string) => {
     console.log(`Changing ${field} to:`, value)
@@ -253,7 +228,7 @@ export default function SuperAdminClient() {
   }
 
   // Show bot selection required
-  if (!selectedBot && !loading) {
+  if (!selectedBot && !loading && isSelectionLoaded) {
     return (
       <div className="container mx-auto px-4 py-8">
         <Card className="max-w-md mx-auto">
@@ -266,7 +241,7 @@ export default function SuperAdminClient() {
     )
   }
 
-  if (loading) {
+  if (loading || !isSelectionLoaded) {
     return <Loading message="Loading bot settings..." />
   }
 
@@ -464,18 +439,18 @@ export default function SuperAdminClient() {
                   id="client_description"
                   value={botSettings.client_description}
                   onChange={(e) => handleInputChange("client_description", e.target.value)}
-                  placeholder="Enter client description"
+                  placeholder="Describe the client and their business"
                   rows={3}
                 />
               </div>
 
               <div>
-                <Label htmlFor="gpt_assistant_system_prompt">Assistant System Prompt</Label>
+                <Label htmlFor="gpt_assistant_system_prompt">GPT Assistant System Prompt</Label>
                 <Textarea
                   id="gpt_assistant_system_prompt"
                   value={botSettings.gpt_assistant_system_prompt}
                   onChange={(e) => handleInputChange("gpt_assistant_system_prompt", e.target.value)}
-                  placeholder="Enter system prompt for GPT assistant"
+                  placeholder="Enter the system prompt for the AI assistant"
                   rows={6}
                 />
               </div>
@@ -486,34 +461,34 @@ export default function SuperAdminClient() {
                   id="sentiment_analysis_prompt"
                   value={botSettings.sentiment_analysis_prompt}
                   onChange={(e) => handleInputChange("sentiment_analysis_prompt", e.target.value)}
-                  placeholder="Enter sentiment analysis prompt"
+                  placeholder="Enter the prompt for sentiment analysis"
                   rows={4}
                 />
               </div>
             </CardContent>
           </Card>
 
-          {/* Visual Settings */}
+          {/* Visual Customization */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle>Visual Settings</CardTitle>
+                <CardTitle>Visual Customization</CardTitle>
                 <CardDescription>Configure visual elements and branding</CardDescription>
               </div>
               <Button
                 onClick={() =>
-                  handleSaveSection("Visual Settings", [
+                  handleSaveSection("Visual Customization", [
                     "button_background_colour",
                     "button_gif_url",
                     "favicon_png",
                     "callback_completed_gif",
                   ])
                 }
-                disabled={savingSection === "Visual Settings"}
+                disabled={savingSection === "Visual Customization"}
                 variant="outline"
                 size="sm"
               >
-                {savingSection === "Visual Settings" ? (
+                {savingSection === "Visual Customization" ? (
                   <>
                     <Loading size="sm" className="mr-2" />
                     Saving...
@@ -526,7 +501,7 @@ export default function SuperAdminClient() {
                 )}
               </Button>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6">
               <div>
                 <Label htmlFor="button_background_colour">Button Background Color</Label>
                 <div className="flex items-center space-x-2">
@@ -535,7 +510,7 @@ export default function SuperAdminClient() {
                     type="color"
                     value={botSettings.button_background_colour}
                     onChange={(e) => handleInputChange("button_background_colour", e.target.value)}
-                    className="w-20 h-10"
+                    className="w-16 h-10"
                   />
                   <Input
                     value={botSettings.button_background_colour}
@@ -546,137 +521,124 @@ export default function SuperAdminClient() {
                 </div>
               </div>
 
-              <div>
-                <Label>Button GIF</Label>
-                <div className="space-y-2">
-                  <div className="border rounded-md p-2 bg-gray-50">
-                    <div className="text-sm text-gray-600 mb-2 text-center">Current GIF:</div>
-                    <div className="flex justify-center">
-                      {isValidUrl(botSettings.button_gif_url) && !imageErrors.gif ? (
-                        <img
-                          src={botSettings.button_gif_url || "/placeholder.svg"}
-                          alt="Button GIF"
-                          className="object-contain border rounded"
-                          style={{ width: "96px", height: "96px" }}
-                          onError={() => handleImageError("gif")}
-                        />
-                      ) : (
-                        <div
-                          className="border rounded bg-gray-100 flex items-center justify-center"
-                          style={{ width: "96px", height: "96px" }}
-                        >
-                          <div className="text-center text-gray-500">
-                            <ImageIcon className="h-8 w-8 mx-auto mb-1" />
-                            <div className="text-xs">
-                              {imageErrors.gif
-                                ? "Failed to load"
-                                : botSettings.button_gif_url
-                                  ? "Invalid URL"
-                                  : "No image"}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Button GIF */}
+                <div>
+                  <Label htmlFor="button_gif_url">Button GIF URL</Label>
+                  <div className="space-y-2">
                     <Input
+                      id="button_gif_url"
                       value={botSettings.button_gif_url}
                       onChange={(e) => handleInputChange("button_gif_url", e.target.value)}
-                      placeholder="Enter GIF URL"
-                      className="flex-1"
+                      placeholder="https://example.com/button.gif"
                     />
-                    <Button type="button" variant="outline" onClick={() => handleFileUpload("gif")}>
+                    <Button
+                      onClick={() => handleFileUpload("gif")}
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      disabled
+                    >
                       <Upload className="h-4 w-4 mr-2" />
-                      Upload New GIF
+                      Upload GIF (Coming Soon)
                     </Button>
+                    {botSettings.button_gif_url && isValidUrl(botSettings.button_gif_url) && (
+                      <div className="border rounded p-2 bg-gray-50">
+                        {!imageErrors.gif ? (
+                          <img
+                            src={botSettings.button_gif_url || "/placeholder.svg"}
+                            alt="Button GIF"
+                            className="w-full h-20 object-contain"
+                            onError={() => handleImageError("gif")}
+                          />
+                        ) : (
+                          <div className="w-full h-20 flex items-center justify-center bg-gray-200 text-gray-500">
+                            <ImageIcon className="h-6 w-6" />
+                            <span className="ml-2 text-sm">Failed to load</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
 
-              <div>
-                <Label>Favicon</Label>
-                <div className="space-y-2">
-                  <div className="border rounded-md p-2 bg-gray-50">
-                    <div className="text-sm text-gray-600 mb-2 text-center">Current Favicon:</div>
-                    <div className="flex justify-center">
-                      {isValidUrl(botSettings.favicon_png) && !imageErrors.favicon ? (
-                        <img
-                          src={botSettings.favicon_png || "/placeholder.svg"}
-                          alt="Favicon"
-                          className="object-contain border rounded"
-                          style={{ width: "32px", height: "32px" }}
-                          onError={() => handleImageError("favicon")}
-                        />
-                      ) : (
-                        <div
-                          className="border rounded bg-gray-100 flex items-center justify-center"
-                          style={{ width: "32px", height: "32px" }}
-                        >
-                          <ImageIcon className="h-4 w-4 text-gray-500" />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
+                {/* Favicon */}
+                <div>
+                  <Label htmlFor="favicon_png">Favicon PNG URL</Label>
+                  <div className="space-y-2">
                     <Input
+                      id="favicon_png"
                       value={botSettings.favicon_png}
                       onChange={(e) => handleInputChange("favicon_png", e.target.value)}
-                      placeholder="Enter favicon URL"
-                      className="flex-1"
+                      placeholder="https://example.com/favicon.png"
                     />
-                    <Button type="button" variant="outline" onClick={() => handleFileUpload("favicon")}>
+                    <Button
+                      onClick={() => handleFileUpload("favicon")}
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      disabled
+                    >
                       <Upload className="h-4 w-4 mr-2" />
-                      Upload New Favicon
+                      Upload PNG (Coming Soon)
                     </Button>
+                    {botSettings.favicon_png && isValidUrl(botSettings.favicon_png) && (
+                      <div className="border rounded p-2 bg-gray-50">
+                        {!imageErrors.favicon ? (
+                          <img
+                            src={botSettings.favicon_png || "/placeholder.svg"}
+                            alt="Favicon"
+                            className="w-full h-20 object-contain"
+                            onError={() => handleImageError("favicon")}
+                          />
+                        ) : (
+                          <div className="w-full h-20 flex items-center justify-center bg-gray-200 text-gray-500">
+                            <ImageIcon className="h-6 w-6" />
+                            <span className="ml-2 text-sm">Failed to load</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
 
-              <div>
-                <Label>Callback Completed GIF</Label>
-                <div className="space-y-2">
-                  <div className="border rounded-md p-2 bg-gray-50">
-                    <div className="text-sm text-gray-600 mb-2 text-center">Current Callback GIF:</div>
-                    <div className="flex justify-center">
-                      {isValidUrl(botSettings.callback_completed_gif) && !imageErrors.callback ? (
-                        <img
-                          src={botSettings.callback_completed_gif || "/placeholder.svg"}
-                          alt="Callback Completed GIF"
-                          className="object-contain border rounded"
-                          style={{ width: "96px", height: "96px" }}
-                          onError={() => handleImageError("callback")}
-                        />
-                      ) : (
-                        <div
-                          className="border rounded bg-gray-100 flex items-center justify-center"
-                          style={{ width: "96px", height: "96px" }}
-                        >
-                          <div className="text-center text-gray-500">
-                            <ImageIcon className="h-8 w-8 mx-auto mb-1" />
-                            <div className="text-xs">
-                              {imageErrors.callback
-                                ? "Failed to load"
-                                : botSettings.callback_completed_gif
-                                  ? "Invalid URL"
-                                  : "No image"}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
+                {/* Callback Completed GIF */}
+                <div>
+                  <Label htmlFor="callback_completed_gif">Callback Completed GIF URL</Label>
+                  <div className="space-y-2">
                     <Input
+                      id="callback_completed_gif"
                       value={botSettings.callback_completed_gif}
                       onChange={(e) => handleInputChange("callback_completed_gif", e.target.value)}
-                      placeholder="Enter callback completed GIF URL"
-                      className="flex-1"
+                      placeholder="https://example.com/success.gif"
                     />
-                    <Button type="button" variant="outline" onClick={() => handleFileUpload("callback")}>
+                    <Button
+                      onClick={() => handleFileUpload("callback")}
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      disabled
+                    >
                       <Upload className="h-4 w-4 mr-2" />
-                      Upload New GIF
+                      Upload GIF (Coming Soon)
                     </Button>
+                    {botSettings.callback_completed_gif && isValidUrl(botSettings.callback_completed_gif) && (
+                      <div className="border rounded p-2 bg-gray-50">
+                        {!imageErrors.callback ? (
+                          <img
+                            src={botSettings.callback_completed_gif || "/placeholder.svg"}
+                            alt="Callback Completed GIF"
+                            className="w-full h-20 object-contain"
+                            onError={() => handleImageError("callback")}
+                          />
+                        ) : (
+                          <div className="w-full h-20 flex items-center justify-center bg-gray-200 text-gray-500">
+                            <ImageIcon className="h-6 w-6" />
+                            <span className="ml-2 text-sm">Failed to load</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
