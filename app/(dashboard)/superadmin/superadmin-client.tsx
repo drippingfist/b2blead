@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,7 +27,7 @@ interface BotSettings {
   product_name: string
 }
 
-export default function SuperAdminPage() {
+export default function SuperAdminClient() {
   const [selectedBot, setSelectedBot] = useState<string | null>(null)
   const [clientName, setClientName] = useState<string>("")
   const [botSettings, setBotSettings] = useState<BotSettings>({
@@ -250,20 +250,6 @@ export default function SuperAdminPage() {
     } catch {
       return false
     }
-  }
-
-  // Show bot selection required
-  if (!selectedBot && !loading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <Card className="max-w-md mx-auto">
-          <CardHeader>
-            <CardTitle>Bot Selection Required</CardTitle>
-            <CardDescription>Please select a specific bot from the sidebar to configure its settings.</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    )
   }
 
   if (loading) {
