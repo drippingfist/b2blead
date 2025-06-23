@@ -267,8 +267,8 @@ export default function Dashboard() {
           setCurrentBotName("All Bots")
         } else if (selectedBot) {
           const currentBot = bots.find((b) => b.bot_share_name === selectedBot)
-          // Prioritize client_name, fallback to bot_share_name if client_name is not available
-          setCurrentBotName(currentBot?.client_name || currentBot?.bot_share_name || "Selected Bot")
+          // Always use client_name if available, otherwise use bot_share_name, with fallback
+          setCurrentBotName(currentBot?.client_name || currentBot?.bot_share_name || "Unknown Bot")
         } else {
           setCurrentBotName("No Bot Selected")
         }
@@ -404,7 +404,6 @@ export default function Dashboard() {
         <p className="text-[#616161]">
           Welcome back, {userEmail}. You have access to {accessibleBotCount} bot(s).
         </p>
-        <p className="text-sm text-[#038a71] mt-1">Currently viewing: {currentBotName}</p>
       </div>
 
       {/* Time Period Selector */}
