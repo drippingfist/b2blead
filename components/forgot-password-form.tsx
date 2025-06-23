@@ -1,7 +1,9 @@
 "use client"
 
-import { useActionState } from "react"
-import { sendMagicLink } from "@/lib/actions"
+import type React from "react"
+
+import { useState } from "react"
+import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -9,10 +11,32 @@ import { Loader2, Check } from "lucide-react"
 import Link from "next/link"
 
 export default function ForgotPasswordForm() {
-  // We're still using sendMagicLink but the function now sends a password reset email
-  const [state, action, isPending] = useActionState(sendMagicLink, null)
+  const [email, setEmail] = useState("")
+  const [isPending, setIsPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
 
-  if (state?.success) {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsPending(true)
+    setError(null)
+    setSuccess(false)
+
+    // Call the reset password function from the client-side Supabase instance
+    const { error: submissionError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset-password`,
+    })
+
+    setIsPending(false)
+
+    if (submissionError) {
+      setError(submissionError.message)
+    } else {
+      setSuccess(true)
+    }
+  }
+
+  if (success) {
     return (
       <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">
         <div className="text-center">
@@ -44,11 +68,11 @@ export default function ForgotPasswordForm() {
         <p className="text-[#616161]">Enter your email address and we'll send you a password reset link.</p>
       </div>
 
-      {state?.error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 text-sm">{state.error}</div>
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 text-sm">{error}</div>
       )}
 
-      <form action={action} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="email">Email Address</Label>
           <Input
@@ -59,6 +83,8 @@ export default function ForgotPasswordForm() {
             required
             placeholder="Enter your email address"
             className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             disabled={isPending}
           />
         </div>
