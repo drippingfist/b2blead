@@ -1,5 +1,7 @@
 "use client"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
+import type React from "react"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,6 +12,19 @@ import { useRouter } from "next/navigation"
 import { timezones } from "@/lib/timezones"
 import Loading from "@/components/loading"
 import { useBotSelection } from "@/hooks/use-bot-selection"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { DeleteUserModal } from "@/components/delete-user-modal"
+import {
+  getUsers,
+  getInvitations,
+  inviteUser,
+  deleteUser,
+  deleteInvitation,
+  getInvitableBots,
+} from "@/lib/user-actions"
+import { Users, UserPlus, Trash, Send } from "lucide-react"
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -32,6 +47,31 @@ export default function SettingsPage() {
   const [initialBotSettings, setInitialBotSettings] = useState(botSettings)
 
   const [clientName, setClientName] = useState<string>("")
+
+  // User Management State
+  const [users, setUsers] = useState<any[]>([])
+  const [invitations, setInvitations] = useState<any[]>([])
+  const [invitableBots, setInvitableBots] = useState<Array<{ bot_share_name: string; client_name: string }>>([])
+  const [loadingUsers, setLoadingUsers] = useState(false)
+  const [loadingInvitations, setLoadingInvitations] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+
+  // Modal states for User Management
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false)
+  const [userToDelete, setUserToDelete] = useState<any | null>(null)
+  const [invitationToDelete, setInvitationToDelete] = useState<any | null>(null)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  // Form states for inviting user
+  const [inviteForm, setInviteForm] = useState({
+    email: "",
+    first_name: "",
+    surname: "",
+    role: "member",
+    bot_share_name: selectedBot || "",
+  })
 
   // Load data when bot selection is ready
   useEffect(() => {
@@ -78,6 +118,187 @@ export default function SettingsPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Fetch current user ID and superadmin status
+  useEffect(() => {
+    const fetchCurrentUserId = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (user) {
+        setCurrentUserId(user.id)
+        // Check superadmin status
+        const { data: superAdmin } = await supabase.from("bot_super_users").select("id").eq("id", user.id).single()
+        setIsSuperAdmin(!!superAdmin)
+      }
+    }
+    fetchCurrentUserId()
+  }, [])
+
+  // Load users and invitations
+  const loadUsersAndInvitations = useCallback(async () => {
+    if (!isSelectionLoaded) return
+
+    if (!selectedBot && !isSuperAdmin) {
+      setUsers([])
+      setInvitations([])
+      setLoadingUsers(false)
+      setLoadingInvitations(false)
+      return
+    }
+
+    setLoadingUsers(true)
+    setLoadingInvitations(true)
+    setError(null)
+
+    try {
+      const usersResult = await getUsers(selectedBot)
+      if (usersResult.success) {
+        setUsers(usersResult.users)
+      } else {
+        setError((prev) => (prev ? `${prev}\n${usersResult.error}` : usersResult.error || "Failed to load users"))
+        setUsers([])
+      }
+
+      const invitesResult = await getInvitations()
+      if (invitesResult.success) {
+        if (selectedBot && !isSuperAdmin) {
+          setInvitations(invitesResult.invitations.filter((inv) => inv.bot_share_name === selectedBot))
+        } else if (isSuperAdmin && selectedBot) {
+          setInvitations(invitesResult.invitations.filter((inv) => inv.bot_share_name === selectedBot))
+        } else {
+          setInvitations(invitesResult.invitations)
+        }
+      } else {
+        setError((prev) =>
+          prev ? `${prev}\n${invitesResult.error}` : invitesResult.error || "Failed to load invitations",
+        )
+        setInvitations([])
+      }
+    } catch (e: any) {
+      setError(e.message || "Error loading user management data")
+      setUsers([])
+      setInvitations([])
+    } finally {
+      setLoadingUsers(false)
+      setLoadingInvitations(false)
+    }
+  }, [selectedBot, isSelectionLoaded, isSuperAdmin])
+
+  useEffect(() => {
+    loadUsersAndInvitations()
+  }, [loadUsersAndInvitations])
+
+  // Fetch invitable bots
+  useEffect(() => {
+    const fetchInvitableBotsData = async () => {
+      const result = await getInvitableBots()
+      if (result.success) {
+        setInvitableBots(result.bots)
+        if (selectedBot) {
+          setInviteForm((prev) => ({ ...prev, bot_share_name: selectedBot }))
+        } else if (result.bots.length === 1) {
+          setInviteForm((prev) => ({ ...prev, bot_share_name: result.bots[0].bot_share_name }))
+        } else if (result.bots.length > 0 && !selectedBot && isSuperAdmin) {
+          setInviteForm((prev) => ({ ...prev, bot_share_name: result.bots[0].bot_share_name }))
+        }
+      }
+    }
+    if (isSelectionLoaded) {
+      fetchInvitableBotsData()
+    }
+  }, [isSelectionLoaded, selectedBot, isSuperAdmin])
+
+  // Handler functions
+  const handleInviteFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target
+    setInviteForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const openInviteModal = () => {
+    const defaultBotShareName = selectedBot || (invitableBots.length > 0 ? invitableBots[0].bot_share_name : "")
+    setInviteForm({
+      email: "",
+      first_name: "",
+      surname: "",
+      role: "member",
+      bot_share_name: defaultBotShareName,
+    })
+    setIsInviteModalOpen(true)
+  }
+
+  const openDeleteUserModal = (user: any) => {
+    setUserToDelete({
+      id: user.id,
+      name: `${user.first_name || ""} ${user.surname || ""}`.trim() || user.email,
+      email: user.email,
+    })
+    setDeleteModalOpen(true)
+  }
+
+  const openDeleteInvitationModal = (invitation: any) => {
+    setInvitationToDelete(invitation)
+  }
+
+  const handleInviteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!currentUserId) {
+      setError("Could not identify inviting user. Please refresh.")
+      return
+    }
+    if (!inviteForm.bot_share_name) {
+      setError("Please select a bot for the new user.")
+      return
+    }
+    setSaving(true)
+    setError(null)
+    setSuccess(null)
+
+    const invitePayload = {
+      ...inviteForm,
+      invited_by: currentUserId,
+      timezone: botSettings.timezone || "Asia/Bangkok",
+    }
+
+    const result = await inviteUser(invitePayload)
+    if (result.success) {
+      setSuccess(result.message || "Invitation sent successfully!")
+      setIsInviteModalOpen(false)
+      loadUsersAndInvitations()
+    } else {
+      setError(result.error || "Failed to send invitation.")
+    }
+    setSaving(false)
+  }
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return
+    setSaving(true)
+    const result = await deleteUser(userToDelete.id)
+    if (result.success) {
+      setSuccess("User deleted successfully!")
+      loadUsersAndInvitations()
+    } else {
+      setError(result.error || "Failed to delete user.")
+    }
+    setUserToDelete(null)
+    setDeleteModalOpen(false)
+    setSaving(false)
+  }
+
+  const confirmDeleteInvitation = async () => {
+    if (!invitationToDelete) return
+    setSaving(true)
+    const result = await deleteInvitation(invitationToDelete.id)
+    if (result.success) {
+      setSuccess("Invitation deleted successfully!")
+      loadUsersAndInvitations()
+    } else {
+      setError(result.error || "Failed to delete invitation.")
+    }
+    setInvitationToDelete(null)
+    setSaving(false)
   }
 
   const handleSavePanel = async (panelName: string, payload: any) => {
@@ -375,6 +596,149 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* User Management Section - Conditionally Rendered */}
+        {(isSuperAdmin || selectedBot) && (
+          <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg font-medium text-[#212121] flex items-center">
+                <Users className="h-5 w-5 mr-2" />
+                User Management
+              </h2>
+              {(selectedBot || (isSuperAdmin && invitableBots.length > 0)) && (
+                <Button onClick={openInviteModal} className="bg-[#038a71] hover:bg-[#038a71]/90 text-sm">
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Invite User
+                </Button>
+              )}
+            </div>
+
+            <Tabs defaultValue="active-users">
+              <TabsList className="grid w-full grid-cols-2 mb-4">
+                <TabsTrigger value="active-users">Active Users</TabsTrigger>
+                <TabsTrigger value="pending-invitations">Pending Invitations</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="active-users">
+                {loadingUsers ? (
+                  <div className="text-center p-4">
+                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-[#038a71]" />
+                  </div>
+                ) : users.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Role</TableHead>
+                          {isSuperAdmin && !selectedBot && <TableHead>Bot Access</TableHead>}
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {users.map((user) => (
+                          <TableRow key={user.id}>
+                            <TableCell>
+                              {user.first_name} {user.surname}
+                            </TableCell>
+                            <TableCell>{user.email}</TableCell>
+                            <TableCell className="capitalize">{user.role}</TableCell>
+                            {isSuperAdmin && !selectedBot && <TableCell>{user.bot_share_name || "N/A"}</TableCell>}
+                            <TableCell>
+                              <span
+                                className={`px-2 py-0.5 text-xs rounded-full ${user.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}`}
+                              >
+                                {user.is_active ? "Active" : "Inactive"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right space-x-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openDeleteUserModal(user)}
+                                title="Delete User"
+                              >
+                                <Trash className="h-3.5 w-3.5 text-red-600" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#616161] text-center py-4">
+                    No active users found
+                    {selectedBot
+                      ? ` for ${clientName || selectedBot}`
+                      : isSuperAdmin
+                        ? " matching filters"
+                        : ". Select a bot to see users."}
+                    .
+                  </p>
+                )}
+              </TabsContent>
+
+              <TabsContent value="pending-invitations">
+                {loadingInvitations ? (
+                  <div className="text-center p-4">
+                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-[#038a71]" />
+                  </div>
+                ) : invitations.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Role</TableHead>
+                          <TableHead>Bot Access</TableHead>
+                          <TableHead>Invited At</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {invitations.map((invite) => (
+                          <TableRow key={invite.id}>
+                            <TableCell>{invite.email}</TableCell>
+                            <TableCell>
+                              {invite.first_name} {invite.surname}
+                            </TableCell>
+                            <TableCell className="capitalize">{invite.role}</TableCell>
+                            <TableCell>{invite.bot_share_name}</TableCell>
+                            <TableCell>{new Date(invite.created_at).toLocaleDateString()}</TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openDeleteInvitationModal(invite)}
+                                title="Delete Invitation"
+                              >
+                                <Trash className="h-3.5 w-3.5 text-red-600" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#616161] text-center py-4">
+                    No pending invitations
+                    {selectedBot
+                      ? ` for ${clientName || selectedBot}`
+                      : isSuperAdmin
+                        ? ""
+                        : ". Select a bot to see invitations."}
+                    .
+                  </p>
+                )}
+              </TabsContent>
+            </Tabs>
+          </div>
+        )}
+
         {/* Permitted Suggested Questions Section */}
         <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
           <h2 className="text-lg font-medium text-[#212121] mb-4">Permitted Suggested Questions</h2>
@@ -426,6 +790,159 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Modals */}
+      {isInviteModalOpen && (
+        <Dialog open={isInviteModalOpen} onOpenChange={setIsInviteModalOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Invite New User</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleInviteSubmit} className="space-y-4 py-4">
+              <div>
+                <Label htmlFor="invite-first_name" className="text-sm">
+                  First Name
+                </Label>
+                <Input
+                  id="invite-first_name"
+                  name="first_name"
+                  value={inviteForm.first_name}
+                  onChange={handleInviteFormChange}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="invite-surname" className="text-sm">
+                  Surname
+                </Label>
+                <Input
+                  id="invite-surname"
+                  name="surname"
+                  value={inviteForm.surname}
+                  onChange={handleInviteFormChange}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="invite-email" className="text-sm">
+                  Email Address *
+                </Label>
+                <Input
+                  id="invite-email"
+                  name="email"
+                  type="email"
+                  value={inviteForm.email}
+                  onChange={handleInviteFormChange}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="invite-role" className="text-sm">
+                  Role
+                </Label>
+                <Select
+                  name="role"
+                  value={inviteForm.role}
+                  onValueChange={(value) => setInviteForm((prev) => ({ ...prev, role: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="member">Member</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    {isSuperAdmin && <SelectItem value="superadmin">Superadmin</SelectItem>}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="invite-bot_share_name" className="text-sm">
+                  Assign to Bot *
+                </Label>
+                <Select
+                  name="bot_share_name"
+                  value={inviteForm.bot_share_name}
+                  onValueChange={(value) => setInviteForm((prev) => ({ ...prev, bot_share_name: value }))}
+                  disabled={!isSuperAdmin && !!selectedBot && invitableBots.length <= 1}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a bot" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {invitableBots.map((bot) => (
+                      <SelectItem key={bot.bot_share_name} value={bot.bot_share_name}>
+                        {bot.client_name || bot.bot_share_name}
+                      </SelectItem>
+                    ))}
+                    {invitableBots.length === 0 && (
+                      <div className="p-2 text-sm text-gray-500">No bots available to assign.</div>
+                    )}
+                  </SelectContent>
+                </Select>
+                {!isSuperAdmin && invitableBots.length === 1 && selectedBot && (
+                  <p className="text-xs text-gray-500 mt-1">User will be assigned to {clientName || selectedBot}.</p>
+                )}
+              </div>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button type="button" variant="outline" disabled={saving}>
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button type="submit" className="bg-[#038a71] hover:bg-[#038a71]/90" disabled={saving}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+                  Send Invitation
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete User Modal Instance */}
+      {deleteModalOpen && userToDelete && (
+        <DeleteUserModal
+          isOpen={deleteModalOpen}
+          onClose={() => {
+            setDeleteModalOpen(false)
+            setUserToDelete(null)
+          }}
+          onConfirm={confirmDeleteUser}
+          userName={userToDelete.name}
+          userEmail={userToDelete.email}
+        />
+      )}
+
+      {/* Delete Invitation Modal Instance */}
+      {invitationToDelete && (
+        <Dialog
+          open={!!invitationToDelete}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setInvitationToDelete(null)
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Delete Pending Invitation?</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+              <p>
+                Are you sure you want to delete the invitation for <strong>{invitationToDelete.email}</strong>?
+              </p>
+              <p className="text-sm text-gray-500 mt-1">This action cannot be undone.</p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setInvitationToDelete(null)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={confirmDeleteInvitation} disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash className="h-4 w-4 mr-2" />}
+                Delete Invitation
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

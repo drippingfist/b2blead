@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
+import { cookies } from "next/headers"
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -11,43 +10,47 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Thread IDs are required" }, { status: 400 })
     }
 
-    // Get the authenticated user
-    const authHeader = request.headers.get("authorization")
-    if (!authHeader) {
-      return NextResponse.json({ error: "No authorization header" }, { status: 401 })
-    }
+    const cookieStore = cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
 
-    const token = authHeader.replace("Bearer ", "")
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser(token)
+    // The permission check is now handled by the PostgreSQL SECURITY DEFINER function
+    // The function itself will verify if the calling user (auth.uid()) is a superadmin
+    console.log("🗑️ API: Calling delete_threads_as_superadmin for", threadIds.length, "threads")
 
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    // Check if user is superadmin
-    const { data: superAdmin } = await supabase.from("bot_super_users").select("id").eq("id", user.id).single()
-
-    if (!superAdmin) {
-      return NextResponse.json({ error: "Only superadmins can delete threads" }, { status: 403 })
-    }
-
-    // Delete the threads
-    const { error: deleteError } = await supabase.from("threads").delete().in("id", threadIds)
-
-    if (deleteError) {
-      console.error("Error deleting threads:", deleteError)
-      return NextResponse.json({ error: "Failed to delete threads" }, { status: 500 })
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: `Successfully deleted ${threadIds.length} thread(s)`,
+    const { data, error: rpcError } = await supabase.rpc("delete_threads_as_superadmin", {
+      thread_ids_to_delete: threadIds,
     })
-  } catch (error) {
-    console.error("Exception in delete threads:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+
+    if (rpcError) {
+      console.error("❌ Error calling delete_threads_as_superadmin RPC:", rpcError)
+
+      // Check for specific permission denied error from the function
+      if (rpcError.message.includes("not authorized to delete threads")) {
+        return NextResponse.json({ error: "Forbidden: Only superadmins can delete threads." }, { status: 403 })
+      }
+
+      return NextResponse.json({ error: `Failed to delete threads: ${rpcError.message}` }, { status: 500 })
+    }
+
+    // The RPC function returns a JSON object with success status and message
+    if (data && data.success) {
+      console.log("✅ Successfully deleted threads:", data.message)
+      return NextResponse.json({
+        success: true,
+        message: data.message || `Successfully deleted ${threadIds.length} thread(s).`,
+        deleted_count: data.deleted_count,
+      })
+    } else {
+      console.error("❌ RPC indicated failure:", data)
+      return NextResponse.json(
+        {
+          error: data?.message || "Failed to delete threads (RPC indicated failure).",
+        },
+        { status: 500 },
+      )
+    }
+  } catch (error: any) {
+    console.error("❌ Exception in delete threads API route:", error)
+    return NextResponse.json({ error: "Internal server error: " + error.message }, { status: 500 })
   }
 }
