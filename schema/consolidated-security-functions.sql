@@ -6,7 +6,7 @@ DROP FUNCTION IF EXISTS public.get_user_accessible_bots();
 DROP FUNCTION IF EXISTS public.can_manage_bot_user(uuid, text);
 
 -- Function to get the current user's highest role
--- CRITICAL: Uses user_id (FK to auth.users), NOT id (PK of bot_users)
+-- CRITICAL FIX: Checks bot_super_users table first, then falls back to bot_users.
 CREATE OR REPLACE FUNCTION public.get_current_user_role()
 RETURNS TEXT
 LANGUAGE plpgsql
@@ -15,28 +15,34 @@ SET search_path = public
 AS $$
 DECLARE
     user_role TEXT;
-    current_user_id UUID;
+    is_super BOOLEAN;
+    current_user_id UUID := auth.uid();
 BEGIN
-    current_user_id := auth.uid();
-    
     IF current_user_id IS NULL THEN
         RETURN 'none';
     END IF;
-    
-    -- FIXED: Use user_id (FK), not id (PK)
+
+    -- Step 1: Check if the user is a superadmin using the helper function
+    SELECT public.is_superadmin() INTO is_super;
+    IF is_super THEN
+        RETURN 'superadmin';
+    END IF;
+
+    -- Step 2: If not a superadmin, find the highest role in bot_users
+    -- This part is for regular admin or member roles.
     SELECT role INTO user_role
-    FROM bot_users
-    WHERE user_id = current_user_id  -- CRITICAL FIX
+    FROM public.bot_users
+    WHERE user_id = current_user_id
       AND is_active = true
-    ORDER BY 
+    ORDER BY
+        -- Order roles by precedence (admin is higher than member)
         CASE role
-            WHEN 'superadmin' THEN 1
-            WHEN 'admin' THEN 2
-            WHEN 'member' THEN 3
-            ELSE 4
+            WHEN 'admin' THEN 1
+            WHEN 'member' THEN 2
+            ELSE 3
         END
     LIMIT 1;
-    
+
     RETURN COALESCE(user_role, 'none');
 END;
 $$;

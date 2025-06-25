@@ -22,9 +22,14 @@ export async function GET(request: NextRequest) {
       .select("id")
       .eq("id", user.id)
       .eq("is_active", true)
-      .single()
+      .maybeSingle() // Use maybeSingle() to prevent error on 0 rows
 
-    const isSuperAdmin = !!superAdmin && !superAdminError
+    // Log any unexpected errors, but continue
+    if (superAdminError) {
+      console.error("Error checking superadmin status:", superAdminError)
+    }
+
+    const isSuperAdmin = !!superAdmin
 
     let accessibleBots: string[] = []
     let highestRole: "superadmin" | "admin" | "member" | null = null
