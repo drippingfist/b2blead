@@ -128,22 +128,14 @@ export async function getThreadsSimple(
 
   console.log("🔐 Getting bot access for user ID:", user.id)
 
-  // Get user's bot access using FK relationship
-  const { data: botUsers, error: accessError } = await supabase
-    .from("bot_users")
-    .select("role, bot_share_name")
-    .eq("user_id", user.id) // Use the FK relationship with user_id
+  // CORRECT: Check if user is superadmin first
+  const { data: superAdminRecord } = await supabase
+    .from("bot_super_users")
+    .select("id")
+    .eq("id", user.id)
     .eq("is_active", true)
-
-  if (accessError || !botUsers || botUsers.length === 0) {
-    console.log("❌ No bot access for user:", accessError?.message || "No records found")
-    return []
-  }
-
-  console.log("🔐 Bot users found:", botUsers)
-
-  // Check if user is superadmin
-  const isSuperAdmin = botUsers.some((bu) => bu.role === "superadmin")
+    .maybeSingle()
+  const isSuperAdmin = !!superAdminRecord
 
   let accessibleBots: string[] = []
 
@@ -155,10 +147,17 @@ export async function getThreadsSimple(
     accessibleBots = allBots?.map((b) => b.bot_share_name).filter(Boolean) || []
   } else {
     // Regular admin/member - get their specific bot assignments
-    accessibleBots = botUsers
-      .filter((bu) => bu.bot_share_name)
-      .map((bu) => bu.bot_share_name)
-      .filter(Boolean)
+    const { data: botUsers, error: accessError } = await supabase
+      .from("bot_users")
+      .select("bot_share_name")
+      .eq("user_id", user.id) // Use the FK relationship with user_id
+      .eq("is_active", true)
+
+    if (accessError) {
+      console.error("Error fetching bot access for non-superadmin", accessError)
+      return []
+    }
+    accessibleBots = botUsers?.map((bu) => bu.bot_share_name).filter(Boolean) || []
   }
 
   console.log("🔐 Accessible bots:", accessibleBots)
@@ -233,20 +232,14 @@ export async function getThreadsCount(
     return 0
   }
 
-  // Get user's bot access using FK relationship
-  const { data: botUsers, error: accessError } = await supabase
-    .from("bot_users")
-    .select("role, bot_share_name")
-    .eq("user_id", user.id)
+  // CORRECT: Check if user is superadmin first
+  const { data: superAdminRecord } = await supabase
+    .from("bot_super_users")
+    .select("id")
+    .eq("id", user.id)
     .eq("is_active", true)
-
-  if (accessError || !botUsers || botUsers.length === 0) {
-    console.log("❌ No bot access for user:", accessError?.message || "No records found")
-    return 0
-  }
-
-  // Check if user is superadmin
-  const isSuperAdmin = botUsers.some((bu) => bu.role === "superadmin")
+    .maybeSingle()
+  const isSuperAdmin = !!superAdminRecord
 
   let accessibleBots: string[] = []
 
@@ -256,14 +249,21 @@ export async function getThreadsCount(
     accessibleBots = allBots?.map((b) => b.bot_share_name).filter(Boolean) || []
   } else {
     // Regular admin/member - get their specific bot assignments
-    accessibleBots = botUsers
-      .filter((bu) => bu.bot_share_name)
-      .map((bu) => bu.bot_share_name)
-      .filter(Boolean)
+    const { data: botUsers, error: accessError } = await supabase
+      .from("bot_users")
+      .select("bot_share_name")
+      .eq("user_id", user.id)
+      .eq("is_active", true)
+
+    if (accessError) {
+      console.error("Error fetching bot assignments for count:", accessError)
+      return 0
+    }
+    accessibleBots = botUsers?.map((bu) => bu.bot_share_name).filter(Boolean) || []
   }
 
   if (accessibleBots.length === 0) {
-    console.log("❌ No accessible bots found")
+    console.log("❌ No accessible bots found for count")
     return 0
   }
 

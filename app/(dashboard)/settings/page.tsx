@@ -14,7 +14,7 @@ async function checkUserIsAdmin() {
   }
 
   // Check if user is a superadmin in the dedicated table
-  const { data: superAdmin } = await supabase.from("bot_super_users").select("id").eq("id", user.id).single()
+  const { data: superAdmin } = await supabase.from("bot_super_users").select("id").eq("id", user.id).maybeSingle()
   if (superAdmin) {
     return true // Superadmins always have access
   }

@@ -18,9 +18,9 @@ export async function checkAdminAccess() {
     .from("bot_super_users")
     .select("id")
     .eq("id", user.id)
-    .single()
+    .maybeSingle()
 
-  if (!superAdminError && superAdmin) {
+  if (superAdmin) {
     return { hasAccess: true, user, isSuperAdmin: true }
   }
 
@@ -55,9 +55,9 @@ export async function checkUserAccess() {
     .from("bot_super_users")
     .select("id")
     .eq("id", user.id)
-    .single()
+    .maybeSingle()
 
-  if (!superAdminError && superAdmin) {
+  if (superAdmin) {
     return { hasAccess: true, user, isSuperAdmin: true }
   }
 
