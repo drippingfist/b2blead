@@ -7,7 +7,6 @@ export async function GET(request: NextRequest) {
     const cookieStore = cookies()
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
 
-    // Get the current user
     const {
       data: { user },
     } = await supabase.auth.getUser()
@@ -15,40 +14,39 @@ export async function GET(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
+    console.log(`[API /user-bot-access] User ID: ${user.id}, Email: ${user.email}`)
 
-    // Check if the user is a superadmin
-    const { data: superAdmin, error: superAdminError } = await supabase
-      .from("bot_super_users")
-      .select("id")
-      .eq("id", user.id)
-      .eq("is_active", true)
-      .maybeSingle() // Use maybeSingle() to prevent error on 0 rows
+    // Call the SQL function to check superadmin status
+    // The is_superadmin() function already checks for is_active = true
+    const { data: isSuperAdminBoolean, error: rpcError } = await supabase.rpc("is_superadmin") // This function uses auth.uid() internally
 
-    // Log any unexpected errors, but continue
-    if (superAdminError) {
-      console.error("Error checking superadmin status:", superAdminError)
+    if (rpcError) {
+      console.error(`[API /user-bot-access] Error calling is_superadmin RPC for ${user.id}:`, rpcError)
+      // Decide how to handle RPC errors; for now, assume not superadmin
+      return NextResponse.json({ error: "Failed to determine superadmin status" }, { status: 500 })
     }
-
-    const isSuperAdmin = !!superAdmin
+    console.log(`[API /user-bot-access] Result from is_superadmin RPC for ${user.id}: ${isSuperAdminBoolean}`)
+    console.log(`[API /user-bot-access] Determined isSuperAdmin via RPC for ${user.id}: ${isSuperAdminBoolean}`)
 
     let accessibleBots: string[] = []
     let highestRole: "superadmin" | "admin" | "member" | null = null
 
-    if (isSuperAdmin) {
+    if (isSuperAdminBoolean === true) {
+      // RPC returns boolean
       highestRole = "superadmin"
-      // Superadmins can access all bots
+      console.log(`[API /user-bot-access] User ${user.id} IS superadmin (via RPC), fetching all bots`)
       const { data: allBots, error: allBotsError } = await supabase
         .from("bots")
         .select("bot_share_name")
         .not("bot_share_name", "is", null)
 
       if (allBotsError) {
-        console.error("Error fetching all bots for superadmin:", allBotsError)
+        console.error("[API /user-bot-access] Error fetching all bots for superadmin:", allBotsError)
       } else {
         accessibleBots = allBots?.map((b) => b.bot_share_name).filter(Boolean) || []
       }
     } else {
-      // Regular users get their assigned bots from bot_users
+      console.log(`[API /user-bot-access] User ${user.id} is NOT superadmin (via RPC), checking bot_users table`)
       const { data: botUsers, error: botUsersError } = await supabase
         .from("bot_users")
         .select("bot_share_name, role")
@@ -56,21 +54,30 @@ export async function GET(request: NextRequest) {
         .eq("is_active", true)
 
       if (botUsersError) {
-        console.error("Error fetching bot users:", botUsersError)
+        console.error("[API /user-bot-access] Error fetching bot users:", botUsersError)
         return NextResponse.json({ error: "Failed to fetch user bot access" }, { status: 500 })
       }
 
       if (botUsers && botUsers.length > 0) {
+        console.log(`[API /user-bot-access] bot_users query result for ${user.id}:`, botUsers)
         accessibleBots = [...new Set(botUsers.map((bu) => bu.bot_share_name).filter(Boolean))]
         highestRole = botUsers.some((bu) => bu.role === "admin") ? "admin" : "member"
+        console.log(`[API /user-bot-access] Regular user ${user.id} role determined as: ${highestRole}`)
+      } else {
+        console.log(`[API /user-bot-access] No bot_users records found for ${user.id}`)
       }
     }
 
-    return NextResponse.json({
+    const finalResult = {
       role: highestRole,
       accessibleBots,
-      isSuperAdmin,
-    })
+      isSuperAdmin: isSuperAdminBoolean === true, // Ensure it's a boolean
+    }
+    console.log(
+      `[API /user-bot-access] Final result for ${user.id}: role=${finalResult.role}, isSuperAdmin=${finalResult.isSuperAdmin}, accessibleBots=${accessibleBots.length} bots`,
+    )
+
+    return NextResponse.json(finalResult)
   } catch (error) {
     console.error("Error in user-bot-access API route:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

@@ -218,6 +218,7 @@ export async function getUserBotAccess(): Promise<{
   isSuperAdmin: boolean
 }> {
   try {
+    console.log(`[getUserBotAccess] Making API call to /api/user-bot-access`)
     const response = await fetch("/api/user-bot-access", {
       method: "GET",
       headers: {
@@ -231,6 +232,7 @@ export async function getUserBotAccess(): Promise<{
     }
 
     const data = await response.json()
+    console.log(`[getUserBotAccess] API response:`, data)
 
     return data
   } catch (error) {

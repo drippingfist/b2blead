@@ -13,7 +13,7 @@ async function checkSuperAdminAccess() {
   }
 
   // Check the bot_super_users table
-  const { data: superAdmin } = await supabase.from("bot_super_users").select("id").eq("id", user.id).maybeSingle()
+  const { data: superAdmin } = await supabase.from("bot_super_users").select("id").eq("id", user.id).single()
 
   return !!superAdmin
 }

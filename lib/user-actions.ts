@@ -70,14 +70,23 @@ export async function getInvitableBots() {
       return { success: false, error: "User not authenticated", bots: [] }
     }
 
-    // CORRECT: Check if user is superadmin from the dedicated table.
-    const { data: superAdminRecord } = await supabase
-      .from("bot_super_users")
-      .select("id")
-      .eq("id", user.id)
+    // Get user's bot assignments - UPDATED to use user_id
+    const { data: userBots, error: userBotsError } = await supabase
+      .from("bot_users")
+      .select("bot_share_name, role")
+      .eq("user_id", user.id) // Changed from 'id' to 'user_id'
       .eq("is_active", true)
-      .maybeSingle()
-    const isSuperAdmin = !!superAdminRecord
+
+    if (userBotsError) {
+      throw userBotsError
+    }
+
+    if (!userBots || userBots.length === 0) {
+      return { success: false, error: "You don't have access to any bots", bots: [] }
+    }
+
+    // Check if user is superadmin (can invite to all bots)
+    const isSuperAdmin = userBots.some((bot) => bot.role === "superadmin")
 
     let botShareNames: string[]
 
@@ -92,14 +101,7 @@ export async function getInvitableBots() {
       botShareNames = allBots?.map((bot) => bot.bot_share_name).filter(Boolean) || []
     } else {
       // Regular admin/member can only invite to their assigned bots
-      const { data: userAssignments, error: userBotsError } = await supabase
-        .from("bot_users")
-        .select("bot_share_name")
-        .eq("user_id", user.id)
-        .eq("is_active", true)
-
-      if (userBotsError) throw userBotsError
-      botShareNames = userAssignments?.map((bot) => bot.bot_share_name).filter(Boolean) || []
+      botShareNames = userBots.map((bot) => bot.bot_share_name).filter(Boolean)
     }
 
     if (botShareNames.length === 0) {
@@ -137,24 +139,21 @@ export async function inviteUser(userData: {
     const supabase = createServerActionClient({ cookies: () => cookieStore })
     const adminClient = getAdminClient()
 
-    // CORRECT: Check if the inviter is a superadmin from the dedicated table.
-    const { data: superAdminRecord } = await supabase
-      .from("bot_super_users")
-      .select("id")
-      .eq("id", userData.invited_by)
-      .eq("is_active", true)
-      .maybeSingle()
-    const isInviterSuperAdmin = !!superAdminRecord
-
-    // If not superadmin, verify they have access to the bot they're inviting to
-    const { count: accessCount } = await supabase
+    // Verify the inviting user has access to the bot they're trying to invite to
+    const { data: inviterBots, error: inviterBotsError } = await supabase
       .from("bot_users")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", userData.invited_by)
-      .eq("bot_share_name", userData.bot_share_name)
-    const hasAccessToBot = (accessCount ?? 0) > 0
+      .select("bot_share_name, role")
+      .eq("user_id", userData.invited_by) // ✅ Changed from 'id' to 'user_id'
+      .eq("is_active", true)
 
-    if (!isInviterSuperAdmin && !hasAccessToBot) {
+    if (inviterBotsError) {
+      throw inviterBotsError
+    }
+
+    const isSuperAdmin = inviterBots?.some((bot) => bot.role === "superadmin")
+    const hasAccessToBot = inviterBots?.some((bot) => bot.bot_share_name === userData.bot_share_name)
+
+    if (!isSuperAdmin && !hasAccessToBot) {
       return { success: false, error: "You don't have permission to invite users to this bot" }
     }
 
@@ -238,19 +237,10 @@ export async function getUsers(selectedBot?: string | null) {
       return { success: false, error: "User not authenticated", users: [] }
     }
 
-    // CORRECT: Determine if the current user is a superadmin from the dedicated table.
-    const { data: superAdminRecord } = await supabase
-      .from("bot_super_users")
-      .select("id")
-      .eq("id", user.id)
-      .eq("is_active", true)
-      .maybeSingle()
-    const isSuperAdmin = !!superAdminRecord
-
-    // Get the bots the current user can manage
-    const { data: currentUserAssignments, error: currentUserBotsError } = await supabase
+    // Get current user's bot assignments to determine their access level
+    const { data: currentUserBots, error: currentUserBotsError } = await supabase
       .from("bot_users")
-      .select("bot_share_name")
+      .select("bot_share_name, role")
       .eq("user_id", user.id)
       .eq("is_active", true)
 
@@ -258,10 +248,12 @@ export async function getUsers(selectedBot?: string | null) {
       throw currentUserBotsError
     }
 
-    if (!currentUserAssignments || currentUserAssignments.length === 0) {
-      return { success: false, error: "Current user does not have access to any bots", users: [] }
+    if (!currentUserBots || currentUserBots.length === 0) {
+      return { success: false, error: "You don't have access to any bots", users: [] }
     }
-    const currentUserBotNames = currentUserAssignments.map((bot) => bot.bot_share_name)
+
+    const isSuperAdmin = currentUserBots.some((bot) => bot.role === "superadmin")
+    const currentUserBotNames = currentUserBots.map((bot) => bot.bot_share_name)
 
     // Step 1: Get all users from auth.users using admin client
     const { data: authUsers, error: authError } = await adminClient.auth.admin.listUsers()
@@ -389,29 +381,26 @@ export async function getInvitations() {
       return { success: false, error: "User not authenticated", invitations: [] }
     }
 
-    // CORRECT: Check if user is a superadmin from the dedicated table.
-    const { data: superAdminRecord } = await supabase
-      .from("bot_super_users")
-      .select("id")
-      .eq("id", user.id)
+    // Get current user's bot assignments to determine their access level
+    const { data: currentUserBots, error: currentUserBotsError } = await supabase
+      .from("bot_users")
+      .select("bot_share_name, role")
+      .eq("user_id", user.id) // Fixed: use user_id instead of id
       .eq("is_active", true)
-      .maybeSingle()
-    const isSuperAdmin = !!superAdminRecord
+
+    if (currentUserBotsError) {
+      throw currentUserBotsError
+    }
+
+    const isSuperAdmin = currentUserBots?.some((bot) => bot.role === "superadmin")
+    const currentUserBotNames = currentUserBots?.map((bot) => bot.bot_share_name) || []
 
     let invitationsQuery = supabase.from("user_invitations").select("*")
 
     if (!isSuperAdmin) {
-      // Non-superadmins can only see invitations for bots they have access to
-      const { data: currentUserBots, error: currentUserBotsError } = await supabase
-        .from("bot_users")
-        .select("bot_share_name")
-        .eq("user_id", user.id)
-        .eq("is_active", true)
-
-      if (currentUserBotsError) throw currentUserBotsError
-
-      const currentUserBotNames = currentUserBots?.map((bot) => bot.bot_share_name) || []
-
+      // Non-superadmins can only see:
+      // 1. Invitations they sent
+      // 2. Invitations for bots they have access to
       invitationsQuery = invitationsQuery.or(
         `invited_by.eq.${user.id},bot_share_name.in.(${currentUserBotNames.map((name) => `"${name}"`).join(",")})`,
       )

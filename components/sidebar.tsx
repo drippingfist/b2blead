@@ -62,6 +62,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         // Get user access level
         const { getUserBotAccess } = await import("@/lib/database")
         const access = await getUserBotAccess()
+        console.log(`[Sidebar] Received user access data:`, access)
+        console.log(`[Sidebar] User role: ${access.role}, isSuperAdmin: ${access.isSuperAdmin}`)
         setUserAccess(access)
       } catch (error) {
         // Set default values on error
@@ -198,6 +200,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           .slice(0, 2)
       : userEmail?.charAt(0).toUpperCase() || "U"
 
+  // Debug logging for role display
+  console.log(`[Sidebar] Rendering role display - isSuperAdmin: ${userAccess.isSuperAdmin}, role: ${userAccess.role}`)
+
   return (
     <>
       {/* Mobile overlay */}
@@ -267,7 +272,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <div className="flex-1 min-w-0">
               {firstName && <p className="text-sm font-medium text-[#212121] truncate">{firstName}</p>}
               <p className="text-xs text-[#616161] truncate">{userEmail || "user@example.com"}</p>
-              {userAccess.role && <p className="text-xs text-[#038a71] capitalize">{userAccess.role}</p>}
+              {userAccess.role && (
+                <p className="text-xs text-[#038a71] capitalize">
+                  {userAccess.isSuperAdmin ? "SuperAdmin" : userAccess.role}
+                </p>
+              )}
             </div>
             <form action={signOut}>
               <button type="submit" className="text-[#616161] hover:text-[#212121] transition-colors">
