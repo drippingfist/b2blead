@@ -18,20 +18,20 @@ export async function GET(request: NextRequest) {
 
     // Call the SQL function to check superadmin status
     // The is_superadmin() function already checks for is_active = true
-    const { data: isSuperAdminBoolean, error: rpcError } = await supabase.rpc("is_superadmin") // This function uses auth.uid() internally
+    const { data: isSuperAdmin, error: rpcError } = await supabase.rpc("is_superadmin") // This function uses auth.uid() internally
 
     if (rpcError) {
       console.error(`[API /user-bot-access] Error calling is_superadmin RPC for ${user.id}:`, rpcError)
       // Decide how to handle RPC errors; for now, assume not superadmin
       return NextResponse.json({ error: "Failed to determine superadmin status" }, { status: 500 })
     }
-    console.log(`[API /user-bot-access] Result from is_superadmin RPC for ${user.id}: ${isSuperAdminBoolean}`)
-    console.log(`[API /user-bot-access] Determined isSuperAdmin via RPC for ${user.id}: ${isSuperAdminBoolean}`)
+    console.log(`[API /user-bot-access] Result from is_superadmin RPC for ${user.id}: ${isSuperAdmin}`)
+    console.log(`[API /user-bot-access] Determined isSuperAdmin via RPC for ${user.id}: ${isSuperAdmin}`)
 
     let accessibleBots: string[] = []
     let highestRole: "superadmin" | "admin" | "member" | null = null
 
-    if (isSuperAdminBoolean === true) {
+    if (isSuperAdmin === true) {
       // RPC returns boolean
       highestRole = "superadmin"
       console.log(`[API /user-bot-access] User ${user.id} IS superadmin (via RPC), fetching all bots`)
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
     const finalResult = {
       role: highestRole,
       accessibleBots,
-      isSuperAdmin: isSuperAdminBoolean === true, // Ensure it's a boolean
+      isSuperAdmin: isSuperAdmin === true, // Ensure it's a boolean
     }
     console.log(
       `[API /user-bot-access] Final result for ${user.id}: role=${finalResult.role}, isSuperAdmin=${finalResult.isSuperAdmin}, accessibleBots=${accessibleBots.length} bots`,

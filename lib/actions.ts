@@ -3,6 +3,7 @@
 import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
+import { revalidatePath } from "next/cache"
 
 // Update the signIn function to handle redirects properly
 export async function signIn(prevState: any, formData: FormData) {
@@ -160,4 +161,51 @@ export async function sendMagicLink(prevState: any, formData: FormData) {
     console.error("Password reset error:", error)
     return { error: "An unexpected error occurred. Please try again." }
   }
+}
+
+// New server action to update bot basic information
+export async function updateBotBasicInfo(
+  botShareName: string,
+  data: {
+    client_name: string
+    client_description: string
+    timezone: string
+  },
+) {
+  const cookieStore = cookies()
+  const supabase = createServerActionClient({ cookies: () => cookieStore })
+
+  // Security check: Only allow superadmins to perform this action
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: "Not authenticated" }
+  }
+
+  const { data: isSuperAdmin, error: rpcError } = await supabase.rpc("is_superadmin")
+
+  if (rpcError || !isSuperAdmin) {
+    return { error: "Insufficient permissions. Superadmin required." }
+  }
+
+  // Perform the update
+  const { error } = await supabase
+    .from("bots")
+    .update({
+      client_name: data.client_name,
+      client_description: data.client_description,
+      timezone: data.timezone,
+    })
+    .eq("bot_share_name", botShareName)
+
+  if (error) {
+    return { error: `Failed to update bot: ${error.message}` }
+  }
+
+  // Revalidate the path to ensure the data is fresh on the page
+  revalidatePath(`/demos/${botShareName}`)
+
+  return { success: true }
 }
