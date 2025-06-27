@@ -136,7 +136,15 @@ export default function CallbacksView({
       {/* Stats Cards - Removed Total Callbacks */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-8">
         <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121]">Callback Requests</h2>
+          <div className="flex items-center space-x-1">
+            <h2 className="text-lg font-medium text-[#212121]">Callback Requests</h2>
+            <div className="group relative">
+              <Info className="h-4 w-4 text-[#616161] cursor-help" />
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                This is total number of callback requests (whether or not the user provided their contact details).
+              </div>
+            </div>
+          </div>
           <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{stats.recentCallbacks}</p>
           <p className="text-sm text-[#616161] mt-1">{getPeriodLabel(selectedPeriod)}</p>
         </div>
