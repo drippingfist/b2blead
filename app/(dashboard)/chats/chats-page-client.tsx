@@ -283,8 +283,9 @@ export default function ChatsPageClient() {
     }
 
     // Create a Supabase channel subscription for new inserts on the 'threads' table
+    // Use a more specific channel name to avoid potential conflicts
     const channel = supabase
-      .channel("threads-inserts")
+      .channel(`public-threads-for-user`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "threads" }, handleNewThread)
       .subscribe()
 
@@ -293,7 +294,7 @@ export default function ChatsPageClient() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, []) // ✅ FIX: Establish connection once on mount, filter client-side
+  }, [selectedBot]) // ✅ FIX: Add selectedBot to the dependency array
 
   // Persist time period selection to localStorage
   useEffect(() => {

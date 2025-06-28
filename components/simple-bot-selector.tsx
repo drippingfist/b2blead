@@ -23,6 +23,35 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
   const [error, setError] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
+  const handleBotSelection = (botShareName: string | null) => {
+    // Store current sidebar state
+    const sidebarElement = document.getElementById("mobile-sidebar")
+    const isSidebarOpen = sidebarElement && !sidebarElement.classList.contains("-translate-x-full")
+
+    if (isSidebarOpen) {
+      localStorage.setItem("sidebarWasOpen", "true")
+      console.log("💾 Sidebar was open, storing state")
+    } else {
+      localStorage.removeItem("sidebarWasOpen")
+      console.log("💾 Sidebar was closed, removing state")
+    }
+
+    // Update localStorage
+    if (botShareName) {
+      localStorage.setItem("selectedBot", botShareName)
+    } else {
+      localStorage.removeItem("selectedBot")
+    }
+
+    // Call the onSelectBot prop if provided
+    if (onSelectBot) {
+      onSelectBot(botShareName)
+    }
+
+    // Dispatch custom event for other components
+    window.dispatchEvent(new CustomEvent("botSelectionChanged", { detail: botShareName }))
+  }
+
   // Load accessible bots for current user
   useEffect(() => {
     const loadBots = async () => {
@@ -56,19 +85,21 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
 
         setBots(botsData)
 
-        // Auto-select the single bot if there's only one and nothing is selected
-        if (botsData.length === 1) {
-          const storedBot = localStorage.getItem("selectedBot")
-          if (!storedBot || storedBot === "null") {
-            localStorage.setItem("selectedBot", botsData[0].bot_share_name)
-            // Dispatch event without page refresh
-            window.dispatchEvent(new CustomEvent("botSelectionChanged", { detail: botsData[0].bot_share_name }))
-            // Call the onSelectBot prop if provided
-            if (onSelectBot) {
-              onSelectBot(botsData[0].bot_share_name)
-            }
+        // --- START OF FIX ---
+        // Validate the stored bot against the accessible bots
+        const storedBot = localStorage.getItem("selectedBot")
+        if (storedBot && storedBot !== "null") {
+          const isStoredBotValid = botsData.some((b) => b.bot_share_name === storedBot)
+          if (!isStoredBotValid) {
+            console.warn(`Stored bot "${storedBot}" is not accessible. Clearing selection.`)
+            handleBotSelection(null) // This clears localStorage and notifies components
           }
+        } else if (botsData.length === 1) {
+          // Auto-select if there's only one bot and nothing is selected
+          console.log(`Auto-selecting single accessible bot: ${botsData[0].bot_share_name}`)
+          handleBotSelection(botsData[0].bot_share_name)
         }
+        // --- END OF FIX ---
       } catch (error: any) {
         console.error("Failed to load bots:", error)
         setError(error.message)
@@ -78,7 +109,8 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
     }
 
     loadBots()
-  }, [onSelectBot])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // This effect should only run once on mount
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -91,35 +123,6 @@ export default function SimpleBotSelector({ selectedBot, onSelectBot, className 
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
-
-  const handleBotSelection = (botShareName: string | null) => {
-    // Store current sidebar state
-    const sidebarElement = document.getElementById("mobile-sidebar")
-    const isSidebarOpen = sidebarElement && !sidebarElement.classList.contains("-translate-x-full")
-
-    if (isSidebarOpen) {
-      localStorage.setItem("sidebarWasOpen", "true")
-      console.log("💾 Sidebar was open, storing state")
-    } else {
-      localStorage.removeItem("sidebarWasOpen")
-      console.log("💾 Sidebar was closed, removing state")
-    }
-
-    // Update localStorage
-    if (botShareName) {
-      localStorage.setItem("selectedBot", botShareName)
-    } else {
-      localStorage.removeItem("selectedBot")
-    }
-
-    // Call the onSelectBot prop if provided
-    if (onSelectBot) {
-      onSelectBot(botShareName)
-    }
-
-    // Dispatch custom event for other components
-    window.dispatchEvent(new CustomEvent("botSelectionChanged", { detail: botShareName }))
-  }
 
   // Find the currently selected bot
   const currentBot = bots.find((bot) => bot.bot_share_name === selectedBot)
