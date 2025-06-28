@@ -1,498 +1,305 @@
 "use client"
 
-import { useState } from "react"
-import Link from "next/link"
-import {
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  Phone,
-  Mail,
-  Globe,
-  Building,
-  DollarSign,
-  MapPin,
-  User,
-  MoreVertical,
-  Info,
-  Calendar,
-  MessageSquare,
-} from "lucide-react"
+import { useState, useEffect } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { Callback } from "@/lib/database"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Phone, Mail, Calendar, DollarSign, TrendingUp, Info } from "lucide-react"
+import { formatPhoneNumber } from "@/lib/utils"
+import { getCallbacks } from "@/lib/simple-database"
+import Link from "next/link"
+
+interface Callback {
+  id: string
+  thread_id: string
+  phone_number?: string
+  email?: string
+  created_at: string
+  revenue?: number
+  bot_name: string
+}
 
 interface CallbacksViewProps {
   initialCallbacks: Callback[]
-  stats: {
-    recentCallbacks: number
-    callbacksDropped: number
-    conversionRate: number
-    totalThreads: number
-  }
-  columnConfig: {
-    hasCompany: boolean
-    hasCountry: boolean
-    hasUrl: boolean
-    hasPhone: boolean
-    hasRevenue: boolean
-  }
-  onPeriodChange: (period: string) => void
-  selectedPeriod: string
+  botId?: string
 }
 
-export default function CallbacksView({
-  initialCallbacks,
-  stats,
-  columnConfig,
-  onPeriodChange,
-  selectedPeriod,
-}: CallbacksViewProps) {
-  const [searchQuery, setSearchQuery] = useState("")
+export function CallbacksView({ initialCallbacks, botId }: CallbacksViewProps) {
+  const [callbacks, setCallbacks] = useState<Callback[]>(initialCallbacks)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [period, setPeriod] = useState("7")
+  const [loading, setLoading] = useState(false)
 
-  // Filter callbacks based on search query
-  const filteredCallbacks = searchQuery
-    ? initialCallbacks.filter(
-        (callback) =>
-          callback.user_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          callback.user_email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          callback.user_company?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          callback.user_phone?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          callback.user_cb_message?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          callback.message_preview?.toLowerCase().includes(searchQuery.toLowerCase()),
-      )
-    : initialCallbacks
+  // Filter callbacks based on search term
+  const filteredCallbacks = callbacks.filter((callback) => {
+    const searchLower = searchTerm.toLowerCase()
+    return (
+      callback.phone_number?.toLowerCase().includes(searchLower) ||
+      callback.email?.toLowerCase().includes(searchLower) ||
+      callback.bot_name.toLowerCase().includes(searchLower)
+    )
+  })
 
-  // Group callbacks by date
-  const groupedCallbacks = filteredCallbacks.reduce((groups: { [key: string]: Callback[] }, callback) => {
-    const date = new Date(callback.created_at).toLocaleDateString("en-US", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    })
+  // Calculate stats
+  const totalCallbacks = filteredCallbacks.length
+  const callbacksWithContact = filteredCallbacks.filter((c) => c.phone_number || c.email).length
+  const conversionRate = totalCallbacks > 0 ? ((callbacksWithContact / totalCallbacks) * 100).toFixed(1) : "0"
+  const totalRevenue = filteredCallbacks.reduce((sum, c) => sum + (c.revenue || 0), 0)
 
-    if (!groups[date]) {
-      groups[date] = []
+  // Refresh data when period changes
+  useEffect(() => {
+    const refreshData = async () => {
+      setLoading(true)
+      try {
+        const newCallbacks = await getCallbacks(botId, Number.parseInt(period))
+        setCallbacks(newCallbacks)
+      } catch (error) {
+        console.error("Failed to refresh callbacks:", error)
+      } finally {
+        setLoading(false)
+      }
     }
-    groups[date].push(callback)
-    return groups
-  }, {})
 
-  const formatPhoneNumber = (phone?: string) => {
-    if (!phone) return "-"
-    return phone.replace(/(\d{3})(\d{3})(\d{4})/, "($1) $2-$3")
-  }
+    refreshData()
+  }, [period, botId])
 
-  const getRevenueDisplay = (revenue?: string) => {
-    if (!revenue) return "Not disclosed"
-    return revenue
-  }
-
-  const getPeriodLabel = (period: string) => {
-    switch (period) {
-      case "today":
-        return "Today"
-      case "last7days":
-        return "Last 7 days"
-      case "last30days":
-        return "Last 30 days"
-      case "last90days":
-        return "Last 90 days"
-      case "alltime":
-        return "All time"
-      default:
-        return "Last 30 days"
-    }
-  }
+  // Group callbacks by date for mobile view
+  const groupedCallbacks = filteredCallbacks.reduce(
+    (groups, callback) => {
+      const date = new Date(callback.created_at).toLocaleDateString()
+      if (!groups[date]) {
+        groups[date] = []
+      }
+      groups[date].push(callback)
+      return groups
+    },
+    {} as Record<string, Callback[]>,
+  )
 
   return (
-    <div className="p-4 md:p-8">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 space-y-4 md:space-y-0">
-        <div>
-          <h1 className="text-2xl font-semibold text-[#212121]">Callbacks</h1>
-          <p className="text-[#616161]">Manage your callback requests and customer information.</p>
-        </div>
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <Calendar className="h-4 w-4 text-[#616161]" />
-            <Select value={selectedPeriod} onValueChange={onPeriodChange}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="last7days">Last 7 days</SelectItem>
-                <SelectItem value="last30days">Last 30 days</SelectItem>
-                <SelectItem value="last90days">Last 90 days</SelectItem>
-                <SelectItem value="alltime">All time</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <Button className="bg-[#038a71] hover:bg-[#038a71]/90 w-full md:w-auto">Export Callbacks</Button>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <h1 className="text-2xl font-bold">Callback Requests</h1>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Input
+            placeholder="Search callbacks..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full sm:w-64"
+          />
+          <Select value={period} onValueChange={setPeriod}>
+            <SelectTrigger className="w-full sm:w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">Today</SelectItem>
+              <SelectItem value="7">7 days</SelectItem>
+              <SelectItem value="30">30 days</SelectItem>
+              <SelectItem value="90">90 days</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-8">
-        <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <div className="flex items-center space-x-1">
-            <h2 className="text-lg font-medium text-[#212121]">Callback Requests</h2>
-            <div className="group relative">
-              <Info className="h-4 w-4 text-[#616161] cursor-help" />
-              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
-                This is total number of callback requests (whether or not the user provided their contact details).
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <div className="flex items-center space-x-1">
+              <CardTitle className="text-sm font-medium">Callback Requests</CardTitle>
+              <div className="group relative">
+                <Info className="h-4 w-4 text-gray-400 cursor-help" />
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                  This is total number of callback requests (whether or not the user provided their contact details).
+                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                </div>
               </div>
             </div>
-          </div>
-          <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{stats.recentCallbacks}</p>
-          <p className="text-sm text-[#616161] mt-1">{getPeriodLabel(selectedPeriod)}</p>
-        </div>
+            <Phone className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalCallbacks}</div>
+          </CardContent>
+        </Card>
 
-        <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <div className="flex items-center space-x-1">
-            <h2 className="text-lg font-medium text-[#212121]">Callbacks Dropped</h2>
-            <div className="group relative">
-              <Info className="h-4 w-4 text-[#616161] cursor-help" />
-              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
-                Number of times a user requested a callback but didn't complete the callback flow
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <div className="flex items-center space-x-1">
+              <CardTitle className="text-sm font-medium">Callbacks Dropped</CardTitle>
+              <div className="group relative">
+                <Info className="h-4 w-4 text-gray-400 cursor-help" />
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                  Callbacks where the visitor didn't leave contact information.
+                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                </div>
               </div>
             </div>
-          </div>
-          <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{stats.callbacksDropped}</p>
-          <p className="text-sm text-[#616161] mt-1">{getPeriodLabel(selectedPeriod)}</p>
-        </div>
+            <Mail className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalCallbacks - callbacksWithContact}</div>
+          </CardContent>
+        </Card>
 
-        <div className="bg-white p-4 md:p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <div className="flex items-center space-x-1">
-            <h2 className="text-lg font-medium text-[#212121]">Conversion Rate</h2>
-            <div className="group relative">
-              <Info className="h-4 w-4 text-[#616161] cursor-help" />
-              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
-                Percentage of threads that resulted in a callback request
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <div className="flex items-center space-x-1">
+              <CardTitle className="text-sm font-medium">Conversion Rate</CardTitle>
+              <div className="group relative">
+                <Info className="h-4 w-4 text-gray-400 cursor-help" />
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                  Percentage of callback requests where contact information was provided.
+                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                </div>
               </div>
             </div>
-          </div>
-          <p className="text-2xl md:text-3xl font-bold mt-2 text-[#038a71]">{stats.conversionRate}%</p>
-          <p className="text-sm text-[#616161] mt-1">{getPeriodLabel(selectedPeriod)}</p>
-        </div>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{conversionRate}%</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">${totalRevenue.toLocaleString()}</div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Search and Filters */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 space-y-4 lg:space-y-0">
-        <div className="relative w-full lg:w-[400px]">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#616161] h-4 w-4" />
-          <input
-            type="text"
-            placeholder="Search callbacks..."
-            className="pl-10 pr-4 py-2 w-full border border-[#e0e0e0] rounded-md focus:outline-none focus:ring-2 focus:ring-[#038a71]"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
-          <div className="hidden sm:flex items-center space-x-4">
-            <div className="text-sm text-[#616161]">
-              1 - {Math.min(50, filteredCallbacks.length)} of {filteredCallbacks.length}
-            </div>
-            <div className="flex items-center space-x-2">
-              <button className="p-1 rounded-md hover:bg-gray-100">
-                <ChevronLeft className="h-5 w-5 text-[#616161]" />
-              </button>
-              <button className="p-1 rounded-md hover:bg-gray-100">
-                <ChevronRight className="h-5 w-5 text-[#616161]" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Debug Info */}
-      {process.env.NODE_ENV === "development" && (
-        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-          <p className="text-sm text-yellow-800">
-            Debug: Found {initialCallbacks.length} callbacks. Sample data:{" "}
-            {JSON.stringify(initialCallbacks[0], null, 2)}
-          </p>
-        </div>
-      )}
-
-      {/* Dynamic Desktop Table */}
-      <div className="hidden lg:block border border-[#e0e0e0] rounded-md overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="bg-white border-b border-[#e0e0e0]">
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">Date</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider w-[20%]">
-                Contact Info
-              </th>
-              {columnConfig.hasCompany && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                  Company
-                </th>
-              )}
-              {columnConfig.hasCountry && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                  Location
-                </th>
-              )}
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                Summary
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                Message
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#616161] uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(groupedCallbacks).map(([date, dateCallbacks]) => (
-              <>
-                <tr key={`date-${date}`} className="bg-gray-50">
-                  <td
-                    colSpan={5 + (columnConfig.hasCompany ? 1 : 0) + (columnConfig.hasCountry ? 1 : 0)}
-                    className="px-6 py-2 text-sm font-medium text-[#616161]"
-                  >
-                    {date}
-                  </td>
-                </tr>
-                {dateCallbacks.slice(0, 10).map((callback) => (
-                  <tr key={callback.id} className="bg-white hover:bg-[#f5f5f5] border-t border-[#e0e0e0]">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
-                      {new Date(callback.created_at).toLocaleTimeString("en-US", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </td>
-                    <td className="px-6 py-4 w-[20%]">
-                      <div className="space-y-1">
-                        <div className="text-sm font-medium text-[#212121] flex items-center">
-                          <User className="h-4 w-4 mr-1 text-[#616161] flex-shrink-0" />
-                          <span className="truncate">
-                            {callback.user_name ||
-                              `${callback.user_first_name || ""} ${callback.user_surname || ""}`.trim() ||
-                              "Anonymous"}
-                          </span>
-                        </div>
-                        {callback.user_email && (
-                          <div className="text-xs text-[#616161] flex items-center">
-                            <Mail className="h-3 w-3 mr-1 flex-shrink-0" />
-                            <span className="truncate">{callback.user_email}</span>
-                          </div>
-                        )}
-                        <div className="text-xs text-[#616161] flex items-center">
-                          <Phone className="h-3 w-3 mr-1 flex-shrink-0" />
-                          <span className="truncate">{formatPhoneNumber(callback.user_phone)}</span>
-                        </div>
-                      </div>
-                    </td>
-                    {columnConfig.hasCompany && (
-                      <td className="px-6 py-4">
-                        <div className="space-y-1">
-                          {callback.user_company && (
-                            <div className="text-sm text-[#212121] flex items-center">
-                              <Building className="h-4 w-4 mr-1 text-[#616161]" />
-                              {callback.user_company}
-                            </div>
-                          )}
-                          {columnConfig.hasRevenue && callback.user_revenue && (
-                            <div className="text-xs text-[#616161] flex items-center">
-                              <DollarSign className="h-3 w-3 mr-1" />
-                              {getRevenueDisplay(callback.user_revenue)}
-                            </div>
+      {/* Desktop Table */}
+      <div className="hidden md:block">
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Callbacks</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="text-center py-8">Loading...</div>
+            ) : filteredCallbacks.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">No callbacks found for the selected period.</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Bot</TableHead>
+                    {filteredCallbacks.some((c) => c.phone_number) && <TableHead>Phone</TableHead>}
+                    {filteredCallbacks.some((c) => c.email) && <TableHead>Email</TableHead>}
+                    {filteredCallbacks.some((c) => c.revenue) && <TableHead>Revenue</TableHead>}
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredCallbacks.map((callback) => (
+                    <TableRow key={callback.id}>
+                      <TableCell>{new Date(callback.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell>{callback.bot_name}</TableCell>
+                      {filteredCallbacks.some((c) => c.phone_number) && (
+                        <TableCell>{callback.phone_number ? formatPhoneNumber(callback.phone_number) : "-"}</TableCell>
+                      )}
+                      {filteredCallbacks.some((c) => c.email) && <TableCell>{callback.email || "-"}</TableCell>}
+                      {filteredCallbacks.some((c) => c.revenue) && (
+                        <TableCell>{callback.revenue ? `$${callback.revenue.toLocaleString()}` : "-"}</TableCell>
+                      )}
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" asChild>
+                            <Link href={`/thread/${callback.thread_id}`}>View Thread</Link>
+                          </Button>
+                          {callback.email && (
+                            <Button variant="outline" size="sm" asChild>
+                              <a href={`mailto:${callback.email}`}>Email</a>
+                            </Button>
                           )}
                         </div>
-                      </td>
-                    )}
-                    {columnConfig.hasCountry && (
-                      <td className="px-6 py-4">
-                        <div className="space-y-1">
-                          {callback.user_country && (
-                            <div className="text-sm text-[#212121] flex items-center">
-                              <MapPin className="h-4 w-4 mr-1 text-[#616161]" />
-                              {callback.user_country}
-                            </div>
-                          )}
-                          {columnConfig.hasUrl && callback.user_url && (
-                            <div className="text-xs text-[#616161] flex items-center">
-                              <Globe className="h-3 w-3 mr-1" />
-                              <a
-                                href={callback.user_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="hover:underline"
-                              >
-                                Website
-                              </a>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    )}
-                    <td className="px-6 py-4 max-w-xs">
-                      <div className="text-sm text-[#212121] flex items-center">
-                        <MessageSquare className="h-4 w-4 mr-1 text-[#616161] flex-shrink-0" />
-                        {callback.thread_table_id && callback.message_preview ? (
-                          <Link
-                            href={`/thread/${callback.thread_table_id}`}
-                            className="truncate hover:underline text-[#212121] hover:text-[#038a71]"
-                          >
-                            {callback.message_preview}
-                          </Link>
-                        ) : callback.message_preview ? (
-                          <span className="truncate">{callback.message_preview}</span>
-                        ) : (
-                          <span className="truncate text-gray-500">No subject available</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 max-w-xs">
-                      <div className="text-sm text-[#212121] truncate">
-                        {callback.user_cb_message || "No message provided"}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center space-x-2">
-                        {callback.user_email ? (
-                          <a
-                            href={`mailto:${callback.user_email}`}
-                            className="bg-[#038a71] hover:bg-[#038a71]/90 text-white px-3 py-1 rounded text-xs"
-                          >
-                            Email
-                          </a>
-                        ) : (
-                          <span className="text-gray-400 px-3 py-1 rounded text-xs">No email</span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </>
-            ))}
-          </tbody>
-        </table>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Mobile Cards */}
-      <div className="lg:hidden space-y-4">
-        {Object.entries(groupedCallbacks).map(([date, dateCallbacks]) => (
-          <div key={`mobile-date-${date}`}>
-            <div className="bg-gray-50 px-4 py-2 text-sm font-medium text-[#616161] rounded-t-md border border-[#e0e0e0]">
-              {date}
-            </div>
-            <div className="space-y-2">
-              {dateCallbacks.slice(0, 10).map((callback) => (
-                <div
-                  key={`mobile-${callback.id}`}
-                  className="bg-white border border-[#e0e0e0] border-t-0 last:rounded-b-md p-4"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm font-medium text-[#212121]">
-                        {new Date(callback.created_at).toLocaleTimeString("en-US", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    </div>
-                    <button className="text-[#616161] hover:text-[#212121]">
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  <div className="space-y-2 mb-3">
-                    <div className="flex items-center">
-                      <User className="h-4 w-4 mr-2 text-[#616161]" />
-                      <span className="text-sm font-medium text-[#212121]">
-                        {callback.user_name ||
-                          `${callback.user_first_name || ""} ${callback.user_surname || ""}`.trim() ||
-                          "Anonymous"}
-                      </span>
-                    </div>
-
-                    {callback.user_email && (
-                      <div className="flex items-center">
-                        <Mail className="h-4 w-4 mr-2 text-[#616161]" />
-                        <span className="text-sm text-[#212121]">{callback.user_email}</span>
+      <div className="md:hidden space-y-4">
+        {loading ? (
+          <Card>
+            <CardContent className="text-center py-8">Loading...</CardContent>
+          </Card>
+        ) : filteredCallbacks.length === 0 ? (
+          <Card>
+            <CardContent className="text-center py-8 text-muted-foreground">
+              No callbacks found for the selected period.
+            </CardContent>
+          </Card>
+        ) : (
+          Object.entries(groupedCallbacks).map(([date, dateCallbacks]) => (
+            <Card key={date}>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  {date}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {dateCallbacks.map((callback) => (
+                  <div key={callback.id} className="border rounded-lg p-4 space-y-2">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium">{callback.bot_name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(callback.created_at).toLocaleTimeString()}
+                        </p>
                       </div>
-                    )}
-
-                    <div className="flex items-center">
-                      <Phone className="h-4 w-4 mr-2 text-[#616161]" />
-                      <span className="text-sm text-[#212121]">{formatPhoneNumber(callback.user_phone)}</span>
+                      {callback.revenue && (
+                        <span className="text-green-600 font-medium">${callback.revenue.toLocaleString()}</span>
+                      )}
                     </div>
 
-                    {callback.user_company && (
-                      <div className="flex items-center">
-                        <Building className="h-4 w-4 mr-2 text-[#616161]" />
-                        <span className="text-sm text-[#212121]">{callback.user_company}</span>
-                      </div>
-                    )}
-
-                    {callback.user_country && (
-                      <div className="flex items-center">
-                        <MapPin className="h-4 w-4 mr-2 text-[#616161]" />
-                        <span className="text-sm text-[#212121]">{callback.user_country}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {callback.message_preview && (
-                    <div className="mb-3">
-                      <p className="text-sm text-[#616161] mb-1">Summary:</p>
-                      <div className="flex items-center">
-                        <MessageSquare className="h-4 w-4 mr-2 text-[#616161]" />
-                        {callback.thread_table_id ? (
-                          <Link
-                            href={`/thread/${callback.thread_table_id}`}
-                            className="text-sm text-[#212121] hover:text-[#038a71] hover:underline"
-                          >
-                            {callback.message_preview}
-                          </Link>
-                        ) : (
-                          <p className="text-sm text-[#212121]">{callback.message_preview}</p>
+                    {(callback.phone_number || callback.email) && (
+                      <div className="space-y-1">
+                        {callback.phone_number && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Phone className="h-4 w-4" />
+                            {formatPhoneNumber(callback.phone_number)}
+                          </div>
+                        )}
+                        {callback.email && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Mail className="h-4 w-4" />
+                            {callback.email}
+                          </div>
                         )}
                       </div>
-                    </div>
-                  )}
-
-                  {callback.user_cb_message && (
-                    <div className="mb-3">
-                      <p className="text-sm text-[#616161] mb-1">Message:</p>
-                      <p className="text-sm text-[#212121]">{callback.user_cb_message}</p>
-                    </div>
-                  )}
-
-                  <div className="flex space-x-2">
-                    {callback.user_email ? (
-                      <a
-                        href={`mailto:${callback.user_email}`}
-                        className="flex-1 bg-[#038a71] hover:bg-[#038a71]/90 text-white px-3 py-2 rounded-md text-sm text-center"
-                      >
-                        Send Email
-                      </a>
-                    ) : (
-                      <span className="flex-1 text-gray-400 px-3 py-2 rounded-md text-sm text-center border border-gray-200">
-                        No email available
-                      </span>
                     )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
 
-      {initialCallbacks.length === 0 && (
-        <div className="text-center py-12">
-          <Phone className="h-12 w-12 text-[#616161] mx-auto mb-4" />
-          <p className="text-[#616161]">No callback requests found.</p>
-        </div>
-      )}
+                    <div className="flex gap-2 pt-2">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href={`/thread/${callback.thread_id}`}>View Thread</Link>
+                      </Button>
+                      {callback.email && (
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={`mailto:${callback.email}`}>Email</a>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
     </div>
   )
 }
