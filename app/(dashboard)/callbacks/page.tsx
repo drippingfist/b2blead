@@ -66,7 +66,7 @@ export default function CallbacksPage() {
       setLoading(true)
       try {
         const [fetchedCallbacks, fetchedStats, columnAnalysis] = await Promise.all([
-          getCallbacksClient(100, selectedBot),
+          getCallbacksClient(100, selectedBot, selectedPeriod as any),
           getCallbackStatsClientWithPeriod(selectedBot, selectedPeriod as any),
           analyzeCallbackColumns(selectedBot),
         ])

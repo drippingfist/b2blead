@@ -124,13 +124,50 @@ export async function getThreadsClient(limit = 50, botShareName?: string | null)
 }
 
 // Get callbacks with sentiment scores, justification, and message_preview from linked thread
-export async function getCallbacksClient(limit = 50, botShareName?: string | null): Promise<Callback[]> {
+export async function getCallbacksClient(
+  limit = 50,
+  botShareName?: string | null,
+  period: "today" | "last7days" | "last30days" | "last90days" | "alltime" = "last30days",
+): Promise<Callback[]> {
+  // Calculate date range based on period
+  let startDate: string | null = null
+  const now = new Date()
+
+  switch (period) {
+    case "today":
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+      break
+    case "last7days":
+      const sevenDaysAgo = new Date(now)
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+      startDate = sevenDaysAgo.toISOString()
+      break
+    case "last30days":
+      const thirtyDaysAgo = new Date(now)
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      startDate = thirtyDaysAgo.toISOString()
+      break
+    case "last90days":
+      const ninetyDaysAgo = new Date(now)
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+      startDate = ninetyDaysAgo.toISOString()
+      break
+    case "alltime":
+      startDate = null
+      break
+  }
+
   // First, get the callbacks
   let callbacksQuery = supabase.from("callbacks").select("*").order("created_at", { ascending: false }).limit(limit)
 
-  // If a specific bot is selected, filter by that bot_share_name
+  // Apply bot filter if provided
   if (botShareName) {
     callbacksQuery = callbacksQuery.eq("bot_share_name", botShareName)
+  }
+
+  // Apply date filter if not all time
+  if (startDate) {
+    callbacksQuery = callbacksQuery.gte("created_at", startDate)
   }
 
   const { data: callbacksData, error: callbacksError } = await callbacksQuery
@@ -141,13 +178,7 @@ export async function getCallbacksClient(limit = 50, botShareName?: string | nul
   }
 
   if (!callbacksData || callbacksData.length === 0) {
-    return callbacksData.map((callback) => ({
-      ...callback,
-      sentiment_score: null,
-      sentiment_justification: null,
-      message_preview: null,
-      thread_table_id: null,
-    }))
+    return []
   }
 
   // Get all unique thread IDs from callbacks
