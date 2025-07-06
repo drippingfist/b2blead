@@ -209,3 +209,62 @@ export async function updateBotBasicInfo(
 
   return { success: true }
 }
+
+// Add this at the end of lib/actions.ts
+export async function captureSignup(prevState: any, formData: FormData) {
+  const name = formData.get("name") as string
+  const email = formData.get("email") as string
+  const companyUrl = formData.get("companyUrl") as string
+  const companyName = formData.get("companyName") as string
+
+  if (!name || !email || !companyName) {
+    return { error: "Please fill out all required fields." }
+  }
+
+  const cookieStore = cookies()
+  const supabase = createServerActionClient({ cookies: () => cookieStore })
+
+  // 1. Save the data to the 'signups' table
+  const { error: insertError } = await supabase.from("signups").insert({
+    user_name: name,
+    user_email: email,
+    client_url: companyUrl,
+    client_name: companyName,
+  })
+
+  if (insertError) {
+    console.error("Error saving signup interest:", insertError)
+    return { error: "Could not save your information. Please try again." }
+  }
+
+  // 2. Trigger the Gumloop automation
+  try {
+    const gumloopUrl =
+      "https://api.gumloop.com/api/v1/start_pipeline?user_id=dAEhvl9xKdQPUA9YbpNaapCsNzG3&saved_item_id=uRCjE6Qktv8CVW1GFcR3dH"
+    const gumloopApiKey = process.env.GUMLOOP_API_KEY
+
+    if (!gumloopApiKey) {
+      console.error("GUMLOOP_API_KEY is not set. Skipping automation trigger.")
+      // Return success even if this part fails to not block the user.
+      return { success: true }
+    }
+
+    const response = await fetch(gumloopUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${gumloopApiKey}`,
+      },
+      body: JSON.stringify({ user_email: email }),
+    })
+
+    if (!response.ok) {
+      const errorBody = await response.text()
+      console.error("Gumloop API error:", response.status, errorBody)
+    }
+  } catch (gumloopError) {
+    console.error("Failed to trigger Gumloop automation:", gumloopError)
+  }
+
+  return { success: true }
+}

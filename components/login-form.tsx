@@ -1,29 +1,24 @@
 "use client"
 
-import { useActionState, useEffect } from "react"
+import { useActionState } from "react"
 import { signIn } from "@/lib/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Eye, EyeOff } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useEffect } from "react"
 
-export default function LoginForm({ isHidden = false }) {
-  const router = useRouter()
+export default function LoginForm() {
   const [state, action, isPending] = useActionState(signIn, null)
-  const [showPassword, setShowPassword] = useState(false)
+  const router = useRouter()
 
   useEffect(() => {
     if (state?.success) {
-      router.push("/")
+      router.push("/dashboard")
     }
   }, [state?.success, router])
-
-  if (isHidden) {
-    return null
-  }
 
   return (
     <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">
@@ -38,40 +33,12 @@ export default function LoginForm({ isHidden = false }) {
 
       <form action={action} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="email">Email Address</Label>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            placeholder="Enter your email address"
-            className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
-            disabled={isPending}
-          />
+          <Label htmlFor="email">Email</Label>
+          <Input id="email" name="email" type="email" required disabled={isPending} />
         </div>
-
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>
-          <div className="relative">
-            <Input
-              id="password"
-              name="password"
-              type={showPassword ? "text" : "password"}
-              autoComplete="current-password"
-              required
-              placeholder="Enter your password"
-              className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71] pr-10"
-              disabled={isPending}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#616161] hover:text-[#212121]"
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
+          <Input id="password" name="password" type="password" required disabled={isPending} />
         </div>
 
         <Button
@@ -79,14 +46,7 @@ export default function LoginForm({ isHidden = false }) {
           disabled={isPending}
           className="w-full bg-[#038a71] hover:bg-[#038a71]/90 text-white py-3 text-base font-medium h-12"
         >
-          {isPending ? (
-            <>
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              Signing in...
-            </>
-          ) : (
-            "Sign In"
-          )}
+          {isPending ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : "Sign In"}
         </Button>
       </form>
 
@@ -95,6 +55,12 @@ export default function LoginForm({ isHidden = false }) {
           Forgot your password?{" "}
           <Link href="/auth/forgot-password" className="text-[#038a71] hover:text-[#038a71]/80 hover:underline">
             Reset Password
+          </Link>
+        </p>
+        <p className="text-sm text-[#616161] mt-2">
+          Don't have an account?{" "}
+          <Link href="/auth/signup" className="text-[#038a71] hover:text-[#038a71]/80 hover:underline">
+            Sign Up
           </Link>
         </p>
       </div>

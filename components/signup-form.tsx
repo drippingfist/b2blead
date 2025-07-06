@@ -1,121 +1,80 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/router"
+import { useActionState } from "react"
+import { captureSignup } from "@/lib/actions"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Loader2, Check } from "lucide-react"
 import Link from "next/link"
 
-const SignupForm = () => {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
-  const [error, setError] = useState("")
-  const [loading, setLoading] = useState(false)
-  const router = useRouter()
+export default function SignupForm() {
+  const [state, action, isPending] = useActionState(captureSignup, null)
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match")
-      return
-    }
-
-    setLoading(true)
-    setError("")
-
-    try {
-      const response = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        // Signup successful, redirect to login page or home page
-        router.push("/auth/login")
-      } else {
-        setError(data.message || "Signup failed")
-      }
-    } catch (err) {
-      setError("An unexpected error occurred")
-    } finally {
-      setLoading(false)
-    }
+  if (state?.success) {
+    return (
+      <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Check className="h-8 w-8 text-green-600" />
+          </div>
+          <h1 className="text-xl font-semibold text-[#212121] mb-2">Thank You for Signing Up!</h1>
+          <p className="text-[#616161] mb-6">We've received your information and will be in touch shortly.</p>
+          <Link
+            href="/auth/login"
+            className="inline-block bg-[#038a71] hover:bg-[#038a71]/90 text-white px-6 py-2 rounded-md text-sm font-medium"
+          >
+            Back to Sign In
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
-      <div className="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4 w-full max-w-md">
-        <h2 className="text-2xl font-bold mb-6 text-center">Create an Account</h2>
-        {error && <div className="text-red-500 text-sm mb-4">{error}</div>}
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email">
-              Email
-            </label>
-            <input
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-              id="email"
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
-              Password
-            </label>
-            <input
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-              id="password"
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-          <div className="mb-6">
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="confirmPassword">
-              Confirm Password
-            </label>
-            <input
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-              id="confirmPassword"
-              type="password"
-              placeholder="Confirm Password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <button
-              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-              type="submit"
-              disabled={loading}
-            >
-              {loading ? "Signing up..." : "Sign Up"}
-            </button>
-          </div>
-        </form>
-        <div className="text-center mt-4">
-          <p className="text-sm text-gray-600">
-            Already have an account?{" "}
-            <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-500">
-              Sign in
-            </Link>
-          </p>
-        </div>
+    <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">
+      <div className="text-center mb-6">
+        <h1 className="text-2xl font-semibold text-[#212121] mb-2">Sign Up</h1>
+        <p className="text-[#616161]">We're currently in a closed beta. Sign up to get on the list.</p>
       </div>
+
+      {state?.error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 text-sm">{state.error}</div>
+      )}
+
+      <form action={action} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="name">Full Name*</Label>
+          <Input id="name" name="name" required disabled={isPending} placeholder="e.g. Jane Doe" />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="email">Work Email*</Label>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            required
+            disabled={isPending}
+            placeholder="e.g. jane@example.com"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="companyName">Company Name*</Label>
+          <Input id="companyName" name="companyName" required disabled={isPending} placeholder="e.g. Example Inc." />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="companyUrl">Company URL</Label>
+          <Input id="companyUrl" name="companyUrl" type="url" disabled={isPending} placeholder="https://example.com" />
+        </div>
+
+        <Button
+          type="submit"
+          disabled={isPending}
+          className="w-full bg-[#038a71] hover:bg-[#038a71]/90 text-white py-3 text-base font-medium h-12"
+        >
+          {isPending ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : "Sign Up"}
+        </Button>
+      </form>
     </div>
   )
 }
-
-export default SignupForm
