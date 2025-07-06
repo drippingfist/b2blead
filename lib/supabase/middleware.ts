@@ -1,7 +1,7 @@
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
 import { NextResponse } from "next/server"
 
-import type { NextRequest } from "next/request"
+import type { NextRequest } from "next/server"
 
 // This is the function that your root middleware.ts uses.
 // We are keeping this and removing the other one.

@@ -3,7 +3,6 @@
 import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import { revalidatePath } from "next/cache"
 
 export async function signIn(prevState: any, formData: FormData) {
   const email = formData.get("email") as string
@@ -87,17 +86,17 @@ export async function refreshSentimentAnalysis(threadId: string) {
   const cookieStore = cookies()
   const supabase = createServerActionClient({ cookies: () => cookieStore })
 
-  // Placeholder implementation - you can implement the actual logic
+  // Placeholder implementation - replace with actual sentiment analysis logic
   const { error } = await supabase
     .from("threads")
-    .update({ sentiment_score: null, sentiment_justification: null })
+    .update({ sentiment_score: Math.random() * 2 - 1 })
     .eq("id", threadId)
 
   if (error) {
     throw new Error(error.message)
   }
 
-  revalidatePath("/dashboard")
+  return { success: true }
 }
 
 export async function updateBotBasicInfo(prevState: any, formData: FormData) {
@@ -118,7 +117,6 @@ export async function updateBotBasicInfo(prevState: any, formData: FormData) {
     return { error: error.message }
   }
 
-  revalidatePath("/dashboard")
   return { success: true }
 }
 
