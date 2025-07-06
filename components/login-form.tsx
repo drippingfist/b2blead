@@ -7,18 +7,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2 } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { useEffect } from "react"
 
 export default function LoginForm() {
   const [state, action, isPending] = useActionState(signIn, null)
-  const router = useRouter()
-
-  useEffect(() => {
-    if (state?.success) {
-      router.push("/dashboard")
-    }
-  }, [state?.success, router])
 
   return (
     <div className="bg-white p-8 rounded-lg border border-[#e0e0e0] shadow-sm">

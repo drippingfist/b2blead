@@ -3,13 +3,8 @@ import { NextResponse } from "next/server"
 
 import type { NextRequest } from "next/request"
 
-export async function middleware(req: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
-  await supabase.auth.getSession()
-  return res
-}
-
+// This is the function that your root middleware.ts uses.
+// We are keeping this and removing the other one.
 export async function updateSession(req: NextRequest) {
   const res = NextResponse.next()
   const supabase = createMiddlewareClient({ req, res })
@@ -20,7 +15,7 @@ export async function updateSession(req: NextRequest) {
 
   const isAuthRoute =
     req.nextUrl.pathname.startsWith("/auth/login") ||
-    req.nextUrl.pathname.startsWith("/auth/sign-up") ||
+    req.nextUrl.pathname.startsWith("/auth/signup") ||
     req.nextUrl.pathname.startsWith("/auth/forgot-password") ||
     req.nextUrl.pathname.startsWith("/auth/magic-link") ||
     req.nextUrl.pathname.startsWith("/auth/reset-password") ||
