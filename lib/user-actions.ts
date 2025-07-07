@@ -143,7 +143,7 @@ export async function inviteUser(userData: {
     const { data: inviterBots, error: inviterBotsError } = await supabase
       .from("bot_users")
       .select("bot_share_name, role")
-      .eq("user_id", userData.invited_by) // ✅ Changed from 'id' to 'user_id'
+      .eq("user_id", userData.invited_by)
       .eq("is_active", true)
 
     if (inviterBotsError) {
@@ -181,13 +181,29 @@ export async function inviteUser(userData: {
       return { success: false, error: "An invitation has already been sent to this email address" }
     }
 
-    // Send Supabase invitation email using inviteUserByEmail
+    // --- START: FIX ---
+    // Fetch the client_name from the bots table to use in the email template
+    const { data: botData, error: botError } = await adminClient
+      .from("bots")
+      .select("client_name")
+      .eq("bot_share_name", userData.bot_share_name)
+      .single()
+
+    if (botError) {
+      console.error("Could not fetch client_name for invitation email", botError)
+      // We can proceed without it, but the email will be less personalized
+    }
+
+    // Send Supabase invitation email, passing user and bot data to the template
     const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(userData.email, {
       data: {
-        // Don't put sensitive data here - we'll fetch from user_invitations table
+        first_name: userData.first_name,
+        surname: userData.surname,
+        client_name: botData?.client_name || "the b2blead.ai dashboard", // Use fetched name or fallback
       },
       redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/accept-invite`,
     })
+    // --- END: FIX ---
 
     if (inviteError) {
       console.error("❌ Supabase invitation error:", inviteError)
