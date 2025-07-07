@@ -27,7 +27,6 @@ export const supabase = createClientComponentClient({
       // Add retry configuration for auth operations
       retryAttempts: 1, // Reduced from 3 to prevent rate limiting
       // Increase timeout for slow connections
-      flowType: "implicit",
     },
     global: {
       // Add custom headers for better error tracking
