@@ -23,7 +23,8 @@ export async function updateSession(req: NextRequest) {
     req.nextUrl.pathname.startsWith("/auth/accept-invite") ||
     req.nextUrl.pathname.startsWith("/auth/setup") ||
     req.nextUrl.pathname.startsWith("/auth/test") ||
-    req.nextUrl.pathname === "/auth/callback"
+    req.nextUrl.pathname === "/auth/callback" ||
+    req.nextUrl.pathname === "/auth/confirm" // Added this line
 
   if (!session && !isAuthRoute) {
     const redirectUrl = req.nextUrl.clone()
