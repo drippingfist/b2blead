@@ -4,14 +4,22 @@ import { redirect } from "next/navigation"
 export async function checkAdminAccess() {
   const supabase = createClient()
 
+  // First try to get the session, then the user
   const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession()
 
-  if (userError || !user) {
+  if (sessionError) {
+    console.error("Session error in checkAdminAccess:", sessionError)
+    return { hasAccess: false, user: null, error: "Session error" }
+  }
+
+  if (!session?.user) {
     return { hasAccess: false, user: null, error: "Not authenticated" }
   }
+
+  const user = session.user
 
   // Check superadmin table first
   const { data: superAdmin, error: superAdminError } = await supabase
@@ -41,14 +49,22 @@ export async function checkAdminAccess() {
 export async function checkUserAccess() {
   const supabase = createClient()
 
+  // First try to get the session, then the user
   const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession()
 
-  if (userError || !user) {
+  if (sessionError) {
+    console.error("Session error in checkUserAccess:", sessionError)
+    return { hasAccess: false, user: null, error: "Session error" }
+  }
+
+  if (!session?.user) {
     return { hasAccess: false, user: null, error: "Not authenticated" }
   }
+
+  const user = session.user
 
   // Check superadmin table first
   const { data: superAdmin, error: superAdminError } = await supabase

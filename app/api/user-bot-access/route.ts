@@ -1,19 +1,27 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = cookies()
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const supabase = createClient()
 
+    // First try to get the session, then the user
     const {
-      data: { user },
-    } = await supabase.auth.getUser()
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession()
 
-    if (!user) {
+    if (sessionError) {
+      console.error(`[API /user-bot-access] Session error:`, sessionError)
+      return NextResponse.json({ error: "Session error" }, { status: 401 })
+    }
+
+    if (!session?.user) {
+      console.log(`[API /user-bot-access] No session found`)
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
+
+    const user = session.user
     console.log(`[API /user-bot-access] User ID: ${user.id}, Email: ${user.email}`)
 
     // Call the SQL function to check superadmin status
@@ -25,6 +33,7 @@ export async function GET(request: NextRequest) {
       // Decide how to handle RPC errors; for now, assume not superadmin
       return NextResponse.json({ error: "Failed to determine superadmin status" }, { status: 500 })
     }
+
     console.log(`[API /user-bot-access] Result from is_superadmin RPC for ${user.id}: ${isSuperAdmin}`)
     console.log(`[API /user-bot-access] Determined isSuperAdmin via RPC for ${user.id}: ${isSuperAdmin}`)
 
@@ -73,6 +82,7 @@ export async function GET(request: NextRequest) {
       accessibleBots,
       isSuperAdmin: isSuperAdmin === true, // Ensure it's a boolean
     }
+
     console.log(
       `[API /user-bot-access] Final result for ${user.id}: role=${finalResult.role}, isSuperAdmin=${finalResult.isSuperAdmin}, accessibleBots=${accessibleBots.length} bots`,
     )

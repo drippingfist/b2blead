@@ -1,8 +1,7 @@
 "use server"
 
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
+import { createClient as createServerClient } from "@/lib/supabase/server"
 import { createClient } from "@supabase/supabase-js"
-import { cookies } from "next/headers"
 
 // Create admin client with service role key
 const getAdminClient = () => {
@@ -57,8 +56,7 @@ export async function deleteInvitationByEmail(email: string) {
 // Get bots that the current user can invite others to
 export async function getInvitableBots() {
   try {
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
+    const supabase = createServerClient()
 
     // Get current user
     const {
@@ -135,8 +133,7 @@ export async function inviteUser(userData: {
   invited_by: string
 }) {
   try {
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
+    const supabase = createServerClient()
     const adminClient = getAdminClient()
 
     // Verify the inviting user has access to the bot they're trying to invite to
@@ -239,8 +236,7 @@ export async function inviteUser(userData: {
 // Get users that the current admin can manage
 export async function getUsers(selectedBot?: string | null) {
   try {
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
+    const supabase = createServerClient()
     const adminClient = getAdminClient()
 
     // Get current user
@@ -384,8 +380,7 @@ export async function getUsers(selectedBot?: string | null) {
 // Get pending invitations that the current user can see
 export async function getInvitations() {
   try {
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
+    const supabase = createServerClient()
 
     // Get current user
     const {
@@ -425,6 +420,7 @@ export async function getInvitations() {
     const { data: invitations, error } = await invitationsQuery.order("created_at", { ascending: false })
 
     if (error) throw error
+
     return { success: true, invitations }
   } catch (error: any) {
     console.error("Error getting invitations:", error)
@@ -444,8 +440,7 @@ export async function updateUser(
   },
 ) {
   try {
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
+    const supabase = createServerClient()
 
     const { error: profileError } = await supabase
       .from("user_profiles")
@@ -472,8 +467,7 @@ export async function updateUser(
 // Completely delete a user and all their data
 export async function deleteUser(userId: string) {
   try {
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
+    const supabase = createServerClient()
     const adminClient = getAdminClient()
 
     // Step 1: Delete from user_profiles table
@@ -516,8 +510,7 @@ export async function removeUserAccess(userId: string) {
 // Delete invitation
 export async function deleteInvitation(invitationId: string) {
   try {
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
+    const supabase = createServerClient()
     const adminClient = getAdminClient()
 
     // Step 1: Get the invitation record to find the email

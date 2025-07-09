@@ -1,7 +1,6 @@
 "use server"
 
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
+import { createClient as createServerClient } from "@/lib/supabase/server"
 import { createClient } from "@supabase/supabase-js" // Import for admin client
 
 interface InvitationData {
@@ -19,6 +18,7 @@ const getAdminSupabase = () => {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error("Supabase URL or Service Role Key is not defined.")
   }
+
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: {
       autoRefreshToken: false,
@@ -29,9 +29,8 @@ const getAdminSupabase = () => {
 
 export async function completeUserSetup(invitationData: InvitationData) {
   try {
-    const cookieStore = cookies()
     // This client is authenticated as the new user (who just accepted the invite)
-    const supabaseUserClient = createServerActionClient({ cookies: () => cookieStore })
+    const supabaseUserClient = createServerClient()
 
     const {
       data: { user },
@@ -81,6 +80,7 @@ export async function completeUserSetup(invitationData: InvitationData) {
         .select("id")
         .eq("email", invitationData.email)
         .single()
+
       if (findInviteError && findInviteError.code !== "PGRST116") {
         // PGRST116 = no rows found
         console.warn("⚠️ Warning: Error finding invitation record to clean up:", findInviteError)

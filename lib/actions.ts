@@ -1,7 +1,6 @@
 "use server"
 
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 
 export async function signIn(prevState: any, formData: FormData) {
@@ -12,9 +11,7 @@ export async function signIn(prevState: any, formData: FormData) {
     return { error: "Please fill out all fields." }
   }
 
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
-
+  const supabase = createClient()
   const { error } = await supabase.auth.signInWithPassword({
     email,
     password,
@@ -35,9 +32,7 @@ export async function signUp(prevState: any, formData: FormData) {
     return { error: "Please fill out all fields." }
   }
 
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
-
+  const supabase = createClient()
   const { error } = await supabase.auth.signUp({
     email,
     password,
@@ -51,9 +46,7 @@ export async function signUp(prevState: any, formData: FormData) {
 }
 
 export async function signOut() {
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
-
+  const supabase = createClient()
   await supabase.auth.signOut()
   redirect("/auth/login")
 }
@@ -65,9 +58,7 @@ export async function sendMagicLink(prevState: any, formData: FormData) {
     return { error: "Please enter your email address." }
   }
 
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
-
+  const supabase = createClient()
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
@@ -83,8 +74,7 @@ export async function sendMagicLink(prevState: any, formData: FormData) {
 }
 
 export async function refreshSentimentAnalysis(threadId: string) {
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
+  const supabase = createClient()
 
   // Placeholder implementation - replace with actual sentiment analysis logic
   const { error } = await supabase
@@ -99,19 +89,20 @@ export async function refreshSentimentAnalysis(threadId: string) {
   return { success: true }
 }
 
-export async function updateBotBasicInfo(prevState: any, formData: FormData) {
-  const botId = formData.get("botId") as string
-  const name = formData.get("name") as string
-  const description = formData.get("description") as string
+export async function updateBotBasicInfo(
+  bot_share_name: string,
+  basicInfo: { client_name: string; client_description: string; timezone: string },
+) {
+  const supabase = createClient()
 
-  if (!botId || !name) {
-    return { error: "Bot ID and name are required." }
-  }
-
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
-
-  const { error } = await supabase.from("bots").update({ name, description }).eq("id", botId)
+  const { error } = await supabase
+    .from("bots")
+    .update({
+      client_name: basicInfo.client_name,
+      client_description: basicInfo.client_description,
+      timezone: basicInfo.timezone,
+    })
+    .eq("bot_share_name", bot_share_name)
 
   if (error) {
     return { error: error.message }
@@ -130,8 +121,7 @@ export async function captureSignup(prevState: any, formData: FormData) {
     return { error: "Please fill out all required fields." }
   }
 
-  const cookieStore = cookies()
-  const supabase = createServerActionClient({ cookies: () => cookieStore })
+  const supabase = createClient()
 
   // 1. Save the data to the 'signups' table
   const { error: insertError } = await supabase.from("signups").insert({

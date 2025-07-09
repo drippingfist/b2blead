@@ -1,7 +1,6 @@
 "use client"
 
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import React from "react"
+import { createBrowserClient } from "@supabase/ssr"
 
 // Check if Supabase environment variables are available
 export const isSupabaseConfigured =
@@ -11,14 +10,14 @@ export const isSupabaseConfigured =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0
 
 // Rate limiting state
-let lastAuthRequest = 0
+const lastAuthRequest = 0
 const AUTH_REQUEST_COOLDOWN = 2000 // 2 seconds between auth requests
 
 // Create a singleton instance of the Supabase client for Client Components with enhanced config
-export const supabase = createClientComponentClient({
-  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  options: {
+export const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  {
     auth: {
       // Reduce auto-refresh frequency to minimize network calls
       autoRefreshToken: true,
@@ -41,24 +40,7 @@ export const supabase = createClientComponentClient({
       },
     },
   },
-})
-
-// Rate-limited auth wrapper
-function withRateLimit<T extends any[], R>(fn: (...args: T) => Promise<R>) {
-  return async (...args: T): Promise<R> => {
-    const now = Date.now()
-    const timeSinceLastRequest = now - lastAuthRequest
-
-    if (timeSinceLastRequest < AUTH_REQUEST_COOLDOWN) {
-      const waitTime = AUTH_REQUEST_COOLDOWN - timeSinceLastRequest
-      console.log(`🕒 Rate limiting: waiting ${waitTime}ms before auth request`)
-      await new Promise((resolve) => setTimeout(resolve, waitTime))
-    }
-
-    lastAuthRequest = Date.now()
-    return fn(...args)
-  }
-}
+)
 
 // Global error handler for unhandled promise rejections
 if (typeof window !== "undefined") {
@@ -134,7 +116,6 @@ function showRateLimitToast() {
       <span>Too many requests - please wait a moment</span>
     </div>
   `
-
   document.body.appendChild(toast)
 
   // Remove toast after 5 seconds
@@ -159,7 +140,6 @@ function showNetworkErrorToast() {
       <span>Connection issue detected - retrying automatically</span>
     </div>
   `
-
   document.body.appendChild(toast)
 
   // Remove toast after 3 seconds
@@ -168,128 +148,4 @@ function showNetworkErrorToast() {
       toast.parentNode.removeChild(toast)
     }
   }, 3000)
-}
-
-// Network status detection
-export function useNetworkStatus() {
-  const [isOnline, setIsOnline] = React.useState(typeof window !== "undefined" ? navigator.onLine : true)
-
-  React.useEffect(() => {
-    const handleOnline = () => {
-      console.log("🌐 Network connection restored")
-      setIsOnline(true)
-    }
-
-    const handleOffline = () => {
-      console.log("📵 Network connection lost")
-      setIsOnline(false)
-    }
-
-    window.addEventListener("online", handleOnline)
-    window.addEventListener("offline", handleOffline)
-
-    return () => {
-      window.removeEventListener("online", handleOnline)
-      window.removeEventListener("offline", handleOffline)
-    }
-  }, [])
-
-  return { isOnline }
-}
-
-// Retry utility function with rate limiting awareness
-async function retryOperation<T>(operation: () => Promise<T>, maxRetries = 2, delay = 2000): Promise<T> {
-  let lastError: Error
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await operation()
-    } catch (error) {
-      lastError = error as Error
-
-      // Don't retry on rate limit errors
-      if (error instanceof Error && error.message.includes("rate limit")) {
-        console.warn("🚫 Rate limit reached, not retrying")
-        throw error
-      }
-
-      // Don't retry on certain types of errors
-      if (error instanceof Error) {
-        const errorMessage = error.message.toLowerCase()
-        if (
-          errorMessage.includes("invalid") ||
-          errorMessage.includes("unauthorized") ||
-          errorMessage.includes("forbidden")
-        ) {
-          throw error
-        }
-      }
-
-      if (attempt === maxRetries) {
-        console.error(`Operation failed after ${maxRetries} attempts:`, error)
-        throw error
-      }
-
-      // Exponential backoff with longer delays
-      const waitTime = delay * Math.pow(2, attempt - 1)
-      console.warn(`Attempt ${attempt} failed, retrying in ${waitTime}ms...`, error)
-      await new Promise((resolve) => setTimeout(resolve, waitTime))
-    }
-  }
-
-  throw lastError!
-}
-
-// Enhanced Supabase client with retry logic and rate limiting
-export const supabaseWithRetry = {
-  auth: {
-    getSession: () => withRateLimit(() => retryOperation(() => supabase.auth.getSession())),
-    getUser: () => withRateLimit(() => retryOperation(() => supabase.auth.getUser())),
-    signOut: () => withRateLimit(() => retryOperation(() => supabase.auth.signOut())),
-    signInWithPassword: (credentials: { email: string; password: string }) =>
-      withRateLimit(() => retryOperation(() => supabase.auth.signInWithPassword(credentials))),
-    signUp: (credentials: { email: string; password: string }) =>
-      withRateLimit(() => retryOperation(() => supabase.auth.signUp(credentials))),
-    resetPasswordForEmail: (email: string) =>
-      withRateLimit(() => retryOperation(() => supabase.auth.resetPasswordForEmail(email))),
-  },
-  from: (table: string) => ({
-    select: (query?: string) => retryOperation(() => supabase.from(table).select(query)),
-    insert: (data: any) => retryOperation(() => supabase.from(table).insert(data)),
-    update: (data: any) => retryOperation(() => supabase.from(table).update(data)),
-    delete: () => retryOperation(() => supabase.from(table).delete()),
-  }),
-}
-
-// Error boundary for Supabase operations
-export function handleSupabaseError(error: any, context = "Supabase operation") {
-  console.error(`${context} error:`, error)
-
-  if (error?.message?.includes("rate limit") || error?.message?.includes("Request rate limit reached")) {
-    return {
-      isRateLimitError: true,
-      message: "Too many requests. Please wait a moment before trying again.",
-    }
-  }
-
-  if (error?.message?.includes("Failed to fetch")) {
-    console.warn("Network connectivity issue detected. The operation may succeed on retry.")
-    return {
-      isNetworkError: true,
-      message: "Network connection issue. Please check your internet connection.",
-    }
-  }
-
-  if (error?.message?.includes("JWT")) {
-    console.warn("Authentication token issue detected.")
-    return {
-      isAuthError: true,
-      message: "Authentication session expired. Please refresh the page.",
-    }
-  }
-
-  return {
-    isUnknownError: true,
-    message: error?.message || "An unexpected error occurred.",
-  }
 }
