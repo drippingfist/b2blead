@@ -260,8 +260,14 @@ export default function ChatsPageClient() {
     const handleNewThread = (payload: any) => {
       const newThread = payload.new as Thread
       if (!selectedBot || newThread.bot_share_name === selectedBot) {
+        console.log("✅ Real-time: New thread matches filter, adding to view.", newThread)
         setThreads((prevThreads) => [newThread, ...prevThreads])
         setTotalCount((prevCount) => prevCount + 1)
+      } else {
+        console.log("🟡 Real-time: New thread does not match filter, ignoring.", {
+          newThreadBot: newThread.bot_share_name,
+          selectedBot: selectedBot,
+        })
       }
     }
     const channel = supabase
