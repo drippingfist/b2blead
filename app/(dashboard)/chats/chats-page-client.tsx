@@ -2,7 +2,10 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+// STEP 1: Import necessary hooks from 'react' and 'next/navigation'
+import { useState, useEffect, useCallback } from "react"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
+
 import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -43,39 +46,66 @@ type FilterType = "all" | "callbacks" | "dropped_callbacks" | "user_messages"
 type TimePeriod = "today" | "last7days" | "last30days" | "last90days" | "alltime"
 
 export default function ChatsPageClient() {
+  // STEP 2: Set up Next.js navigation hooks
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
   const { selectedBot, isSelectionLoaded } = useBotSelection()
   const [botData, setBotData] = useState<Bot | null>(null)
   const [threads, setThreads] = useState<Thread[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<FilterType>("all")
-  const [timePeriod, setTimePeriod] = useState<TimePeriod>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("selectedTimePeriod")
-      return (stored as TimePeriod) || "last30days"
-    }
-    return "last30days"
-  })
-  const [currentPage, setCurrentPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const [hoveredSentiment, setHoveredSentiment] = useState<string | null>(null)
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
   const itemsPerPage = 100
-  const [sortField, setSortField] = useState<string | null>("created_at")
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+
+  // STEP 3: Manage state with local state variables. These will be synced with the URL.
+  const [filter, setFilter] = useState<FilterType>("all")
+  const [timePeriod, setTimePeriod] = useState<TimePeriod>("last30days")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [sortField, setSortField] = useState<string>("created_at")
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
 
   // Debug state
   const [debugInfo, setDebugInfo] = useState<string>("")
   const [accessibleBots, setAccessibleBots] = useState<string[]>([])
 
+  // STEP 4: Create a helper function to build the new query string
+  const createQueryString = useCallback(
+    (params: Record<string, string | number | null>) => {
+      const newSearchParams = new URLSearchParams(searchParams?.toString())
+      for (const [key, value] of Object.entries(params)) {
+        if (value === null || value === "") {
+          newSearchParams.delete(key)
+        } else {
+          newSearchParams.set(key, String(value))
+        }
+      }
+      return newSearchParams.toString()
+    },
+    [searchParams],
+  )
+
+  // STEP 5: Sync state from URL on component load and when URL changes (e.g., back/forward)
+  useEffect(() => {
+    setFilter((searchParams.get("filter") as FilterType) || "all")
+    setTimePeriod((searchParams.get("period") as TimePeriod) || "last30days")
+    setCurrentPage(Number(searchParams.get("page")) || 1)
+    setSortField(searchParams.get("sort") || "created_at")
+    setSortDirection((searchParams.get("dir") as "asc" | "desc") || "desc")
+  }, [searchParams])
+
   // Reset to first page when bot selection changes
   useEffect(() => {
     if (isSelectionLoaded) {
-      setCurrentPage(1)
+      // Just reset the page, keep other filters
+      router.push(pathname + "?" + createQueryString({ page: 1 }))
     }
-  }, [selectedBot, isSelectionLoaded])
+  }, [selectedBot, isSelectionLoaded]) // Keep router/pathname/createQueryString out of deps to avoid loops
 
-  // Load accessible bots and debug info
+  // Load accessible bots and debug info (no changes needed here)
   useEffect(() => {
     const loadAccessibleBots = async () => {
       try {
@@ -93,7 +123,6 @@ export default function ChatsPageClient() {
           debugText += `Filter: ${filter}\n`
           debugText += `Time Period: ${timePeriod}\n\n`
 
-          // Direct database query to verify data exists
           if (!selectedBot && data.accessibleBots?.length > 0) {
             const { count: threadCount, error: threadError } = await supabase
               .from("threads")
@@ -101,22 +130,15 @@ export default function ChatsPageClient() {
               .in("bot_share_name", data.accessibleBots)
 
             debugText += `Direct DB Query - Thread Count: ${threadCount || 0}\n`
+            if (threadError) debugText += `Thread Query Error: ${threadError.message}\n`
 
-            if (threadError) {
-              debugText += `Thread Query Error: ${threadError.message}\n`
-            }
-
-            // Test callback query
             const { count: callbackCount, error: callbackError } = await supabase
               .from("callbacks")
               .select("*", { count: "exact", head: true })
               .in("bot_share_name", data.accessibleBots)
 
             debugText += `Direct DB Query - Callback Count: ${callbackCount || 0}\n`
-
-            if (callbackError) {
-              debugText += `Callback Query Error: ${callbackError.message}\n`
-            }
+            if (callbackError) debugText += `Callback Query Error: ${callbackError.message}\n`
           }
 
           setDebugInfo(debugText)
@@ -130,33 +152,28 @@ export default function ChatsPageClient() {
     loadAccessibleBots()
   }, [selectedBot, filter, timePeriod])
 
-  // Load bot data when selected bot changes
+  // Load bot data when selected bot changes (no changes needed here)
   useEffect(() => {
     const loadBotData = async () => {
       if (!selectedBot) {
         setBotData(null)
         return
       }
-
       try {
         const { data: bot } = await supabase
           .from("bots")
           .select("id, bot_share_name, client_name, timezone")
           .eq("bot_share_name", selectedBot)
           .single()
-
-        if (bot) {
-          setBotData(bot)
-        }
+        if (bot) setBotData(bot)
       } catch (error) {
         console.error("Error loading bot data:", error)
       }
     }
-
     loadBotData()
   }, [selectedBot])
 
-  // Check if user is superadmin
+  // Check if user is superadmin (no changes needed here)
   useEffect(() => {
     const checkSuperAdminStatus = async () => {
       try {
@@ -169,21 +186,17 @@ export default function ChatsPageClient() {
         console.error("Error checking superadmin status:", error)
       }
     }
-
     checkSuperAdminStatus()
   }, [])
 
-  // Load threads data
+  // Load threads data (no changes needed here, dependencies will update from URL sync)
   useEffect(() => {
     const loadThreads = async () => {
       if (!isSelectionLoaded) return
-
       setLoading(true)
       try {
-        // Calculate date range based on time period
         let startDate: string | null = null
         const now = new Date()
-
         switch (timePeriod) {
           case "today":
             startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
@@ -201,42 +214,23 @@ export default function ChatsPageClient() {
             startDate = null
             break
         }
-
-        // The RLS policy will handle security. The client only needs to apply UI filters.
         let query = supabase
           .from("threads")
           .select(
             `
           *,
-          callbacks!callbacks_id_fkey(
-            user_name,
-            user_first_name,
-            user_surname,
-            user_email
-          )
+          callbacks!callbacks_id_fkey(user_name, user_first_name, user_surname, user_email)
         `,
             { count: "exact" },
           )
           .gt("count", 0)
           .order(sortField || "created_at", { ascending: sortDirection === "asc" })
 
-        // Apply UI filters from the page
-        if (selectedBot) {
-          query = query.eq("bot_share_name", selectedBot)
-        }
-        if (startDate) {
-          query = query.gte("created_at", startDate)
-        }
-        if (filter === "callbacks") {
-          query = query.not("callbacks", "is", null)
-        } else if (filter === "dropped_callbacks") {
-          query = query.eq("callback", true).is("callbacks", null)
-        }
-        // NOTE: The "user_messages" filter requires a more complex query.
-        // This simplified approach will cover the main use cases correctly.
-        // A full fix for "user_messages" would involve a database function or a more complex query structure.
+        if (selectedBot) query = query.eq("bot_share_name", selectedBot)
+        if (startDate) query = query.gte("created_at", startDate)
+        if (filter === "callbacks") query = query.not("callbacks", "is", null)
+        else if (filter === "dropped_callbacks") query = query.eq("callback", true).is("callbacks", null)
 
-        // Pagination
         const offset = (currentPage - 1) * itemsPerPage
         query = query.range(offset, offset + itemsPerPage - 1)
 
@@ -258,68 +252,42 @@ export default function ChatsPageClient() {
         setLoading(false)
       }
     }
-
     loadThreads()
   }, [selectedBot, filter, timePeriod, currentPage, sortField, sortDirection, isSelectionLoaded])
 
-  // Real-time subscription for new threads
+  // Real-time subscription (no changes needed here)
   useEffect(() => {
-    // Define a function to handle new threads from the subscription
     const handleNewThread = (payload: any) => {
       const newThread = payload.new as Thread
-
-      // CRITICAL FIX: Only add the new thread if it matches the selected bot,
-      // or if "All Bots" is selected (selectedBot is null).
       if (!selectedBot || newThread.bot_share_name === selectedBot) {
-        console.log("✅ Real-time: New thread matches filter, adding to view.", newThread)
         setThreads((prevThreads) => [newThread, ...prevThreads])
         setTotalCount((prevCount) => prevCount + 1)
-      } else {
-        console.log("🟡 Real-time: New thread does not match filter, ignoring.", {
-          newThreadBot: newThread.bot_share_name,
-          selectedBot: selectedBot,
-        })
       }
     }
-
-    // Create a Supabase channel subscription for new inserts on the 'threads' table
-    // Use a more specific channel name to avoid potential conflicts
     const channel = supabase
       .channel(`public-threads-for-user`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "threads" }, handleNewThread)
       .subscribe()
-
-    // Cleanup function: Unsubscribe from the channel when the component unmounts
-    // or when the selectedBot changes, to prevent memory leaks and duplicate listeners.
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [selectedBot]) // ✅ FIX: Add selectedBot to the dependency array
+  }, [selectedBot])
 
-  // Persist time period selection to localStorage
-  useEffect(() => {
-    localStorage.setItem("selectedTimePeriod", timePeriod)
-  }, [timePeriod])
+  // STEP 6: Remove the localStorage persistence effect for timePeriod
+  // useEffect(() => { localStorage.setItem("selectedTimePeriod", timePeriod) }, [timePeriod]) // REMOVED
 
+  // All other functions (handleStarToggle, getSentimentEmoji, etc.) remain unchanged.
   const handleStarToggle = async (threadId: string) => {
     try {
-      // Find current thread
       const currentThread = threads.find((t) => t.id === threadId)
       if (!currentThread) return
-
       const newStarredStatus = !currentThread.starred
-
-      // Optimistically update UI
       setThreads((prev) =>
         prev.map((thread) => (thread.id === threadId ? { ...thread, starred: newStarredStatus } : thread)),
       )
-
-      // Update database
       const { error } = await supabase.from("threads").update({ starred: newStarredStatus }).eq("id", threadId)
-
       if (error) {
         console.error("Error updating starred status:", error)
-        // Revert optimistic update
         setThreads((prev) =>
           prev.map((thread) => (thread.id === threadId ? { ...thread, starred: !newStarredStatus } : thread)),
         )
@@ -376,26 +344,14 @@ export default function ChatsPageClient() {
   const formatDateTime = (dateString: string) => {
     const date = new Date(dateString)
     return {
-      date: date.toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      }),
-      time: date.toLocaleTimeString("en-GB", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }),
+      date: date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+      time: date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
     }
   }
 
-  // Group threads by date for display
   const groupedThreads = threads.reduce((groups: { [key: string]: Thread[] }, thread) => {
     const { date } = formatDateTime(thread.created_at)
-    if (!groups[date]) {
-      groups[date] = []
-    }
+    if (!groups[date]) groups[date] = []
     groups[date].push(thread)
     return groups
   }, {})
@@ -434,23 +390,28 @@ export default function ChatsPageClient() {
   const startItem = totalCount === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1
   const endItem = Math.min(currentPage * itemsPerPage, totalCount)
 
-  const handleSort = (field: string) => {
-    if (sortField === field) {
-      // If already sorting by this field, toggle direction
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
-    } else {
-      // New sort field, default to descending
-      setSortField(field)
-      setSortDirection("desc")
+  // STEP 7: Define new handlers that update the URL
+  const handleFilterChange = (value: FilterType) => {
+    router.push(pathname + "?" + createQueryString({ filter: value, page: "1" }))
+  }
+
+  const handleTimePeriodChange = (value: TimePeriod) => {
+    router.push(pathname + "?" + createQueryString({ period: value, page: "1" }))
+  }
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      router.push(pathname + "?" + createQueryString({ page: String(newPage) }))
     }
-    // Reset to first page when sort changes
-    setCurrentPage(1)
+  }
+
+  const handleSort = (field: string) => {
+    const newDirection = sortField === field && sortDirection === "desc" ? "asc" : "desc"
+    router.push(pathname + "?" + createQueryString({ sort: field, dir: newDirection, page: "1" }))
   }
 
   const getSortIndicator = (field: string) => {
-    if (sortField !== field) {
-      return <span className="text-gray-300 ml-1">↕</span>
-    }
+    if (sortField !== field) return <span className="text-gray-300 ml-1">↕</span>
     return sortDirection === "asc" ? (
       <span className="text-blue-600 ml-1">↑</span>
     ) : (
@@ -458,7 +419,6 @@ export default function ChatsPageClient() {
     )
   }
 
-  // Show loading while bot selection is loading
   if (!isSelectionLoaded || loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -469,20 +429,15 @@ export default function ChatsPageClient() {
 
   return (
     <div className="p-4 md:p-6 relative">
-      {/* Tooltip */}
       {hoveredSentiment && (
         <div
           className="fixed z-50 bg-gray-900 text-white text-base rounded-lg px-4 py-3 max-w-sm shadow-lg pointer-events-none transition-opacity duration-150"
-          style={{
-            left: tooltipPosition.x + 10,
-            top: tooltipPosition.y - 10,
-          }}
+          style={{ left: tooltipPosition.x + 10, top: tooltipPosition.y - 10 }}
         >
           {threads.find((t) => t.id === hoveredSentiment)?.sentiment_justification}
         </div>
       )}
 
-      {/* Header */}
       <div className="mb-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
           <div>
@@ -492,13 +447,7 @@ export default function ChatsPageClient() {
 
           <div className="flex flex-col sm:flex-row gap-3 mt-4 md:mt-0">
             {/* Filter Dropdown */}
-            <Select
-              value={filter}
-              onValueChange={(value: FilterType) => {
-                setFilter(value)
-                setCurrentPage(1)
-              }}
-            >
+            <Select value={filter} onValueChange={handleFilterChange}>
               <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="Filter" />
               </SelectTrigger>
@@ -511,13 +460,7 @@ export default function ChatsPageClient() {
             </Select>
 
             {/* Time Period Dropdown */}
-            <Select
-              value={timePeriod}
-              onValueChange={(value: TimePeriod) => {
-                setTimePeriod(value)
-                setCurrentPage(1)
-              }}
-            >
+            <Select value={timePeriod} onValueChange={handleTimePeriodChange}>
               <SelectTrigger className="w-full sm:w-[150px]">
                 <SelectValue placeholder="Time Period" />
               </SelectTrigger>
@@ -531,24 +474,13 @@ export default function ChatsPageClient() {
             </Select>
 
             {/* Refresh Button */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setCurrentPage(1)
-                // Force a re-fetch by updating a dependency
-                setLoading(true)
-                // The useEffect will automatically re-run and fetch fresh data
-              }}
-              className="flex items-center gap-2"
-            >
+            <Button variant="outline" size="sm" onClick={() => router.refresh()} className="flex items-center gap-2">
               <RefreshCw className="h-4 w-4" />
               Refresh
             </Button>
           </div>
         </div>
 
-        {/* Dynamic Subheading */}
         {(botData || (!selectedBot && isSuperAdmin)) && (
           <p className="text-sm text-[#616161]">
             Showing threads on <span className="font-medium">{botData?.client_name || "All Bots"}</span> in{" "}
@@ -558,7 +490,6 @@ export default function ChatsPageClient() {
         )}
       </div>
 
-      {/* No Data State */}
       {!loading && threads.length === 0 && (
         <div className="bg-gray-50 rounded-lg p-8 text-center">
           <MessageSquare className="h-12 w-12 text-[#616161] mx-auto mb-4" />
@@ -569,10 +500,8 @@ export default function ChatsPageClient() {
         </div>
       )}
 
-      {/* Threads Table */}
       {!loading && threads.length > 0 && (
         <div className="bg-white rounded-lg border border-[#e0e0e0] overflow-hidden">
-          {/* Pagination Info */}
           <div className="px-6 py-3 border-b border-[#e0e0e0] bg-gray-50">
             <div className="flex items-center justify-between">
               <span className="text-sm text-[#616161]">
@@ -582,7 +511,7 @@ export default function ChatsPageClient() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage === 1}
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -593,7 +522,7 @@ export default function ChatsPageClient() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage === totalPages || totalPages === 0}
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -602,7 +531,6 @@ export default function ChatsPageClient() {
             </div>
           </div>
 
-          {/* Table */}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-[#e0e0e0]">
@@ -676,7 +604,6 @@ export default function ChatsPageClient() {
               <tbody className="bg-white divide-y divide-[#e0e0e0]">
                 {Object.entries(groupedThreads).map(([date, dateThreads]) => (
                   <>
-                    {/* Date Header Row */}
                     <tr key={`date-${date}`} className="bg-gray-50">
                       <td
                         colSpan={!selectedBot && isSuperAdmin ? 9 : 8}
@@ -685,15 +612,11 @@ export default function ChatsPageClient() {
                         {date}
                       </td>
                     </tr>
-                    {/* Thread Rows */}
                     {dateThreads.map((thread) => (
                       <tr key={thread.id} className="hover:bg-gray-50">
-                        {/* Time */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
                           {formatDateTime(thread.created_at).time}
                         </td>
-
-                        {/* Bot (only show for superadmin viewing all bots) */}
                         {!selectedBot && isSuperAdmin && (
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
                             <span className="text-xs bg-gray-100 px-2 py-1 rounded">
@@ -701,8 +624,6 @@ export default function ChatsPageClient() {
                             </span>
                           </td>
                         )}
-
-                        {/* Callback */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
                           {thread.callbacks ? (
                             <div>
@@ -719,8 +640,6 @@ export default function ChatsPageClient() {
                             <span className="text-[#616161]">-</span>
                           )}
                         </td>
-
-                        {/* Sentiment */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           {thread.sentiment_score ? (
                             <div
@@ -728,9 +647,7 @@ export default function ChatsPageClient() {
                               onMouseEnter={(e) => handleSentimentHover(thread.id, thread.sentiment_justification, e)}
                               onMouseLeave={handleSentimentLeave}
                               onMouseMove={(e) => {
-                                if (hoveredSentiment === thread.id) {
-                                  setTooltipPosition({ x: e.clientX, y: e.clientY })
-                                }
+                                if (hoveredSentiment === thread.id) setTooltipPosition({ x: e.clientX, y: e.clientY })
                               }}
                             >
                               <span className="text-lg">{getSentimentEmoji(thread.sentiment_score)}</span>
@@ -740,8 +657,6 @@ export default function ChatsPageClient() {
                             <span className="text-[#616161]">-</span>
                           )}
                         </td>
-
-                        {/* Message Preview */}
                         <td className="px-6 py-4 text-sm">
                           <Link
                             href={`/thread/${thread.id}`}
@@ -750,29 +665,21 @@ export default function ChatsPageClient() {
                             {thread.message_preview || "No preview available"}
                           </Link>
                         </td>
-
-                        {/* Messages Count */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
                           <div className="flex items-center gap-1">
                             <MessageSquare className="h-4 w-4 text-[#616161]" />
                             {thread.count || 0}
                           </div>
                         </td>
-
-                        {/* Duration */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
                           <div className="flex items-center gap-1">
                             <Clock className="h-4 w-4 text-[#616161]" />
                             {formatDuration(thread.duration)}
                           </div>
                         </td>
-
-                        {/* Avg Response Time */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-[#212121]">
                           {formatResponseTime(thread.mean_response_time)}
                         </td>
-
-                        {/* Actions */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <button
                             onClick={() => handleStarToggle(thread.id)}
