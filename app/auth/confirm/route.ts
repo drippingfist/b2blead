@@ -1,5 +1,6 @@
-import { createClient } from "@/lib/supabase/server"
-import { NextResponse, type NextRequest } from "next/server"
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
+import { cookies } from "next/headers"
+import { type NextRequest, NextResponse } from "next/server"
 
 // This route handles the code exchange for various auth flows (PKCE).
 export async function GET(request: NextRequest) {
@@ -7,7 +8,8 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get("code")
 
   if (code) {
-    const supabase = createClient()
+    const cookieStore = cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
     const { error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (error) {
@@ -19,10 +21,11 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // After the code exchange, Supabase redirects to the redirectTo URL
+  // After the code exchange, Supabase redirects to the `redirectTo` URL
   // that you specified in your server-side auth call.
   // The auth-helpers library automatically uses the 'next' search param for this.
   const next = requestUrl.searchParams.get("next")
+
   // For password resets, this will be '/auth/reset-password'
   // For other flows, it will be the appropriate path.
   return NextResponse.redirect(new URL(next || "/", request.url))
