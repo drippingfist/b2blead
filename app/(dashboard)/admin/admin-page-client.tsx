@@ -1,70 +1,202 @@
 "use client"
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Save, X, CreditCard, Receipt, Users, Info, Shield } from "lucide-react"
-import { supabase } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
-import Loading from "@/components/loading"
+import type React from "react"
 
-interface AdminPageClientProps {
-  initialUserData: {
-    id: string
-    email: string
-    firstName: string
-    surname: string
-  }
-  isSuperAdmin: boolean
+import { useState, useEffect, useMemo } from "react"
+import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Shield, Users, UserPlus, Trash, Plus, Loader2 } from "lucide-react"
+import { DeleteUserModal } from "@/components/delete-user-modal"
+
+interface User {
+  id: string // This is the bot_users record ID
+  user_id: string
+  email?: string
+  first_name?: string
+  surname?: string
+  role: string
+  bot_share_name: string
+  is_active: boolean
 }
 
-export default function AdminPageClient({ initialUserData, isSuperAdmin }: AdminPageClientProps) {
-  const router = useRouter()
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
+interface Bot {
+  bot_share_name: string
+  client_name: string
+}
 
-  const [userData, setUserData] = useState({
-    ...initialUserData,
-    timezone: "Asia/Bangkok",
+interface AllUser {
+  id: string
+  email: string
+  first_name: string
+  surname: string
+}
+
+interface AdminPageClientProps {
+  initialUsers: User[]
+  allBots: Bot[]
+  allUsers: AllUser[]
+}
+
+export default function AdminPageClient({ initialUsers, allBots, allUsers }: AdminPageClientProps) {
+  const router = useRouter()
+  const [users, setUsers] = useState(initialUsers)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+
+  // Filter state
+  const [selectedBotFilter, setSelectedBotFilter] = useState<string>("all")
+
+  // Modal states
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [userToDelete, setUserToDelete] = useState<any | null>(null)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [formData, setFormData] = useState({
+    user_id: "",
+    role: "member",
+    bot_share_name: allBots.length > 0 ? allBots[0].bot_share_name : "",
   })
 
-  const handleChange = (field: string, value: string) => {
-    setUserData((prev) => ({
-      ...prev,
-      [field]: value,
-    }))
-    if (success) setSuccess(false)
+  // Clear success/error messages after 5 seconds
+  useEffect(() => {
+    if (success || error) {
+      const timer = setTimeout(() => {
+        setSuccess(null)
+        setError(null)
+      }, 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [success, error])
+
+  // Filter users based on selected bot
+  const filteredUsers = useMemo(() => {
+    if (selectedBotFilter === "all") {
+      return users
+    }
+    return users.filter((user) => user.bot_share_name === selectedBotFilter)
+  }, [users, selectedBotFilter])
+
+  // Get bot client name for display
+  const getBotClientName = (botShareName: string) => {
+    const bot = allBots.find((b) => b.bot_share_name === botShareName)
+    return bot?.client_name || botShareName
   }
 
-  const handleCancel = () => {
-    router.push("/dashboard")
+  const refreshData = () => {
+    router.refresh()
   }
 
-  const handleSave = async () => {
+  const handleSelectChange = (name: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleOpenAddModal = () => {
+    // Pre-select the currently filtered bot if one is selected
+    const preSelectedBot =
+      selectedBotFilter !== "all" ? selectedBotFilter : allBots.length > 0 ? allBots[0].bot_share_name : ""
+
+    setFormData({
+      user_id: "",
+      role: "member",
+      bot_share_name: preSelectedBot,
+    })
+    setIsAddModalOpen(true)
+  }
+
+  const handleSubmitAdd = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formData.user_id || !formData.bot_share_name) {
+      setError("Please select both a user and a bot")
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+
     try {
-      setSaving(true)
-      setError(null)
-      setSuccess(false)
+      // Check if assignment already exists
+      const existingAssignment = users.find(
+        (u) => u.user_id === formData.user_id && u.bot_share_name === formData.bot_share_name,
+      )
 
-      // Update user profile
-      const { error: updateError } = await supabase.from("user_profiles").upsert({
-        id: userData.id,
-        first_name: userData.firstName,
-        surname: userData.surname,
-      })
-
-      if (updateError) {
-        throw new Error(updateError.message)
+      if (existingAssignment) {
+        setError("This user already has an assignment for this bot")
+        setLoading(false)
+        return
       }
 
-      setSuccess(true)
+      // Use API endpoint to create assignment
+      const response = await fetch("/api/admin/assignments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: formData.user_id,
+          bot_share_name: formData.bot_share_name,
+          role: formData.role,
+          is_active: true,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to add assignment")
+      }
+
+      setSuccess("User assignment added successfully!")
+      setIsAddModalOpen(false)
+      setFormData({
+        user_id: "",
+        role: "member",
+        bot_share_name: allBots.length > 0 ? allBots[0].bot_share_name : "",
+      })
+      refreshData()
     } catch (err: any) {
-      console.error("Error saving user data:", err)
-      setError(err.message || "Failed to save user data")
+      console.error("Error adding assignment:", err)
+      setError(err.message || "Failed to add assignment")
     } finally {
-      setSaving(false)
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      // Find the bot_users record to delete
+      const userAssignment = users.find((u) => u.user_id === userToDelete.id)
+      if (!userAssignment) {
+        throw new Error("User assignment not found")
+      }
+
+      // Use API endpoint to delete assignment
+      const response = await fetch(`/api/admin/assignments/${userAssignment.id}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to delete assignment")
+      }
+
+      setSuccess("User assignment deleted successfully!")
+      refreshData()
+    } catch (err: any) {
+      console.error("Error deleting assignment:", err)
+      setError(err.message || "Failed to delete assignment")
+    } finally {
+      setUserToDelete(null)
+      setDeleteModalOpen(false)
+      setLoading(false)
     }
   }
 
@@ -76,167 +208,186 @@ export default function AdminPageClient({ initialUserData, isSuperAdmin }: Admin
             <Shield className="h-6 w-6 mr-2" />
             Admin Panel
           </h1>
-          <p className="text-[#616161]">Manage system-wide settings and your admin profile.</p>
+          <p className="text-[#616161]">Manage user access to bots.</p>
         </div>
         <div className="flex items-center space-x-2 mt-4 md:mt-0">
-          <Button variant="outline" onClick={handleCancel} disabled={saving} className="flex items-center">
-            <X className="h-4 w-4 mr-2" />
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={saving}
-            className="bg-[#038a71] hover:bg-[#038a71]/90 flex items-center"
-          >
-            {saving ? <Loading size="sm" className="mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-            Save Changes
+          <Button onClick={handleOpenAddModal}>
+            <UserPlus className="h-4 w-4 mr-2" />
+            Add User
           </Button>
         </div>
       </div>
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">{error}</div>}
-
       {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-6">
-          Your admin settings have been saved successfully.
-        </div>
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-6">{success}</div>
       )}
 
-      <div className="w-full md:w-[60%] space-y-6">
-        {/* Profile Settings */}
-        <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121] mb-4">Admin Profile</h2>
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="firstName">First Name</Label>
-                <Input
-                  id="firstName"
-                  value={userData.firstName}
-                  onChange={(e) => handleChange("firstName", e.target.value)}
-                  placeholder="Enter your first name"
-                  disabled={saving}
-                  className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="surname">Surname</Label>
-                <Input
-                  id="surname"
-                  value={userData.surname}
-                  onChange={(e) => handleChange("surname", e.target.value)}
-                  placeholder="Enter your surname"
-                  disabled={saving}
-                  className="border-[#e0e0e0] focus:border-[#038a71] focus:ring-[#038a71]"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                value={userData.email}
-                disabled={true}
-                className="bg-gray-50 border-[#e0e0e0] text-gray-500"
-              />
-              <p className="text-xs text-[#616161]">Email address cannot be changed.</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Billing Section */}
-        <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121] mb-4 flex items-center">
-            <CreditCard className="h-5 w-5 mr-2" />
-            Billing Management
-          </h2>
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <Label>Current Plan</Label>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-[#e0e0e0]">
-                <span className="text-sm text-[#212121]">Monthly</span>
-                <Button variant="outline" size="sm">
-                  Change Plan
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="flex items-center">
-                <Receipt className="h-4 w-4 mr-2" />
-                Invoices
-              </Label>
-              <div className="p-3 bg-gray-50 rounded-md border border-[#e0e0e0]">
-                <p className="text-sm text-[#616161]">No invoices available</p>
-                <Button variant="outline" size="sm" className="mt-2">
-                  View All Invoices
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Payment Methods</Label>
-              <div className="p-3 bg-gray-50 rounded-md border border-[#e0e0e0]">
-                <p className="text-sm text-[#616161]">No payment methods added</p>
-                <Button variant="outline" size="sm" className="mt-2">
-                  Add Payment Method
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Referrals Section */}
-        <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
-          <h2 className="text-lg font-medium text-[#212121] mb-4 flex items-center">
+      <div className="bg-white p-6 rounded-lg border border-[#e0e0e0] shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
+          <h2 className="text-lg font-medium text-[#212121] flex items-center mb-4 md:mb-0">
             <Users className="h-5 w-5 mr-2" />
-            Referral Program
+            Bot User Assignments
           </h2>
-          <div className="space-y-4">
-            <p className="text-sm text-[#212121]">Get one free month for each valid referral.</p>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-              <div className="flex items-start">
-                <Info className="h-4 w-4 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
-                <div className="text-sm text-blue-800">
-                  <p className="font-medium mb-1">How referrals work:</p>
-                  <ul className="list-disc list-inside space-y-1 text-xs">
-                    <li>Share your referral link with friends or colleagues</li>
-                    <li>They must sign up and complete their first month of service</li>
-                    <li>You'll receive one free month added to your account</li>
-                    <li>There's no limit to how many referrals you can make</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-[#e0e0e0]">
-                <div>
-                  <p className="text-sm font-medium text-[#212121]">Your Referral Link</p>
-                  <p className="text-xs text-[#616161]">https://b2blead.ai/ref/your-code</p>
-                </div>
-                <Button variant="outline" size="sm">
-                  Copy Link
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-3 bg-gray-50 rounded-md border border-[#e0e0e0] text-center">
-                  <p className="text-2xl font-bold text-[#038a71]">0</p>
-                  <p className="text-xs text-[#616161]">Successful Referrals</p>
-                </div>
-                <div className="p-3 bg-gray-50 rounded-md border border-[#e0e0e0] text-center">
-                  <p className="text-2xl font-bold text-[#038a71]">0</p>
-                  <p className="text-xs text-[#616161]">Free Months Earned</p>
-                </div>
-              </div>
-            </div>
+          <div className="flex items-center space-x-2">
+            <Label htmlFor="bot-filter" className="text-sm font-medium">
+              Filter by Bot:
+            </Label>
+            <Select value={selectedBotFilter} onValueChange={setSelectedBotFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Bots</SelectItem>
+                {allBots.map((bot) => (
+                  <SelectItem key={bot.bot_share_name} value={bot.bot_share_name}>
+                    {bot.client_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
+
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Assigned Bot</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredUsers.map((user) => (
+              <TableRow key={user.id}>
+                <TableCell>
+                  {user.first_name || "-"} {user.surname || ""}
+                </TableCell>
+                <TableCell>{user.email}</TableCell>
+                <TableCell>{getBotClientName(user.bot_share_name)}</TableCell>
+                <TableCell className="capitalize">{user.role}</TableCell>
+                <TableCell>
+                  <span
+                    className={`px-2 py-0.5 text-xs rounded-full ${user.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}`}
+                  >
+                    {user.is_active ? "Active" : "Inactive"}
+                  </span>
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setUserToDelete({
+                        id: user.user_id,
+                        name: `${user.first_name} ${user.surname}`,
+                        email: user.email,
+                      })
+                      setDeleteModalOpen(true)
+                    }}
+                  >
+                    <Trash className="h-4 w-4 text-red-500" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+
+            {filteredUsers.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center">
+                  {selectedBotFilter === "all" ? "No user assignments found." : "No assignments found for this bot."}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
       </div>
+
+      {isAddModalOpen && (
+        <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add User Assignment</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmitAdd} className="space-y-4 py-4">
+              <div>
+                <Label htmlFor="user_id">Select User</Label>
+                <Select
+                  name="user_id"
+                  value={formData.user_id}
+                  onValueChange={(value) => handleSelectChange("user_id", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a user" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allUsers.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.first_name} {user.surname} ({user.email})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="role">Role</Label>
+                <Select name="role" value={formData.role} onValueChange={(value) => handleSelectChange("role", value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="member">Member</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="bot_share_name">Assign to Bot</Label>
+                <Select
+                  name="bot_share_name"
+                  value={formData.bot_share_name}
+                  onValueChange={(value) => handleSelectChange("bot_share_name", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a bot" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allBots.map((bot) => (
+                      <SelectItem key={bot.bot_share_name} value={bot.bot_share_name}>
+                        {bot.client_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button type="button" variant="outline" disabled={loading}>
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button type="submit" className="bg-[#038a71] hover:bg-[#038a71]/90" disabled={loading}>
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                  Add Assignment
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {deleteModalOpen && userToDelete && (
+        <DeleteUserModal
+          isOpen={deleteModalOpen}
+          onClose={() => setDeleteModalOpen(false)}
+          onConfirm={handleDeleteUser}
+          userName={userToDelete.name}
+          userEmail={userToDelete.email}
+        />
+      )}
     </div>
   )
 }
